@@ -1,0 +1,49 @@
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+Diagnoses:
+[Insert your existing Epic diagnosis SmartLink here]
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+Medications:
+[Insert your existing Epic medications SmartLink here]
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+cccccccccccccccccccccccccccccccc
+Invasive Ventilation:
+[Insert your existing Epic invasive ventilation SmartLink here]
+cccccccccccccccccccccccccccccccc
+
+dddddddddddddddddddddddddddddddd
+Non-invasive Ventilation:
+[Insert your existing Epic respiratory support SmartLink here]
+dddddddddddddddddddddddddddddddd
+
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+VITALS:
+[Insert your existing Epic vital-sign SmartLink here]
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+
+ffffffffffffffffffffffffffffffff
+CULTURES:
+[Insert your existing Epic culture SmartLink here]
+ffffffffffffffffffffffffffffffff
+
+gggggggggggggggggggggggggggggggg
+LABS:
+[Insert your existing Epic laboratory SmartLink here]
+gggggggggggggggggggggggggggggggg
+
+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
+INTAKE/OUTPUT:
+[Insert your existing Epic intake/output SmartLink here]
+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
+
+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
+NUTRITION:
+[Insert your existing Epic nutrition/weight SmartLink here]
+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
+
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
+Wound Review:
+[Insert your existing Epic wound SmartLink here]
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj

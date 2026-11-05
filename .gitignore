@@ -1,0 +1,13 @@
+.streamlit/secrets.toml
+.env
+.env.*
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+private-secrets*
+encrypted-data/
+handoff.html
+handoff.txt
