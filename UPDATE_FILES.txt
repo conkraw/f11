@@ -1,20 +1,30 @@
-PICU HANDOFF VERSION 5: NASAL CANNULA AND MISSING VENT MODE
+PICU Handoff Version 6: complete replacement package
 
-This is a complete package based on the existing SmartPhrase app.
-Keep app.py at the root of your code repository. Copy/replace this package's
-contents there only if installing manually. Do not nest the application
-inside an additional folder. Keep your existing Streamlit Secrets, encryption
-key, password hash, GitHub token and separate private data repository.
-Do not run the secrets generator for this update. No new dependencies.
+Copy the contents of PICU_Handoff_v6_Labs_Vitals into the existing code repository.
+Keep app.py at the repository root. Replace matching files together.
 
-After the app updates, the sidebar shows:
-Version 5 | Nasal cannula + pressure-pair support
+New runtime modules:
+  labs.py
+  vitals.py
+  lab_layout.py
 
-Choose a room, click Load nasal-cannula example, then Create / update handoff.
-Expected: BiPAP (pressure-based) plus Nasal cannula, above the separator.
-Both entries appear in the landscape single-room and Print all outputs.
-Re-paste C and D for older handoffs to use the new extraction rules.
-Existing saved entries are not silently reclassified.
+Updated runtime modules:
+  app.py
+  models.py
+  parser.py
+  medications.py
+  importing.py
+  batching.py
+  exports.py
 
-The application migrates schema 1-4 archives in memory to schema 5.
-Do not downgrade the app after saving schema 5 data.
+Keep all other runtime files supplied in this package.
+No new runtime package beyond the existing requirements is needed.
+Do not replace Streamlit Secrets or the encryption key.
+Do not rerun create_secrets.py or Generate_Secrets.ipynb.
+
+Schema 6 preserves older stored handoffs and settings via migration.
+Re-paste E/G to populate new vitals/lab fields in an existing handoff.
+K/L/M are recognized boundaries only. They are not imported yet.
+
+After deployment, the sidebar should read:
+Version 6 | Labs, vitals and hidden medications

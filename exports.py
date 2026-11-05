@@ -7,6 +7,7 @@ from __future__ import annotations
 from html import escape
 from io import BytesIO
 from models import SYSTEMS, fields_with_medications, validate_sheet
+from lab_layout import laboratory_flowables, laboratory_html, LabRow
 
 COLUMNS = (("PATIENT", None), ("NEURO", "Neurologic"), ("RESP", "Respiratory"),
            ("CARDIAC", "Cardiovascular"), ("FEN / GI", "FEN / GI"),
@@ -38,13 +39,13 @@ def patient_column(sheet: dict, fields: dict) -> str:
 
 
 def handoff_html(sheet: dict) -> str:
-    fields = fields_with_medications(sheet)
+    fields = fields_with_medications(sheet, include_lab_text=False)
     headers = ''.join('<th>' + escape(label) + '</th>' for label, _ in COLUMNS)
     cells = ''.join('<td><div class="content">' + escape(patient_column(sheet, fields) if section is None else fields[section]) + '</div></td>' for _, section in COLUMNS)
     cols = ''.join(f'<col style="width:{w*100:.1f}%">' for w in WIDTHS)
     bands = []
     for key in BOTTOM:
-        bands.append('<div class="band"><strong>' + escape(key) + ':</strong> <span class="content">' + escape(fields[key]) + '</span></div>')
+        bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(sheet['labs']) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
     extra = '\n'.join(k + ': ' + fields[k] for k in ('Skin / Wounds', 'Tasks', 'Other') if fields[k].strip())
     if extra:
         bands.insert(2, '<div class="band"><strong>Additional notes:</strong> <span class="content">' + escape(extra) + '</span></div>')
@@ -59,6 +60,7 @@ table{border-collapse:collapse;width:100%;table-layout:fixed}th{font-size:10pt;t
 .systems td{border:1px solid black;vertical-align:top;height:4.05in;padding:4px;font-size:8.5pt;line-height:1.08}
 .content{white-space:pre-wrap;overflow-wrap:anywhere}.band{border:1px solid black;border-top:0;font-size:9pt;line-height:1.15;padding:5px;min-height:24px}
 .access{font-size:9pt}.access td{vertical-align:top;border:1px solid black;border-top:0;padding:5px;overflow-wrap:anywhere}
+.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;align-items:start}.labcard{width:100%;height:auto;border:1px solid #888;break-inside:avoid}.labnote{font:7.5pt/1.2 "Times New Roman",serif;margin:3px 0}
 footer{font:9px/1.3 Arial,sans-serif;margin-top:7px}
 @page{size:letter landscape;margin:.3in}
 @media print{body{margin:0;padding:0;background:white}main{width:100%;min-height:0;padding:0;margin:0}.systems td{height:3.95in}thead{display:table-header-group}footer{font-size:7pt}.band{break-inside:auto}}
@@ -104,7 +106,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph
 
-    fields = fields_with_medications(sheet)
+    fields = fields_with_medications(sheet, include_lab_text=False)
     margin = 21.6
     total_width = width - 2 * margin
     widths = [total_width * v for v in WIDTHS]
@@ -116,15 +118,14 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
     def paragraphs(text: str, style=normal):
         if not text.strip():
             return []
-        value = escape(_pdf_text(text)).replace('\n', '<br/>')
-        return [Paragraph(value, style)]
+        return [Paragraph(escape(_pdf_text(line)) if line else '&#160;', style) for line in text.split('\n')]
 
     queues = [paragraphs(patient_column(sheet, fields) if s is None else fields[s]) for _, s in COLUMNS]
     band_items = [(k, fields[k]) for k in BOTTOM]
     extra = '\n'.join(k + ': ' + fields[k] for k in ('Skin / Wounds', 'Tasks', 'Other') if fields[k].strip())
     if extra:
         band_items.insert(2, ('Additional notes', extra))
-    bands = [(k, paragraphs(value, wide)) for k, value in band_items]
+    bands = [(k, (laboratory_flowables(sheet["labs"], total_width-8) if k == "Lab Results / Trends" else []) + paragraphs(value, wide)) for k, value in band_items]
     access = [(k, paragraphs(fields[k], wide)) for k in ACCESS_FIELDS]
 
     def needed(queue, w):
@@ -166,7 +167,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         y = height-margin-17
         # Keep all eight columns, matching the supplied handoff. Continue long columns.
         main_needed = max((needed(q, w-8) for q, w in zip(queues, widths)), default=0)
-        main_height = min(300, max(260 if page == 1 else 28, main_needed+8))
+        main_height = min(280 if sheet["labs"]["rows"] else 300, max((190 if sheet["labs"]["rows"] else 260) if page == 1 else 28, main_needed+8))
         c.setLineWidth(.6)
         x = margin
         for (label, _), w, q in zip(COLUMNS, widths, queues):
@@ -189,8 +190,19 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         for index, (label, queue) in enumerate(bands):
             label_height = 12
             reserve = (len(bands)-index-1) * 23
-            limit = max(23, min(105, available_bands-reserve))
+            limit = max(23, min(450 if label == "Lab Results / Trends" else 105, available_bands-reserve))
             bh = max(23, min(limit, needed(queue, total_width-10) + label_height+6))
+            if label == 'Lab Results / Trends' and any(isinstance(item, LabRow) for item in queue):
+                # Reserve only space actually usable on this page, not blank
+                # space left by a whole tree row that must move to the next page.
+                used = 0.0
+                capacity = max(0.0, limit-label_height-5)
+                for item in queue:
+                    _, item_height = item.wrap(total_width-8, capacity-used)
+                    if item_height + used > capacity + .01:
+                        break
+                    used += item_height
+                bh = max(23, min(limit, used+label_height+6))
             c.rect(margin, y-bh, total_width, bh)
             c.setFont('Times-Bold', 9)
             c.drawString(margin+4, y-10, label + (':' if page == 1 else ' (continued):'))

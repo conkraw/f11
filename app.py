@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v5: nasal cannula and missing-mode pressure preservation."""
+"""PICU SmartPhrase v6: dated labs, routed vitals and reversible medication hiding."""
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
@@ -12,13 +12,16 @@ from models import (MAX_FIELD, SYSTEMS, ValidationError, new_sheet, new_vault,
                     normalize_room, save_sheet_in, validate_vault, validate_sheet,
                     upgrade_vault, fields_with_medications, respiratory_text)
 from medications import (DESTINATIONS, format_medication, suggested_key, upsert_rule,
-                         remap, rule_for_inline_mapping, validate_medication)
+                         remap, rule_for_inline_mapping, validate_medication, visible, hidden_for, set_visibility_rule)
 from ventilation import LABELS, format_ventilation, validate_ventilation
 from noninvasive import DEVICE_FIELDS, format_noninvasive, validate_noninvasive
 from importing import import_sections
 from batching import available_handoffs
 from parser import MAX_PASTE, SECTION_NAMES
 from security import valid_password_hash, verify_password
+from labs import validate_labs, lactate_text
+from vitals import validate_vitals, text_by_system
+from lab_layout import laboratory_html
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title="PICU Handoff", layout="wide", initial_sidebar_state="expanded")
@@ -65,7 +68,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_")):
             st.session_state.pop(key, None)
 
 
@@ -111,6 +114,123 @@ def room_changed() -> None:
 def update_field(room: str, section: str, key: str) -> None:
     if require_session():
         st.session_state["drafts"][room]["fields"][section] = st.session_state[key]
+
+
+def load_labs_sample() -> None:
+    if require_session():
+        st.session_state["paste"] = (ROOT / "examples" / "synthetic_labs_vitals.txt").read_text(encoding="utf-8")
+        st.session_state.pop("import_result", None)
+
+
+def change_visibility_rule(name: str, hidden: bool, match: str, store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    candidate = deepcopy(ss["vault"])
+    try:
+        candidate["settings"]["medication_visibility"] = set_visibility_rule(candidate["settings"]["medication_visibility"], name, hidden, match)
+        commit(candidate, store)
+        reapply_open_mappings()
+        note(("Medication hidden from exports and kept for restoration." if hidden else "Medication restored to exports.") + (" Rule saved to encrypted GitHub." if store else " Session-only mode."), "success")
+    except (ValueError, StorageError) as exc:
+        note(str(exc) + " The visibility rule was not changed.", "error")
+
+
+def hide_medication(room: str, row_id: str, hidden: bool, store: GitHubVault | None) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    row = next((r for r in st.session_state["drafts"][room]["medications"] if r["id"] == row_id), None)
+    if row:
+        change_visibility_rule(row["name"], hidden, "exact", store)
+
+
+def visibility_admin(store: GitHubVault | None) -> None:
+    st.subheader("Hidden medication rules")
+    rules = st.session_state["vault"]["settings"]["medication_visibility"]
+    st.caption("Hide/restore choices are remembered independently of system mappings. Full retained entries remain in their handoffs. No open handoff is needed to restore a rule here.")
+    hidden = [r for r in rules if r["hidden"]]
+    if not hidden:
+        st.caption("No hidden medication rules.")
+    for i, rule in enumerate(hidden):
+        st.text(rule["name"] + " [" + rule["match"] + "]")
+        st.button("Restore this medication", key="restore_rule_" + str(i), on_click=change_visibility_rule,
+                  args=(rule["name"], False, rule["match"], store))
+    with st.expander("Previously restored rules"):
+        for i, rule in enumerate(rules):
+            if not rule["hidden"]:
+                st.text(rule["name"] + " [" + rule["match"] + "]")
+                st.button("Hide again", key="rehide_rule_" + str(i), on_click=change_visibility_rule,
+                          args=(rule["name"], True, rule["match"], store))
+
+
+def lab_row_change(room: str, row_id: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    snapshot = ss["drafts"][room]["labs"]
+    candidate = deepcopy(snapshot)
+    row = next((r for r in candidate["rows"] if r["id"] == row_id), None)
+    if row is None:
+        return
+    previous = row[field]
+    row[field] = ss[key]
+    try:
+        validate_labs(candidate)
+        ss["drafts"][room]["labs"] = candidate
+    except ValueError as exc:
+        ss[key] = previous
+        note(str(exc), "error")
+
+
+def vital_row_change(room: str, index: int, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    candidate = deepcopy(ss["drafts"][room]["vitals"])
+    previous = candidate[index][field]
+    candidate[index][field] = ss[key]
+    try:
+        validate_vitals(candidate)
+        ss["drafts"][room]["vitals"] = candidate
+    except ValueError as exc:
+        ss[key] = previous
+        note(str(exc), "error")
+
+
+def labs_vitals_editor(sheet: dict) -> None:
+    import streamlit.components.v1 as components
+    st.subheader("Laboratory results")
+    st.caption("CBC and BMP show the last two supplied results per component. Other tests show the latest result per component. Arterial and venous gases stay separate. Dates and source flags are preserved. No collection times or same-draw groupings are invented.")
+    components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}</style>' + laboratory_html(sheet["labs"]), height=490, scrolling=True)
+    if lactate_text(sheet["labs"]):
+        st.text("Cardiovascular: " + lactate_text(sheet["labs"]))
+    with st.expander("Edit retained laboratory rows (" + str(len(sheet["labs"]["rows"])) + ")"):
+        for row in sheet["labs"]["rows"]:
+            st.text(row["component"] + " | " + row["value"] + " | " + row["date"])
+            for field, label in (("value", "Result"), ("date", "Source date / optional time"), ("include", "Include in lab selection")):
+                key = "lab_" + row["id"] + "_" + field
+                if key not in st.session_state:
+                    st.session_state[key] = row[field]
+                kwargs = dict(key=key, on_change=lab_row_change, args=(sheet["room"], row["id"], field, key))
+                if field == "include":
+                    st.checkbox(label, **kwargs)
+                else:
+                    st.text_input(label, max_chars=1000 if field == "value" else 80, **kwargs)
+    st.subheader("Vital signs")
+    if not sheet["vitals"]:
+        st.caption("Paste an E block to add vital signs.")
+    for index, row in enumerate(sheet["vitals"]):
+        st.text(row["label"] + " -> " + row["section"])
+        key = "vital_" + sheet["id"] + "_" + str(index)
+        if key not in st.session_state:
+            st.session_state[key] = row["value"]
+        st.text_input(row["label"], key=key, max_chars=1500, on_change=vital_row_change,
+                      args=(sheet["room"], index, "value", key))
+        ikey = key + "_include"
+        if ikey not in st.session_state:
+            st.session_state[ikey] = row["include"]
+        st.checkbox("Include " + row["label"], key=ikey, on_change=vital_row_change,
+                    args=(sheet["room"], index, "include", ikey))
 
 
 def load_sample() -> None:
@@ -216,7 +336,7 @@ def reapply_open_mappings() -> None:
     ss = st.session_state
     rules = ss["vault"]["settings"]["medication_mappings"]
     for sheet in ss.get("drafts", {}).values():
-        sheet["medications"] = remap(sheet["medications"], rules)
+        sheet["medications"] = remap(sheet["medications"], rules, ss["vault"]["settings"]["medication_visibility"])
     # These callbacks run before the widgets are instantiated on the next run.
     for key in list(ss):
         if key.startswith("med_") and key.endswith("_section"):
@@ -252,6 +372,8 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
                 ss.pop(key, None)
             note("Medication destination remembered in Admin." + (" Saved to encrypted GitHub." if store else " Session-only test mode."), "success")
         else:
+            if field == "name":
+                edited["hidden"] = hidden_for(edited["name"], ss["vault"]["settings"]["medication_visibility"])
             original.update(edited)
     except (ValueError, ValidationError, StorageError) as exc:
         # Do not claim a remembered mapping or move orders after a rejected save.
@@ -295,7 +417,7 @@ def clear_ventilation() -> None:
 def upgrade_existing_session() -> None:
     ss = st.session_state
     vault = ss.get("vault")
-    if not vault or vault.get("schema") == 5:
+    if not vault or vault.get("schema") == 6:
         return
     old_schema, old_settings = vault["schema"], deepcopy(vault["settings"])
     converted = upgrade_vault(vault)
@@ -384,7 +506,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 5 | Nasal cannula + pressure-pair support")
+        st.caption("Version 6 | Labs, vitals and hidden medications")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -408,13 +530,14 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
         prefix = "med_draft_" + row["id"] + "_"
         summary, destination = st.columns([3, 1])
         with summary:
-            st.text(f"{number}. " + format_medication(row) + ("" if row["include"] else " [EXCLUDED]"))
+            st.text(f"{number}. " + format_medication(row) + (" [HIDDEN]" if row["hidden"] else "" if row["include"] else " [EXCLUDED]"))
         with destination:
             key = prefix + "section"
             if key not in st.session_state:
                 st.session_state[key] = row["section"]
             st.selectbox("System for order " + str(number), DESTINATIONS, key=key,
                          on_change=medication_row_change, args=(room, row["id"], "section", key, store))
+        st.button("Restore to handoff" if row["hidden"] else "Hide from handoff", key="hide_med_" + row["id"], on_click=hide_medication, args=(room, row["id"], not row["hidden"], store))
         with st.expander("Edit details for order " + str(number), expanded=False):
             def widget(field: str, label: str, kind: str = "text"):
                 key = prefix + field
@@ -550,11 +673,12 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.button("Start blank for new patient", on_click=start_new_patient)
         st.button("Load saved handoff", on_click=load_saved_into_editor)
         st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
-    paste_tab, meds_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Edit handoff", "Preview / print"])
+    paste_tab, meds_tab, labs_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Edit handoff", "Preview / print"])
     with paste_tab:
-        st.caption("Paste A/B for diagnoses and medications. Paste C and D together for respiratory support. A respiratory paste replaces the previous automatic device list using only that paste. Separate notes stay unchanged.")
+        st.caption("Paste the full SmartPhrase or only the paired sections you are updating. A/B import diagnoses and medications, C/D respiratory support, E vital signs and G labs. Omitted sections and separate notes stay unchanged.")
         left, right = st.columns(2)
         left.button("Load synthetic example", on_click=load_sample)
+        left.button("Load labs / vitals example", on_click=load_labs_sample)
         left.button("Load nasal-cannula example", on_click=load_niv_sample)
         right.button("Clear pasted text", on_click=clear_paste)
         with st.form("parse_smartphrase"):
@@ -573,9 +697,16 @@ def handoff_page(store: GitHubVault | None) -> None:
     with meds_tab:
         st.caption("Choose a system beside an order. It is remembered immediately in Admin and reused on future imports. Unmapped orders remain in Other Medications.")
         if sheet["medications"]:
-            medication_editor(sheet["medications"], room, store)
+            active = [row for row in sheet["medications"] if not row["hidden"]]
+            hidden = [row for row in sheet["medications"] if row["hidden"]]
+            medication_editor(active, room, store)
+            with st.expander("Hidden medications (" + str(len(hidden)) + ")", expanded=False):
+                st.caption("These entries are retained but omitted from every printed/exported handoff. Restore here or change the rule in Admin. Exact-formulation hiding does not suppress other orders for the same drug.")
+                medication_editor(hidden, room, store)
         else:
             st.info("Paste a B block and create the handoff to add medications.")
+    with labs_tab:
+        labs_vitals_editor(sheet)
     with edit_tab:
         st.caption("These are your separate notes. Re-pasting medications or ventilation does not erase them.")
         for section in SYSTEMS:
@@ -583,17 +714,21 @@ def handoff_page(store: GitHubVault | None) -> None:
             if key not in ss:
                 ss[key] = sheet["fields"][section]
             with st.expander(section, expanded=section == "Diagnoses"):
+                if section in text_by_system(sheet["vitals"]):
+                    st.text(text_by_system(sheet["vitals"])[section] + "\n-----")
+                if section == "Cardiovascular" and lactate_text(sheet["labs"]):
+                    st.text(lactate_text(sheet["labs"]) + "\n-----")
                 if section == "Respiratory" and respiratory_text(sheet):
                     st.text(respiratory_text(sheet) + "\n-----")
-                    st.caption("The automatic block prints first. Edit its values under Paste / create.")
+                    st.caption("Vital signs print first, then support settings. Edit support under Paste / create.")
                 st.text_area("Notes: " + section, key=key, height=100, max_chars=MAX_FIELD,
                              on_change=update_field, args=(room, section, key))
                 for row in sheet["medications"]:
-                    if row["include"] and row["section"] == section:
+                    if visible(row) and row["section"] == section:
                         st.text(format_medication(row))
     with preview_tab:
         import streamlit.components.v1 as components
-        st.caption("Landscape Letter. Respiratory-support settings appear first in RESP, followed by ----- and the respiratory notes and medications.")
+        st.caption("Landscape Letter. Vitals lead each system column, followed by support settings, notes and medications. Dated lab trees appear below the columns.")
         components.html(handoff_html(sheet), height=650, scrolling=True)
         try:
             st.download_button("Download this handoff (PDF)", handoff_pdf(sheet), "handoff.pdf", "application/pdf")
@@ -728,6 +863,7 @@ def admin_page(store: GitHubVault | None) -> None:
                 st.text(rule["name"] + " [" + rule["match"] + "] -> " + rule["destination"])
     else:
         st.info("No saved mappings yet. Unmapped medications go to Other Medications.")
+    visibility_admin(store)
     st.subheader("Room and diagnosis settings")
     if "admin_rooms" not in ss:
         ss["admin_rooms"] = "\n".join(settings["rooms"])
@@ -739,7 +875,7 @@ def admin_page(store: GitHubVault | None) -> None:
         st.form_submit_button("Save settings", on_click=save_admin_settings, args=(store,))
     with st.expander("Section imports"):
         for key, heading in SECTION_NAMES.items():
-            st.text(key * 8 + " = " + heading + (" | automatic import" if key in "abcd" else " | not imported yet"))
+            st.text(key * 8 + " = " + heading + (" | automatic import" if key in "abcdeg" else " | not imported yet"))
         st.caption("C/D rules control the display, not bedside device status. BiPAP needs both D-block pressures. CPAP needs EPAP or PEEP. Explicit HFNC or the documented mask-plus-flow convention can add HFNC. Inferred HFNC is labeled flow-based. No previous-paste values are reused.")
 
 

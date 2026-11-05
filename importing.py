@@ -6,6 +6,8 @@ from models import validate_sheet, apply_diagnoses, apply_medications, apply_res
 from parser import parse_smartphrase, SECTION_NAMES, MAX_PASTE
 from medications import parse_medications
 from noninvasive import parse_respiratory
+from labs import parse_labs
+from vitals import parse_vitals
 
 
 @dataclass
@@ -25,13 +27,13 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
         out.errors.append("The paste is too large. Use one room at a time.")
         return out
     parsed = parse_smartphrase(text)
-    relevant = set("abcd") & (set(parsed.blocks) | parsed.invalid)
+    relevant = set("abcdeg") & (set(parsed.blocks) | parsed.invalid)
     if not relevant:
-        out.errors.append("No supported block was found. Use paired A, B, C or D dividers.")
+        out.errors.append("No supported block was found. Use paired A, B, C, D, E or G dividers.")
         return out
     out.notices.extend(parsed.issues)
     candidate = deepcopy(sheet)
-    for letter in "abcd":
+    for letter in "abcdeg":
         if letter in parsed.invalid:
             out.errors.append("Check the " + SECTION_NAMES[letter] + " dividers. Nothing was imported.")
             continue
@@ -45,7 +47,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 candidate = apply_diagnoses(candidate, "\n".join(parsed.diagnoses), settings["diagnoses_destination"])
                 out.imported.append("Diagnoses")
             elif letter == "b":
-                meds = parse_medications(parsed.blocks[letter], settings["medication_mappings"])
+                meds = parse_medications(parsed.blocks[letter], settings["medication_mappings"], settings.get("medication_visibility", []))
                 if meds.error:
                     out.errors.extend([meds.error] + meds.issues)
                     continue
@@ -63,6 +65,22 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 candidate = apply_respiratory(candidate, vent.invasive, vent.devices)
                 out.notices.extend(vent.issues)
                 out.imported.append("respiratory support" if vent.invasive or vent.devices else "respiratory display cleared")
+            elif letter == "e":
+                vitals = parse_vitals(parsed.blocks[letter])
+                if vitals.error:
+                    out.errors.append(vitals.error)
+                    continue
+                candidate["vitals"] = vitals.rows
+                out.notices.extend(vitals.issues)
+                out.imported.append("vital signs")
+            elif letter == "g":
+                labs = parse_labs(parsed.blocks[letter])
+                if labs.error:
+                    out.errors.append(labs.error)
+                    continue
+                candidate["labs"] = labs.data
+                out.notices.extend(labs.issues)
+                out.imported.append("laboratory results")
         except (ValidationError, ValueError) as exc:
             out.errors.append(str(exc))
     if out.errors:

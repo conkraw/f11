@@ -1,5 +1,6 @@
 """Synthetic regression cases for missing-mode pressure pairs and nasal cannula."""
 from copy import deepcopy
+from migration_helpers import strip_v6_fields
 from io import BytesIO
 import json
 from pathlib import Path
@@ -187,6 +188,7 @@ def legacy_four():
     s['fields']['Respiratory']='Keep old synthetic note'
     v=save_sheet_in(new_vault(),s)
     v['schema']=4
+    strip_v6_fields(v)
     v['settings']['medication_mappings']=upsert_rule([],'albuterol','Respiratory')
     for d in v['rooms']['P4102']['noninvasive']:
         del d['pressure_inferred']
@@ -198,8 +200,8 @@ def test_schema4_upgrade_preserves_existing_notes_rules_values_ids():
     original=deepcopy(old)
     v=upgrade_vault(old)
     assert old==original
-    assert v['schema']==5
-    assert v['settings']==old['settings']
+    assert v['schema']==6
+    assert v['settings']==dict(old['settings'], medication_visibility=[])
     old_sheet=old['rooms']['P4102']
     new_sheet_=v['rooms']['P4102']
     assert new_sheet_['id']==old_sheet['id']
@@ -213,7 +215,7 @@ def test_old_schema4_encrypted_archive_migrates_with_same_key():
     key=generate_key()
     token=Fernet(key.encode()).encrypt(json.dumps(legacy_four()).encode())
     v=open_vault(token,key)
-    assert v['schema']==5
+    assert v['schema']==6
     s=imported(sheet=v['rooms']['P4102'])
     v=save_sheet_in(v,s)
     encoded=seal_vault(v,key)
@@ -262,7 +264,7 @@ def test_nc_editor_and_remove_do_not_touch_pressure_entry(app):
     assert len(ss['drafts']['P4102']['noninvasive'])==1
     assert ss['drafts']['P4102']['noninvasive'][0]['pressure_inferred']
     app.save_room(None)
-    assert ss['vault']['schema']==5
+    assert ss['vault']['schema']==6
 
 
 def test_bipap_remove_keeps_nc(app):
@@ -282,7 +284,7 @@ def test_session_schema4_migration_preserves_unsaved_edits(app):
     ss['base_sheets']={'P4102':deepcopy(ss['vault']['rooms']['P4102'])}
     ss['drafts']['P4102']['fields']['Respiratory']='Unsaved synthetic note'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==5
+    assert ss['vault']['schema']==6
     assert ss['drafts']['P4102']['fields']['Respiratory']=='Unsaved synthetic note'
     assert 'pressure_inferred' in ss['base_sheets']['P4102']['noninvasive'][0]
 

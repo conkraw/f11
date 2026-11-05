@@ -47,3 +47,18 @@ jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
 Wound Review:
 [Insert your existing Epic wound SmartLink here]
 jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
+
+kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
+Target Arousal Level:
+[Optional source section. Recognized, not imported in Version 6.]
+kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
+
+llllllllllllllllllllllllllllllll
+WAT Score:
+[Optional source section. Recognized, not imported in Version 6.]
+llllllllllllllllllllllllllllllll
+
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+ICP Trends:
+[Optional source section. Recognized, not imported in Version 6.]
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

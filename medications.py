@@ -15,7 +15,7 @@ BULLET = re.compile(r"^\s*[•●▪◦\-]\s*")
 SPACE = re.compile(r"\s+")
 RATE = re.compile(r"^\s*(\d+(?:\.\d+)?\s*(?:m[lL]|[uµμ]g|mcg|mg|g|units?|Units?|mEq)(?:\s*/\s*(?:kg|hr|min|h|day|24h)){1,3})\b", re.I)
 FIELDS = {"id", "name", "dose", "route", "frequency", "last_rate", "rate_time", "section",
-          "custom_text", "include", "warnings"}
+          "custom_text", "include", "warnings", "hidden"}
 
 
 def clean(value: str) -> str:
@@ -88,7 +88,7 @@ def validate_medication(row: dict) -> None:
     for key in ("name", "dose", "route", "frequency", "last_rate", "rate_time", "custom_text"):
         if not isinstance(row[key], str) or len(row[key]) > 4000:
             raise ValueError("A medication entry is too long or invalid.")
-    if not row["name"].strip() or row["section"] not in DESTINATIONS or not isinstance(row["include"], bool):
+    if not row["name"].strip() or row["section"] not in DESTINATIONS or not isinstance(row["include"], bool) or not isinstance(row["hidden"], bool):
         raise ValueError("Check the medication name, destination, and inclusion setting.")
     if not isinstance(row["warnings"], list) or len(row["warnings"]) > 20 or any(not isinstance(v,str) or len(v)>500 for v in row["warnings"]):
         raise ValueError("Medication review warnings are invalid.")
@@ -120,10 +120,12 @@ def format_medication(row: dict) -> str:
     return text
 
 
-def remap(rows: list[dict], rules: list[dict]) -> list[dict]:
+def remap(rows: list[dict], rules: list[dict], visibility: list[dict] | None = None) -> list[dict]:
     result = deepcopy(rows)
     for row in result:
         row["section"] = destination_for(row["name"], rules)
+        if visibility is not None:
+            row["hidden"] = hidden_for(row["name"], visibility)
     return result
 
 
@@ -135,7 +137,7 @@ class MedicationResult:
     empty_confirmed: bool = False
 
 
-def parse_medications(block: str, rules: list[dict] | None = None) -> MedicationResult:
+def parse_medications(block: str, rules: list[dict] | None = None, visibility: list[dict] | None = None) -> MedicationResult:
     """Receive only a validated B block, not the entire SmartPhrase.
 
     The standard table is Medication, Dose, Route, Frequency, Provider,
@@ -181,6 +183,8 @@ def parse_medications(block: str, rules: list[dict] | None = None) -> Medication
         return result
     for index, chunk in enumerate(chunks, 1):
         cols = [clean(c) for c in chunk.split('\t')]
+        while len(cols) > 7 and not cols[-1]:
+            cols.pop()
         # Allow omitted trailing empty cells, but never infer missing internal columns.
         if len(cols) < 4 or len(cols) > 7:
             result.issues.append(f"Medication row {index}: columns could not be separated safely. Copy directly from Epic with tabs between cells.")
@@ -188,11 +192,14 @@ def parse_medications(block: str, rules: list[dict] | None = None) -> Medication
             continue
         cols += [''] * (7-len(cols))
         name, dose, route, frequency, _provider, raw_rate, _last_admin = cols
-        if not name or not route or not frequency:
+        override_pull = bool(re.search(r"\bADS\s+Override\s+Pull\b", name, re.I))
+        if not name or ((not route or not frequency) and not override_pull):
             result.issues.append(f"Medication row {index}: name, route, or frequency is missing. Check the original table.")
             result.error = "At least one medication row is incomplete. Nothing has been applied."
             continue
         warnings = []
+        if override_pull:
+            warnings.append("ADS Override Pull: retained as a separate source entry. Blank dose, route or frequency are not inferred. Hide this exact entry if it should not print.")
         rate, rate_time = '', ''
         if raw_rate:
             m = RATE.match(raw_rate)
@@ -218,7 +225,7 @@ def parse_medications(block: str, rules: list[dict] | None = None) -> Medication
         row = {"id": uuid.uuid4().hex, "name": name, "dose": dose, "route": route,
                "frequency": frequency, "last_rate": rate, "rate_time": rate_time,
                "section": destination_for(name, rules), "custom_text": "", "include": True,
-               "warnings": warnings}
+               "warnings": warnings, "hidden": hidden_for(name, visibility or [])}
         validate_medication(row)
         result.rows.append(row)
     if not result.rows and not result.error and not result.empty_confirmed:
@@ -251,3 +258,47 @@ def rule_for_inline_mapping(name: str, rules: list[dict]) -> tuple[str, str]:
         if best["match"] == "exact" or len(normalized(best["name"])) >= len(suggested):
             return best["name"], best["match"]
     return suggested, "prefix"
+
+
+def validate_visibility(rules: list[dict]) -> None:
+    if not isinstance(rules, list) or len(rules) > 2000:
+        raise ValueError("The medication visibility rules are invalid or too large.")
+    seen = set()
+    for rule in rules:
+        if not isinstance(rule, dict) or set(rule) != {"name", "match", "hidden"}:
+            raise ValueError("A medication visibility rule has an invalid structure.")
+        if not isinstance(rule["name"], str) or not 2 <= len(rule["name"]) <= 4000 or any(c in rule["name"] for c in "\n\r\t"):
+            raise ValueError("Use a medication name on one line.")
+        if rule["match"] not in ("prefix", "exact") or not isinstance(rule["hidden"], bool):
+            raise ValueError("A medication visibility rule is invalid.")
+        key = (normalized(rule["name"]), rule["match"])
+        if key in seen:
+            raise ValueError("Medication visibility rules must be unique.")
+        seen.add(key)
+
+
+def hidden_for(name: str, rules: list[dict]) -> bool:
+    name_key = match_name(name)
+    choices = []
+    for rule in rules:
+        term = normalized(rule["name"])
+        matched = name_key == term
+        if rule["match"] == "prefix":
+            matched = matched or (name_key.startswith(term) and len(name_key) > len(term) and not name_key[len(term)].isalnum())
+        if matched:
+            choices.append((rule["match"] == "exact", len(term), rule["hidden"]))
+    return max(choices)[2] if choices else False
+
+
+def set_visibility_rule(rules: list[dict], name: str, hidden: bool, match: str = "exact") -> list[dict]:
+    """An inline hide defaults to the exact formulation, not a broad drug family."""
+    key = match_name(name)
+    result = [deepcopy(r) for r in rules if (normalized(r["name"]), r["match"]) != (key, match)]
+    result.append({"name": key, "match": match, "hidden": hidden})
+    result.sort(key=lambda r: (r["name"], r["match"]))
+    validate_visibility(result)
+    return result
+
+
+def visible(row: dict) -> bool:
+    return row["include"] and not row.get("hidden", False)

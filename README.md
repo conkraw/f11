@@ -1,59 +1,75 @@
-# PICU Handoff SmartPhrase
+# PICU Handoff, Version 6
 
-Version 5 adds standard nasal cannula and pressure-pair recovery when Vent Mode is absent, alongside non-invasive respiratory support combinations to the existing medication routing, invasive ventilation and landscape print-all workflow. Read NONINVASIVE_UPDATE.md for the exact rules and validation limits.
+Dated lab trees, routed vital signs, and reversible medication hiding. This is the complete web-based application. It retains the Version 5 respiratory-support handling, remembered system mappings, encrypted GitHub storage, editable landscape handoffs and Print all.
 
-## Working web app
+## Update a working deployment
 
-Keep app.py as the entry point and retain the existing deployment Secrets, app password hash, encryption key, token and private data repository. No new dependencies are required. Do not run create_secrets.py again for an existing installation.
+Save open handoffs. Extract the complete ZIP and copy the contents of the PICU_Handoff_v6_Labs_Vitals folder into your existing application code repository, replacing matching files. Keep app.py at the repository root. Include the new labs.py, vitals.py and lab_layout.py files and all other supplied Python files. Restart the deployment after the upload.
 
-The encrypted archive stays at encrypted-data/handoff-v1.enc. Schemas 1-4 migrate in memory to schema 5 without discarding notes, medication records, mappings or invasive settings. The next successful save uses schema 5 with the same key. Do not downgrade only part of the app after saving new data.
+Keep your current Streamlit Secrets, app password, encryption key, GitHub token and private data repository unchanged. Do not run create_secrets.py or Generate_Secrets.ipynb again for an update. No new runtime dependencies are needed beyond the existing ReportLab/Streamlit requirements. The notebook and secrets helper are only for a first-time deployment.
 
-## Daily workflow
+The sidebar should say: Version 6 | Labs, vitals and hidden medications.
 
-Sign in, choose a room, paste the separated SmartPhrase and click Create / update handoff. A imports diagnoses. B imports medication orders. C and D together import respiratory support. Other sections remain manual. Pasted Epic text is read directly without OCR or an external AI service.
+This package does not upload or change your repository for you. It does not reset stored medication assignments or saved handoffs. Schema 1-5 archives migrate in memory to schema 6, and the next successful save writes schema 6 with the same key. Update all application files together. Do not downgrade after saving with the new schema.
 
-The import goes directly into the editable draft without review or replacement checkboxes. Malformed or conflicting input stops the import rather than partially replacing a handoff. Paste one room at a time. Only the included sections change, with C/D treated as one respiratory snapshot. Separate system notes are preserved.
+## Everyday use
 
-Choose a destination beside a medication to remember the rule immediately in Admin and encrypted GitHub. Admin can edit rules without an open handoff. A failed mapping save is shown as an error and rolled back. Unmapped orders remain in Other Medications. Changing rules updates open drafts but does not silently rewrite stored handoff text. Save handoff or Save all open handoffs persists the draft contents.
+Select a room, paste the SmartPhrase, and click Create / update handoff. You can paste the entire phrase or only the paired sections being updated. Imported snapshots replace their previous corresponding snapshot, not your separate manually entered system notes. An omitted section is left unchanged. Save handoff stores the editable draft. Print all includes saved sheets and the latest open drafts, with each room starting on a new landscape page.
 
-## Medications
+There are no added approval or confirmation steps. Malformed supported sections still stop an import rather than applying a partial, potentially misleading handoff.
 
-Every bullet starts a separate order. Medication/formulation, Dose, Route, Frequency and applicable Last Rate are read from the tab-separated columns. Provider and Last Admin are not retained in the parsed record. The original paste is not archived.
+## Laboratory results: G block
 
-The formulation and actual Dose column stay distinct when they differ. A dose already present at the end of the name is not printed twice. There is no dose calculation, unit conversion or reuse of another patient's dose. Continuous infusions can show a weight-based dose and recorded pump rate. With a blank Dose, a continuous Last Rate is shown as @ rate. Rate timestamps remain available in the editor. A zero rate is not interpreted as a discontinued order.
+CBC and BMP each have two dated result trees: latest per component and preceding per component. The CBC tree positions are WBC, hemoglobin, hematocrit and platelets. MCV and absolute neutrophil/lymphocyte counts remain underneath when supplied. BMP positions are sodium, potassium, chloride, CO2, BUN, creatinine and glucose, with calcium below when supplied. A missing result is shown as --, never zero or a calculated value.
 
-Scheduled and PRN orders remain separate. Missing columns or unreadable rows block the medication import. Reimporting replaces the imported medication list without erasing separate system notes. Custom wording overrides the generated wording and must be updated separately when needed.
+The source provides individual component rows, not verified panel/specimen identifiers. Therefore these trees are not claimed to be results from one blood draw. Every value has its own source date. Dates are sorted newest first. When multiple rows have the same date and no collection times, their source order is retained, assuming the Epic table is newest-first within that date. When every result for a component on a date includes a time, those times are used. Mixed timed/untimed rows on one date keep source order because their exact relative timing cannot be determined. Identical rows are retained because the paste does not establish whether they are duplicates or separate observations.
 
-Rules use case-insensitive complete-name or word-boundary prefix matching, not fuzzy drug-name guesses. The longest prefix wins, while an exact rule has priority. A specific heparin flush rule can differ from a heparin rule. Rules move the complete order with its own dose and instructions.
+Hepatic, coagulation, inflammatory and other components show one latest result each in labelled branch diagrams. Arterial, venous and capillary blood gases remain separate. No bicarbonate, reference range, unit, calcium, glucose or missing lab is calculated. Original flags such as (H), (L), (LL) and inequalities are preserved.
 
-## Respiratory support
+Recognized lactate/lactic-acid components go to Cardiovascular, below its vitals and before notes/medications. Lactate is not repeated in the lab-tree band. If no lactate is in the paste, none is added. Distinct source-specimen labels remain distinct.
 
-Invasive modes retain the requested C-block settings, in order: mode, set rate, set tidal volume, PEEP, mean airway pressure, inspiratory time, observed PIP, pressure support, flow trigger and FiO2. Billing, heater and equipment fields are excluded. Missing invasive values are not substituted from other fields or blocks.
+All imported lab rows remain available under Labs / Vitals > Edit retained laboratory rows. You can correct a value or its source date and include/exclude a result. Display selection is recalculated. Older rows not selected for the compact output are not deleted from the current snapshot. Re-pasting G replaces the snapshot, using only that paste. A valid empty G block clears it. Source 'No results found' statements are retained as source notes, not normal results.
 
-A named BiLevel/BiPAP mode in C requires both D-block IPAP and EPAP. When Vent Mode is absent, the same documented pair is retained as BiPAP (pressure-based), not as a verified current mode. Missing Vent Mode no longer blocks the whole import. An explicit unknown or invasive mode, an invasive airway label, or Ventilator On: No prevents the missing-mode fallback. A mode label left behind without those pressures is not reported as BiPAP. CPAP requires a CPAP mode and EPAP or PEEP. Explicit HFNC or standard nasal cannula can be reported alone or alongside either pressure device. Nasal cannula, including the humidified Other (Comment) label, is not relabeled as HFNC based on flow. The recorded FiO2 is preserved, including 21%, without calling the device room air.
+Trees print in Lab Results / Trends below the main system columns. Longer sheets continue onto landscape pages without truncation. HTML includes the same SVG diagrams, but PDF is preferred for predictable pagination. All supplied preview data is synthetic.
 
-For the requested CPAP/Bi-PAP mask plus positive-flow pattern, the app also adds HFNC, explicitly labeled flow-based. That inference is not proof that HFNC is in use. The entry can be removed in the editor when the flow belongs only to the mask. Read NONINVASIVE_UPDATE.md for details on FiO2 sources, conflicting pressure fields and stale settings.
+## Vital signs: E block
 
-Paste C and D together. Pasting either is a new respiratory snapshot from that paste only. Old automatic entries are removed rather than reusing earlier pressures. A/B-only pastes leave respiratory support unchanged. Automatic support prints first in RESP, followed by ----- and the separate notes and medications. Each device is editable and removable without confirmation dialogs.
+Resp/respiratory rate, SpO2 and FiO2 go to Respiratory. Heart rate, blood pressure, arterial pressure, mean arterial pressure and central venous pressure go to Cardiovascular. Temperature goes to Infectious Disease. Unrecognized labels remain in Other with a notice instead of being silently discarded.
 
-## Landscape printing
+Vital signs always come first within their system, above respiratory support, lactate, notes and medications. The displayed ranges, most recent recorded values and supplied units are kept as text. No mean pressure, unit or range is calculated. Vital-sign FiO2 remains a vital-sign line and does not overwrite device-specific FiO2.
 
-The Letter-landscape sheet retains PATIENT, NEURO, RESP, CARDIAC, FEN / GI, HEME, ID and LABS columns. Other Medications spans the width below. Lower bands include lab trends, goals/follow-up, airway, last intubation, access and drains/tubes. No patient-name or MRN field is supplied. Long content continues on additional pages rather than being cut off.
+Use Labs / Vitals to edit or exclude a vital-sign line. Re-pasting E replaces the previous automatic vitals, preserving separate notes and support settings.
 
-Print all combines saved rooms and latest open drafts. Each room appears once on a new landscape page. Blank sheets are omitted. Downloads are available as PDF or printable HTML. Printing does not save changes to GitHub. Save all open handoffs stores the drafts. Downloaded exports are unencrypted.
+## Hide medications without deleting them
 
-Use Start blank for new patient when a room changes occupants. A room number does not replace your clinical patient-identification process.
+Use Hide from handoff next to a medication. It moves to the Hidden medications list and is omitted from PDF, HTML, text and Print all exports. Its complete current order remains retained and editable. Use Restore to handoff to bring it back. Admin also has Hidden medication rules, usable without an open handoff.
+
+Hiding is remembered as an exact formulation/name rule, separately from the system mapping. This prevents hiding an ADS Override Pull entry from accidentally hiding an active albuterol order. Different formulations or product amounts are not silently hidden by a broad drug-name guess. A future import of the same exact formulation stays hidden. Changing its mapped system does not unhide it. Restore saves the reversed rule and updates matching open drafts. Already saved closed room sheets are not silently rewritten. Open/reimport and save those handoffs when their saved content needs changing.
+
+An explicit ADS Override Pull row with blank dose, route and frequency is now retained with a review note instead of blocking the entire medication import. Its missing order fields are not filled or inferred, and it is not hidden unless you choose to hide it. Other malformed medication rows still block an import.
+
+Include order, inside an order's detail editor, remains a one-handoff inclusion setting. Hide/Restore is the remembered rule. Hidden entries that disappear entirely from a later source medication list are not revived as current orders by a new import. Their visibility rule remains available in Admin.
+
+## Sections currently imported
+
+A: Diagnoses. B: Medications. C/D: respiratory support. E: VITALS. G: LABS.
+
+F cultures, H intake/output, I nutrition, J wound review, K target arousal level, L WAT score and M ICP trends have recognized boundaries but are not automatically imported in this update. No SBS, WAT, ICP, nutrition, culture or intake/output result is inferred. The existing manual fields remain available.
 
 ## Storage and deployment
 
-The password gate, private-data-repository check, Fernet encryption, fixed archive filename, generic commit message and expected-SHA conflict protection remain. Only application code and synthetic examples belong in a public code repository. Keep .streamlit/secrets.toml, credentials and clinical records out of it.
+The app password gate and encrypted private GitHub archive are unchanged. Structured labs, vitals, medication details and visibility rules are inside the encrypted archive. The full raw SmartPhrase is not stored there. Source text still enters the app host and browser memory before encryption. Omitting names or MRNs does not establish de-identification or clinical hosting approval. Use institution-approved hosting, storage and access controls for clinical use. Start with synthetic data.
 
-The application host receives pasted text before encryption. Shared-password access and encrypted GitHub storage alone do not establish clinical approval or privacy compliance. Use synthetic examples until the institution approves hosting, storage, identity/access controls, required agreements, retention and auditing. Earlier encrypted saves remain in Git history. Replacing a room's sheet is not a secure purge of that history.
-
-Raw source text is not intentionally written to the encrypted archive or diagnostic files. Clearing it from session state is not secure erasure of server/browser memory. This app cannot control hosting logs, backups, browser artifacts or operating-system behavior.
-
-For a new deployment only, create_secrets.py or Generate_Secrets.ipynb creates the app password hash and independent encryption key. Use the example configuration to configure a separate private data repository and a token limited to Contents read/write access there. Add credentials in the host's private Secrets settings, never in code. Keep a secure backup of the encryption key. Losing it prevents recovery of encrypted data.
+Exports are unencrypted. Earlier encrypted saves remain in Git history. Removing a current sheet is not a purge of previous history. A room is not a substitute for patient identification in Epic. The app has not been validated as a medical device or as a source of clinical decisions.
 
 ## Validation
 
-Run PYTHONPATH=. pytest -q after installing requirements-dev.txt. The current local run passed 313 tests. The suite uses synthetic records, mocked GitHub responses and widget stubs. It does not prove live browser compatibility, source-record accuracy, simultaneous device use or privacy compliance. The two-page synthetic nasal-cannula regression export was rendered and visually checked. Deployment and the live private data-repository connection were not tested.
+See TEST_REPORT.md. Tests use synthetic fixtures, in-memory encrypted archives, mocked storage requests and Streamlit widget stubs. A separate compatibility check opened an archive generated by the unmodified Version 5 package with the new code and the same key. The build environment could not install Streamlit, so a real Streamlit browser session and your hosted private storage connection remain untested.
+
+## Technical references
+
+Streamlit session state and callbacks: https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state
+
+ReportLab graphics: https://www.reportlab.com/chartgallery/
+
+Fernet encryption: https://cryptography.io/en/latest/fernet/

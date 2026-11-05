@@ -2,6 +2,7 @@
 from copy import deepcopy
 import re
 from models import validate_sheet
+from medications import visible
 
 
 def room_order(room: str):
@@ -15,6 +16,6 @@ def available_handoffs(vault: dict, drafts: dict) -> dict:
     ready = {}
     for room, sheet in rooms.items():
         validate_sheet(sheet)
-        if any(v.strip() for v in sheet["fields"].values()) or any(r["include"] for r in sheet["medications"]) or sheet["ventilation"] or sheet["noninvasive"]:
+        if any(v.strip() for v in sheet["fields"].values()) or any(visible(r) for r in sheet["medications"]) or sheet["ventilation"] or sheet["noninvasive"] or any(r["include"] for r in sheet["vitals"]) or any(r["include"] for r in sheet["labs"]["rows"]) or sheet["labs"]["notes"]:
             ready[room] = sheet
     return {room: ready[room] for room in sorted(ready, key=room_order)}
