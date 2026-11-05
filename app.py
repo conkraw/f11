@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v3: remembered routing, focused ventilation and batch print."""
+"""PICU SmartPhrase v5: nasal cannula and missing-mode pressure preservation."""
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
@@ -10,10 +10,11 @@ from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, hando
 from github_store import GitHubConfig, GitHubVault, StorageError
 from models import (MAX_FIELD, SYSTEMS, ValidationError, new_sheet, new_vault,
                     normalize_room, save_sheet_in, validate_vault, validate_sheet,
-                    upgrade_vault, fields_with_medications)
+                    upgrade_vault, fields_with_medications, respiratory_text)
 from medications import (DESTINATIONS, format_medication, suggested_key, upsert_rule,
                          remap, rule_for_inline_mapping, validate_medication)
 from ventilation import LABELS, format_ventilation, validate_ventilation
+from noninvasive import DEVICE_FIELDS, format_noninvasive, validate_noninvasive
 from importing import import_sections
 from batching import available_handoffs
 from parser import MAX_PASTE, SECTION_NAMES
@@ -64,7 +65,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_")):
             st.session_state.pop(key, None)
 
 
@@ -115,6 +116,13 @@ def update_field(room: str, section: str, key: str) -> None:
 def load_sample() -> None:
     if require_session():
         st.session_state["paste"] = (ROOT / "examples" / "synthetic_smartphrase.txt").read_text(encoding="utf-8")
+        st.session_state.pop("import_result", None)
+
+
+
+def load_niv_sample() -> None:
+    if require_session():
+        st.session_state["paste"] = (ROOT / "examples" / "synthetic_nc_smartphrase.txt").read_text(encoding="utf-8")
         st.session_state.pop("import_result", None)
 
 
@@ -287,7 +295,7 @@ def clear_ventilation() -> None:
 def upgrade_existing_session() -> None:
     ss = st.session_state
     vault = ss.get("vault")
-    if not vault or vault.get("schema") == 3:
+    if not vault or vault.get("schema") == 5:
         return
     old_schema, old_settings = vault["schema"], deepcopy(vault["settings"])
     converted = upgrade_vault(vault)
@@ -376,6 +384,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
+        st.caption("Version 5 | Nasal cannula + pressure-pair support")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -435,7 +444,7 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
                 st.caption(warning)
 
 
-def ventilation_editor(sheet: dict) -> None:
+def invasive_editor(sheet: dict) -> None:
     data = sheet["ventilation"]
     if data is None:
         st.caption("No automatic invasive-ventilation block is currently included.")
@@ -450,6 +459,63 @@ def ventilation_editor(sheet: dict) -> None:
                           args=(sheet["room"], label, key))
         st.button("Clear ventilator block", on_click=clear_ventilation)
 
+
+
+def noninvasive_change(room: str, device: str, label: str, widget_key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    devices = ss["drafts"][room]["noninvasive"]
+    updated = deepcopy(devices)
+    row = next((d for d in updated if d["device"] == device), None)
+    if row is None:
+        return
+    old_value = row["values"].get(label, "")
+    value = ss[widget_key].strip()
+    if value:
+        row["values"][label] = value
+    else:
+        row["values"].pop(label, None)
+    try:
+        validate_noninvasive(updated)
+    except ValueError as exc:
+        ss[widget_key] = old_value
+        note(str(exc), "error")
+        return
+    ss["drafts"][room]["noninvasive"] = updated
+
+
+def remove_support_device(room: str, device: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    sheet = ss["drafts"][room]
+    sheet["noninvasive"] = [item for item in sheet["noninvasive"] if item["device"] != device]
+    for key in list(ss):
+        if key.startswith("niv_" + sheet["id"] + "_" + device + "_"):
+            ss.pop(key, None)
+
+
+def ventilation_editor(sheet: dict) -> None:
+    if sheet["ventilation"] is not None:
+        invasive_editor(sheet)
+    if not sheet["ventilation"] and not sheet["noninvasive"]:
+        st.caption("No automatic respiratory-support entries are currently included.")
+    for device in sheet["noninvasive"]:
+        st.text(format_noninvasive([device]))
+        if device["pressure_inferred"]:
+            st.caption("Pressure-based BiPAP: Vent Mode was absent, but both IPAP and EPAP were documented. These may be carried-forward settings rather than current support. Remove the entry below if it no longer applies.")
+        if device["flow_inferred"]:
+            st.caption("Flow-based HFNC: the source delivery label is a CPAP/Bi-PAP mask. Your mask-plus-flow rule adds this entry, but it does not confirm concurrent HFNC. Remove it below when it does not apply.")
+        with st.expander("Edit " + device["device"] + " settings"):
+            for index, label in enumerate(DEVICE_FIELDS[device["device"]]):
+                key = "niv_" + sheet["id"] + "_" + device["device"] + "_" + str(index)
+                if key not in st.session_state:
+                    st.session_state[key] = device["values"].get(label, "")
+                st.text_input(label, key=key, max_chars=500, on_change=noninvasive_change,
+                              args=(sheet["room"], device["device"], label, key))
+            st.button("Remove " + device["device"], key="remove_niv_" + sheet["id"] + "_" + device["device"],
+                      on_click=remove_support_device, args=(sheet["room"], device["device"]))
 
 def handoff_page(store: GitHubVault | None) -> None:
     st.title("Room handoff")
@@ -486,9 +552,10 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
     paste_tab, meds_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Edit handoff", "Preview / print"])
     with paste_tab:
-        st.caption("Paste paired A, B and/or C blocks. Create / update replaces only the sections included in the paste. Other sections stay unchanged.")
+        st.caption("Paste A/B for diagnoses and medications. Paste C and D together for respiratory support. A respiratory paste replaces the previous automatic device list using only that paste. Separate notes stay unchanged.")
         left, right = st.columns(2)
         left.button("Load synthetic example", on_click=load_sample)
+        left.button("Load nasal-cannula example", on_click=load_niv_sample)
         right.button("Clear pasted text", on_click=clear_paste)
         with st.form("parse_smartphrase"):
             st.text_area("SmartPhrase text", key="paste", height=240, max_chars=MAX_PASTE)
@@ -501,7 +568,7 @@ def handoff_page(store: GitHubVault | None) -> None:
                 st.caption("Updated: " + ", ".join(result["imported"]) + ". Edit below or save the handoff.")
             for message in result["notices"]:
                 st.info(message)
-        st.subheader("Invasive ventilation to RESP")
+        st.subheader("Respiratory support to RESP")
         ventilation_editor(sheet)
     with meds_tab:
         st.caption("Choose a system beside an order. It is remembered immediately in Admin and reused on future imports. Unmapped orders remain in Other Medications.")
@@ -516,8 +583,8 @@ def handoff_page(store: GitHubVault | None) -> None:
             if key not in ss:
                 ss[key] = sheet["fields"][section]
             with st.expander(section, expanded=section == "Diagnoses"):
-                if section == "Respiratory" and sheet["ventilation"]:
-                    st.text(format_ventilation(sheet["ventilation"]) + "\n-----")
+                if section == "Respiratory" and respiratory_text(sheet):
+                    st.text(respiratory_text(sheet) + "\n-----")
                     st.caption("The automatic block prints first. Edit its values under Paste / create.")
                 st.text_area("Notes: " + section, key=key, height=100, max_chars=MAX_FIELD,
                              on_change=update_field, args=(room, section, key))
@@ -526,7 +593,7 @@ def handoff_page(store: GitHubVault | None) -> None:
                         st.text(format_medication(row))
     with preview_tab:
         import streamlit.components.v1 as components
-        st.caption("Landscape Letter. Ventilator settings appear first in RESP, followed by ----- and the respiratory notes and medications.")
+        st.caption("Landscape Letter. Respiratory-support settings appear first in RESP, followed by ----- and the respiratory notes and medications.")
         components.html(handoff_html(sheet), height=650, scrolling=True)
         try:
             st.download_button("Download this handoff (PDF)", handoff_pdf(sheet), "handoff.pdf", "application/pdf")
@@ -672,8 +739,8 @@ def admin_page(store: GitHubVault | None) -> None:
         st.form_submit_button("Save settings", on_click=save_admin_settings, args=(store,))
     with st.expander("Section imports"):
         for key, heading in SECTION_NAMES.items():
-            st.text(key * 8 + " = " + heading + (" | automatic import" if key in "abc" else " | not imported yet"))
-        st.caption("The C-block mode rule controls display only, not clinical determination of the airway. BiLevel, CPAP and NIV labels are excluded. Unknown modes are not guessed.")
+            st.text(key * 8 + " = " + heading + (" | automatic import" if key in "abcd" else " | not imported yet"))
+        st.caption("C/D rules control the display, not bedside device status. BiPAP needs both D-block pressures. CPAP needs EPAP or PEEP. Explicit HFNC or the documented mask-plus-flow convention can add HFNC. Inferred HFNC is labeled flow-based. No previous-paste values are reused.")
 
 
 if __name__ == "__main__":
