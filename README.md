@@ -1,71 +1,88 @@
-# PICU Handoff SmartPhrase: medications and landscape layout
+# PICU Handoff SmartPhrase, version 3
 
-Version 2 updates the working web-based SmartPhrase foundation. It is not one of the older local PDF/OCR apps.
+This is a complete update to the working web-based SmartPhrase app. It adds immediate medication-mapping persistence, the requested invasive-ventilation display, and printing of multiple room handoffs. It is not a local PDF/OCR package.
 
-## Update your existing deployment
+## Update an existing deployment
 
-Save any open work first. Keep your existing deployment Secrets, especially the encryption key, password hash, GitHub token, and private data repository. Do not run the secrets generator again for this update.
+Save open work, then upload all files from this folder to the existing application code repository, replacing matching files. Add the new ventilation.py, importing.py and batching.py modules. Keep app.py as the entry point. Include requirements.txt and the examples and .streamlit folders.
 
-Upload the contents of this folder to the existing application code repository. Replace matching application files and add medications.py. Include the updated requirements.txt, which adds ReportLab for PDF export. Keep app.py as the entry point. Restart/reboot the app after the host installs the requirements.
+Keep your current deployment Secrets, password hash, encryption key, GitHub token, repository and branch unchanged. Do not run the secrets generator again. Do not upload .streamlit/secrets.toml or clinical records. Reboot the web app after replacing the code.
 
-Do not upload clinical source text, downloaded clinical handoffs, or .streamlit/secrets.toml. The included examples are synthetic.
-
-The encrypted archive path stays encrypted-data/handoff-v1.enc. The application reads the previous diagnosis-only schema and upgrades it in memory without discarding existing fields. The next explicit handoff/Admin save writes schema 2 with the same encryption key. Do not downgrade only part of the app after saving schema 2. The older version will not understand the new archive schema.
+The archive filename remains encrypted-data/handoff-v1.enc. Schema 1 and 2 archives are migrated in memory to schema 3. Existing handoff notes, medications, IDs, rooms and mappings are retained. The next successful save, including an automatic medication-mapping save, writes schema 3 using the same encryption key. Do not partially roll back the code after that save. Maintain an approved backup of the encrypted archive and its key.
 
 ## Daily workflow
 
-1. Sign in with your existing app password and open a room.
-2. Paste the complete separated SmartPhrase, or only the A and/or B blocks. Copy directly from Epic so the medication table keeps its tab-separated columns.
-3. Click Read Diagnoses + Medications. Review and apply diagnoses in Paste / import. Open Medications to review and apply the medication list.
-4. In Admin, select a detected medication or type a name prefix. Choose its default system and save the mapping. By default, the saved rules are reapplied to the current room's draft and import preview. This resets any per-order destination overrides in that room, but does not save its clinical handoff.
-5. Review the landscape preview. Save the handoff explicitly to the encrypted GitHub archive. Download the PDF, HTML, or text only to an approved location.
+Select a room. Paste the SmartPhrase with paired A, B and/or C separators. Click Create / update handoff. Imported sections go directly into the editable draft. There is no review checkbox, separate Apply step, or replacement-confirmation checkbox.
 
-Unmapped medications always go to Other Medications. No default medication-to-system mappings are supplied. Examples of rules you may choose are acetaminophen to Neurologic and sodium acetate to FEN / GI.
+Only sections present in the paste are updated. An A block replaces the configured diagnosis destination. A B block replaces the imported medication list, without accumulating duplicate copies. A C block replaces the automatic ventilation block. Separate manual system notes are preserved. A malformed supported block stops the whole import, with no partial application. Other sections remain manual at this stage.
 
-## Medication behavior
+Save handoff stores the current draft in the encrypted archive. Save all open handoffs is on the Print all page. These actions do not require confirmation checkboxes. The app still rejects malformed input, expired sessions, encryption failures and conflicting GitHub writes. Errors are not hidden to simulate a successful save.
 
-Each bullet starts an order. The parser reads Medication, Dose, Route, Frequency, and Last Rate from their original columns. Provider and Last Admin are discarded from the parsed records. The original pasted text can remain in session memory until both imports are applied, Clear pasted text is clicked, or the session ends.
+Use Start blank for new patient whenever a room changes occupants. It immediately replaces the open draft. The saved room changes only when you save. A room number is not a patient identifier.
 
-The name/formulation is preserved. A dose already printed at the end of the medication name is not printed twice. If the formulation amount differs from the ordered Dose column, the ordered dose is shown explicitly as Dose: instead of being inferred from the product label. Units, weight-based qualifiers, route, and frequency are not clinically converted or calculated.
+## Medication destinations are remembered immediately
 
-Continuous infusions can show both an ordered weight-based dose and a different recorded pump rate. If Dose is blank, a valid continuous Last Rate is shown as @ rate. Its timestamp is retained in the order editor rather than repeated in the compact handoff. Verify that it is current. A recorded zero rate is not interpreted as a discontinued order. Last Rate on an intermittent medication does not replace its Dose.
+Choose the system beside an order in Medications. The app automatically creates or updates a medication-name rule in the encrypted archive. The rule appears in Admin without a separate save there. No dose, route, frequency or rate is reused from a different patient.
 
-Scheduled and PRN orders remain separate, even with the same drug name and dose. Identical source rows are not silently merged. Reimporting replaces the previous imported medication list only after confirmation. System notes are kept separately and are never erased by a medication reimport or remapping.
+An unmapped medication remains in Other Medications. Scheduled and PRN orders stay separate. The existing parser retains the source name/formulation, Dose, Route, Frequency and appropriate Last Rate. It omits Provider and Last Admin. A continuous fluid with a blank Dose and a valid Last Rate is displayed with @ rate. No dose or rate is calculated.
 
-Orders can be excluded, corrected, reassigned for one patient, or given custom handoff wording in the Medications tab. Excluded entries are kept in the draft but omitted from exports. Custom wording overrides generated wording, so review it again after changing a dose or rate.
+The automatic rule is a stable name prefix, for example acetaminophen or sodium acetate. Matching ignores capitalization and requires a complete prefix boundary. Existing exact or more-specific rules are respected. Heparin flush can have a different rule from heparin. There is no fuzzy drug-name matching. Review the suggested scope under Edit details for order, and refine it in Admin as needed.
 
-Missing internal column separators, missing required columns, or an unreadable row block the whole medication import. The app does not apply a partial list while silently dropping unreadable orders. Copy the table again with tabs, or add verified clinical text manually to the appropriate system notes. Never infer a dose from a failed parse.
+A changed rule is reapplied to the open drafts. Saved handoff content is not silently rewritten. Save each changed draft, or use Save all open handoffs, to persist its content. Future imports use the remembered mappings. If GitHub rejects a mapping save, the app shows an error and restores the previous dropdown value rather than claiming it was remembered.
 
-## Admin mappings
+Admin works without any room or handoff open. Select a saved rule to edit its name, destination or matching style, or delete it. Admin has no separate password, but remains behind the app sign-in. There is no second confirmation checkbox for saving a rule.
 
-Mappings contain only a name/name prefix, a match type, and a destination. Matching is case-insensitive. Name-prefix rules start at the beginning of the medication name and require a word boundary. They do not match a word buried elsewhere in the formulation. No fuzzy drug-name matching is used.
+## Invasive ventilation display rule
 
-The longest matching prefix wins. An exact complete-name rule wins over prefix rules. This permits separate rules for heparin and heparin flush. Confirm the rule's scope before applying it. A mapping moves the complete order with that patient's dose and instructions. It never supplies or reuses a dose.
+The C block must contain Vent Mode. The supplied Volume Targeted Pressure Control - PS mode is supported, as are the implemented volume-targeted pressure-control variants and explicit conventional mode labels listed in ventilation.py. BiLevel, BiPAP, CPAP, NIV and high-flow labels are excluded. An unfamiliar mode is not guessed.
 
-Changing a mapping does not silently rewrite every saved patient. It can update the current draft and pending import, or take effect on the next import. Use Reapply saved mappings to this room when needed, then review and save that handoff explicitly. Room/diagnosis settings changes preserve medication mappings.
+This is a requested mode-based display rule, not a clinical determination of the airway. The heading Invasive Ventilation alone is never enough. A skipped mode does not establish that the patient is not invasively ventilated.
 
-## Landscape handoff
+The automatic RESP block includes only these fields, in this order, when present:
 
-The PDF is US Letter landscape with eight columns: PATIENT, NEURO, RESP, CARDIAC, FEN / GI, HEME, ID, and LABS. The left column contains room, manually entered demographics/weight, and diagnoses. No patient-name or MRN field is added.
+```text
+Vent Mode
+Resp Rate (Set)
+Vt (Set, mL)
+PEEP (cm H2O)
+Mean Airway Pressure
+Insp Time (sec)
+PIP Observed (cm H2O)
+Pressure Support (cm H2O)
+Trigger Sensitivity Flow (L/min)
+FiO2 (%)
+```
 
-The lower bands are Other Medications, Lab Results / Trends, optional Additional notes, and Goals / Follow-up. The final row contains Airway, Last Intubation, Access, and Drains / Tubes. Long content continues on additional landscape pages with repeated headings instead of being clipped. The PDF is the preferred print export. HTML uses the same layout but browser pagination may differ.
+Values and units are retained from the source, without calculations or clinical interpretation. Missing fields are omitted and noted in the import status. Observed respiratory rate does not substitute for the set rate. Vt Set/Target does not substitute for Vt (Set, mL). Values from D or E are never used to fill a missing C value. Conflicting repeated fields produce an error instead of selecting a value arbitrarily.
 
-Only Diagnoses and Medications are automatically imported in this version. Ventilation, vitals, cultures, labs, intake/output, nutrition, and wounds are still boundary-detected only. They can be entered manually. The lab trend area is editable text, not an automatically populated fishbone diagram.
+The block prints at the top of RESP, followed by a literal ----- separator, then respiratory notes and medications. Vent ID, equipment ownership, verification, bedside equipment, charges, rise time, humidifier, heater temperature, minute ventilation and other unrequested fields are not imported.
 
-## Storage and privacy
+A complete C block with an excluded or unknown mode removes the previous automatic ventilation block and explains the omission. An explicitly empty C block also clears it. A paste with no C block leaves the existing ventilation unchanged. A malformed C block does not apply changes. Manual Respiratory notes are never cleared by these operations.
 
-The password gate, private-repository check, Fernet encryption, fixed archive filename, generic commit message, and conflict protection remain. Rooms, handoff text, medication rows, and Admin mappings are encrypted before being sent to the data repository. The encryption key is kept in deployment Secrets, not the repository.
+Edit ventilator values is available under Paste / create. Clearing the automatic block does not remove respiratory medications or notes.
 
-The host still receives and processes pasted clinical text before storage encryption. A shared app password and encryption do not establish clinical approval or HIPAA compliance. Use synthetic records until your institution approves both hosting and storage, access controls, agreements, and retention. Use an approved identity/access layer for clinical deployment.
+## Print all handoffs
 
-The app does not intentionally write plaintext patient files, raw source text, or clinical logs. It does not use a cloud OCR/AI service. This does not control platform logs, memory, backups, browser artifacts, or operating-system behavior. Exports are unencrypted. Git history retains older encrypted saves. Replacing a room's current sheet is not a purge of that history.
+Open Print all in the sidebar. All nonblank saved rooms and open drafts are selected by default. A current open draft takes precedence over that room's saved sheet, so a room never appears twice. A blank new-patient draft suppresses the old saved occupant's sheet in the current session's print packet. Deselect rooms you do not need.
 
-Use Start blank for new patient when a room changes occupants. A room is not a patient identifier. Confirm the patient and all medication details in Epic before relying on the handoff.
+Download all selected handoffs (PDF) produces one Letter-landscape PDF. Each room starts on a new page. Long handoffs continue onto additional pages, with the room and handoff reference repeated. Open the PDF and print it with your usual PDF viewer. Printing does not itself save a draft to GitHub.
+
+The printable HTML download also contains all selected sheets and a Print all handoffs button. Open the downloaded HTML in a browser and use that button. PDF has the most predictable pagination. Downloads are unencrypted.
+
+The layout retains the PATIENT, NEURO, RESP, CARDIAC, FEN / GI, HEME, ID and LABS columns, the full-width Other Medications band, and the lower notes/access rows. The synthetic example PDFs demonstrate the layout. Demonstration mapping choices in those PDFs are not installed as defaults.
+
+## Storage and data handling
+
+The existing app-password gate, private-data-repository check, Fernet encryption and GitHub SHA conflict protection remain. There is no separate Admin password. Hand-offs and mapping rules are encrypted before transmission to GitHub. The key stays in deployment Secrets. Fixed filenames and generic commit messages contain no room labels or clinical text.
+
+The original pasted SmartPhrase is not saved in the archive. Successful import clears the paste widget. That is not secure erasure of browser or server memory. The Streamlit host necessarily receives the pasted text before storage encryption. No external OCR or AI service is called. Export PDFs are generated in memory, not as server-side patient files.
+
+Use synthetic information unless your institution has approved both hosting and storage and their access, agreement and retention arrangements. Omitting names and MRNs does not make room-linked clinical information automatically de-identified. Git history retains earlier encrypted versions. Replacing a handoff is not deletion of that history. A shared-password prototype is not a compliance certification.
 
 ## First-time deployment only
 
-The existing create_secrets.py and Generate_Secrets.ipynb helpers remain included for a new deployment. They are not needed to update a working app. See START_HERE.html. Never regenerate or replace the encryption key of an existing archive without a deliberate re-encryption plan.
+For a new deployment, the included create_secrets.py and Generate_Secrets.ipynb helpers generate the app password hash and an independent encryption key. secrets.example.toml contains placeholders. Configure a separate private GitHub data repository and its restricted token. Existing users should not regenerate the key.
 
-## Validation
+## Testing
 
-See TEST_REPORT.md. Run the tests with python -m pytest -q after installing requirements-dev.txt in a test environment. All examples and bundled test fixtures are synthetic. No live GitHub connection or full Streamlit browser session was available in the build environment.
+Run python -m pytest -q with requirements-dev.txt installed in a test environment. TEST_REPORT.md describes the executed checks and their limitations. All bundled examples and tests are synthetic.

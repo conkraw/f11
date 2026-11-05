@@ -21,7 +21,30 @@ bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 cccccccccccccccccccccccccccccccc
 Invasive Ventilation:
-Synthetic ventilation placeholder.
+Vent Information
+Vent ID: SYNTHETIC-EQUIPMENT
+Machine: Hospital owned
+Vent Mode: Volume Targeted Pressure Control - PS
+Ventilator On: Yes
+Nurse Verified Vent Settings: Yes
+Manual resuscitator at bedside: Yes
+$ Vent Daily Charge-Subsequent: Yes
+Settings
+FiO2 (%): 35 %
+Vt Set/Target ml: 999
+Resp Rate (Set): 16
+Resp Rate Observed: 99
+Vt (Set, mL): 160 mL
+PEEP (cm H2O): 5 cm H2O
+Mean Airway Pressure: 10
+Insp Time (sec): 1 sec
+Insp Rise Time (%): 0.15 %
+PIP Observed (cm H2O): 24 cm H2O
+Pressure Support (cm H2O): 10 cm H20
+Trigger Sensitivity Flow (L/min): 0.4 L/min
+Humidification: Heater
+Heater Temperature: 37 °C (98.6 °F)
+Minute Ventilation (L/min): 2.6 L/min
 cccccccccccccccccccccccccccccccc
 
 dddddddddddddddddddddddddddddddd

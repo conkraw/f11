@@ -1,21 +1,22 @@
-"""PICU SmartPhrase version 2: diagnoses, medication routing, landscape export."""
+"""PICU SmartPhrase v3: remembered routing, focused ventilation and batch print."""
 from __future__ import annotations
-
 from copy import deepcopy
 from pathlib import Path
 import time
-import uuid
 
 import streamlit as st
 from cryptography.fernet import Fernet
-
-from exports import handoff_html, handoff_text, handoff_pdf
-from github_store import GitHubConfig, GitHubVault, StorageError, ConflictError
-from models import (MAX_FIELD, SYSTEMS, ValidationError, apply_diagnoses, new_sheet,
-                    new_vault, normalize_room, save_sheet_in, validate_vault, apply_medications, fields_with_medications, upgrade_vault)
-from medications import (DESTINATIONS, parse_medications, format_medication, suggested_key,
-                         upsert_rule, remap, destination_for, normalized)
-from parser import MAX_PASTE, SECTION_NAMES, parse_smartphrase
+from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, handoffs_html
+from github_store import GitHubConfig, GitHubVault, StorageError
+from models import (MAX_FIELD, SYSTEMS, ValidationError, new_sheet, new_vault,
+                    normalize_room, save_sheet_in, validate_vault, validate_sheet,
+                    upgrade_vault, fields_with_medications)
+from medications import (DESTINATIONS, format_medication, suggested_key, upsert_rule,
+                         remap, rule_for_inline_mapping, validate_medication)
+from ventilation import LABELS, format_ventilation, validate_ventilation
+from importing import import_sections
+from batching import available_handoffs
+from parser import MAX_PASTE, SECTION_NAMES
 from security import valid_password_hash, verify_password
 
 ROOT = Path(__file__).resolve().parent
@@ -31,7 +32,6 @@ def clear_session() -> None:
 
 
 def require_session() -> bool:
-    """Callbacks run before the main script, so enforce expiry here as well."""
     now = time.monotonic()
     ss = st.session_state
     if (not ss.get("authenticated")
@@ -62,136 +62,102 @@ def edit_key(sheet: dict, section: str) -> str:
     return "field_" + sheet["id"] + "_" + str(SYSTEMS.index(section))
 
 
-def set_editor(room: str, sheet: dict, keep_medication_import: bool = False) -> None:
-    old = st.session_state.setdefault("drafts", {}).get(room)
-    if old:
-        for section in SYSTEMS:
-            st.session_state.pop(edit_key(old, section), None)
-    st.session_state["drafts"][room] = deepcopy(sheet)
-    for section in SYSTEMS:
-        st.session_state[edit_key(sheet, section)] = sheet["fields"][section]
-    st.session_state["reviewed"] = False
-    st.session_state.pop("pending", None)
-    st.session_state.pop("diagnosis_preview", None)
-    if not keep_medication_import:
-        clear_medication_preview()
-    if not st.session_state.get("medication_pending"):
-        st.session_state["paste"] = ""
+def discard_editor_widget_values() -> None:
+    for key in list(st.session_state):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_")):
+            st.session_state.pop(key, None)
+
+
+def set_editor(room: str, sheet: dict) -> None:
+    validate_sheet(sheet)
+    discard_editor_widget_values()
+    st.session_state.setdefault("drafts", {})[room] = deepcopy(sheet)
+    st.session_state["paste"] = ""
+    st.session_state.pop("import_result", None)
 
 
 def open_room() -> None:
     if not require_session():
         return
-    chosen = st.session_state.get("room_choice", "")
-    value = st.session_state.get("other_room", "") if chosen == "Other room" else chosen
+    ss = st.session_state
+    choice = ss.get("room_choice", "")
+    if choice == "Choose a room":
+        return
+    value = ss.get("other_room", "") if choice == "Other room" else choice
     try:
         room = normalize_room(value)
     except ValidationError as exc:
         note(str(exc), "error")
         return
-    st.session_state["current_room"] = room
-    drafts = st.session_state.setdefault("drafts", {})
+    ss["current_room"] = room
+    ss["room_choice"] = room
+    drafts = ss.setdefault("drafts", {})
     if room not in drafts:
-        saved = st.session_state["vault"]["rooms"].get(room)
-        st.session_state.setdefault("base_sheets", {})[room] = deepcopy(saved)
+        saved = ss["vault"]["rooms"].get(room)
+        ss.setdefault("base_sheets", {})[room] = deepcopy(saved)
         set_editor(room, saved if saved else new_sheet(room))
     else:
-        st.session_state["reviewed"] = False
-        st.session_state["paste"] = ""
-        st.session_state.pop("pending", None)
-    clear_medication_preview()
-    st.session_state["confirm_new"] = False
+        discard_editor_widget_values()
+        ss["paste"] = ""
+        ss.pop("import_result", None)
+
+
+def room_changed() -> None:
+    if st.session_state.get("room_choice") not in ("Choose a room", "Other room"):
+        open_room()
 
 
 def update_field(room: str, section: str, key: str) -> None:
-    if not require_session():
-        return
-    st.session_state["drafts"][room]["fields"][section] = st.session_state[key]
-    st.session_state["reviewed"] = False
+    if require_session():
+        st.session_state["drafts"][room]["fields"][section] = st.session_state[key]
 
 
 def load_sample() -> None:
-    if not require_session():
-        return
-    st.session_state["paste"] = (ROOT / "examples" / "synthetic_smartphrase.txt").read_text(encoding="utf-8")
-    st.session_state.pop("pending", None)
-    clear_medication_preview()
+    if require_session():
+        st.session_state["paste"] = (ROOT / "examples" / "synthetic_smartphrase.txt").read_text(encoding="utf-8")
+        st.session_state.pop("import_result", None)
 
 
 def clear_paste() -> None:
-    clear_medication_preview()
-    st.session_state["paste"] = ""
-    st.session_state.pop("pending", None)
-    st.session_state.pop("diagnosis_preview", None)
+    if require_session():
+        st.session_state["paste"] = ""
+        st.session_state.pop("import_result", None)
 
 
-def read_diagnoses() -> None:
+def create_handoff() -> None:
     if not require_session():
         return
-    parsed = parse_smartphrase(st.session_state.get("paste", ""))
-    status = []
-    for key in SECTION_NAMES:
-        status.append((key, "Check divider" if key in parsed.invalid else "Detected" if key in parsed.blocks else "Not included"))
-    st.session_state["pending"] = {"room": st.session_state["current_room"], "issues": parsed.issues,
-                                   "error": parsed.diagnosis_error, "status": status, "text": "\n".join(parsed.diagnoses)}
-    st.session_state["diagnosis_preview"] = "\n".join(parsed.diagnoses)
-    st.session_state["import_destination"] = st.session_state["vault"]["settings"]["diagnoses_destination"]
-    st.session_state["replace_confirm"] = False
-
-
-def update_diagnosis_preview() -> None:
-    if require_session() and "pending" in st.session_state:
-        st.session_state["pending"]["text"] = st.session_state.get("diagnosis_preview", "")
-
-
-def apply_import() -> None:
-    if not require_session():
+    ss = st.session_state
+    room = ss.get("current_room")
+    if not room:
+        note("Select a room first.", "error")
         return
-    room = st.session_state["current_room"]
-    pending = st.session_state.get("pending", {})
-    if pending.get("room") != room or pending.get("error"):
-        note("Read and review the diagnoses for this room first.", "error")
-        return
-    destination = st.session_state["import_destination"]
-    draft = st.session_state["drafts"][room]
-    append = st.session_state.get("import_mode") == "Append"
-    if draft["fields"][destination].strip() and not append and not st.session_state.get("replace_confirm"):
-        note("Confirm replacement of the existing destination text, or choose Append.", "error")
-        return
-    try:
-        updated = apply_diagnoses(draft, st.session_state.get("diagnosis_preview", ""), destination, append)
-    except ValidationError as exc:
-        note(str(exc), "error")
-        return
-    set_editor(room, updated, keep_medication_import=True)
-    note("Diagnoses added to the editable handoff. They are not saved to GitHub yet.")
+    result = import_sections(ss["drafts"][room], ss.get("paste", ""), ss["vault"]["settings"])
+    if result.sheet is not None:
+        set_editor(room, result.sheet)
+    ss["import_result"] = {"room": room, "errors": result.errors,
+                           "notices": result.notices, "imported": result.imported}
 
 
 def start_new_patient() -> None:
     if not require_session():
         return
-    if not st.session_state.get("confirm_new"):
-        note("Confirm that this is a new patient in the selected room.", "error")
-        return
-    room = st.session_state["current_room"]
-    st.session_state.setdefault("base_sheets", {})[room] = deepcopy(st.session_state["vault"]["rooms"].get(room))
+    ss = st.session_state
+    room = ss["current_room"]
+    ss.setdefault("base_sheets", {})[room] = deepcopy(ss["vault"]["rooms"].get(room))
     set_editor(room, new_sheet(room))
-    st.session_state["confirm_new"] = False
-    note("A blank handoff is open. Save it explicitly to replace the room's current saved sheet.")
+    note("Blank handoff opened. Save to replace this room's saved sheet.")
 
 
 def load_saved_into_editor() -> None:
     if not require_session():
         return
-    if not st.session_state.get("confirm_discard"):
-        note("Confirm that you want to discard the current draft.", "error")
-        return
-    room = st.session_state["current_room"]
-    saved = st.session_state["vault"]["rooms"].get(room)
-    st.session_state.setdefault("base_sheets", {})[room] = deepcopy(saved)
+    ss = st.session_state
+    room = ss["current_room"]
+    saved = ss["vault"]["rooms"].get(room)
+    ss.setdefault("base_sheets", {})[room] = deepcopy(saved)
     set_editor(room, saved if saved else new_sheet(room))
-    st.session_state["confirm_discard"] = False
-    note("The saved version is now in the editor.")
+    note("Saved handoff loaded.")
 
 
 def commit(candidate: dict, store: GitHubVault | None) -> None:
@@ -202,189 +168,138 @@ def commit(candidate: dict, store: GitHubVault | None) -> None:
     st.session_state["vault"] = candidate
 
 
-def save_room(store: GitHubVault | None) -> None:
+def save_rooms(store: GitHubVault | None, rooms: list[str]) -> None:
     if not require_session():
         return
-    room = st.session_state["current_room"]
-    latest = st.session_state["vault"]["rooms"].get(room)
-    baseline = st.session_state.get("base_sheets", {}).get(room)
-    if baseline != latest:
-        note("This room has a newer saved handoff. Compare it with your draft, then use Load saved handoff before applying your edits again.", "error")
+    ss = st.session_state
+    if not rooms:
+        note("There are no open drafts to save.")
         return
-    if not st.session_state.get("reviewed"):
-        note("Check the room, current patient, and handoff text before saving.", "error")
-        return
+    for room in rooms:
+        if ss.get("base_sheets", {}).get(room) != ss["vault"]["rooms"].get(room):
+            note("A saved room changed after its draft was opened. Reload that saved handoff and reapply your edits. No rooms were saved.", "error")
+            return
     try:
-        candidate = save_sheet_in(st.session_state["vault"], st.session_state["drafts"][room])
+        candidate = deepcopy(ss["vault"])
+        for room in rooms:
+            candidate = save_sheet_in(candidate, ss["drafts"][room])
         commit(candidate, store)
     except (StorageError, ValidationError) as exc:
         note(str(exc), "error")
         return
-    saved = deepcopy(candidate["rooms"][room])
-    st.session_state["drafts"][room] = saved
-    st.session_state["base_sheets"][room] = deepcopy(saved)
-    note("Encrypted handoff saved to GitHub." if store else "Saved only in this browser session. GitHub is not enabled.", "success")
+    for room in rooms:
+        saved = deepcopy(candidate["rooms"][room])
+        ss["drafts"][room] = saved
+        ss.setdefault("base_sheets", {})[room] = deepcopy(saved)
+    note("Handoffs saved to encrypted GitHub." if store else "Saved in this session only. GitHub is not enabled.", "success")
 
 
-def clear_medication_preview() -> None:
-    st.session_state.pop("medication_pending", None)
-    st.session_state["med_import_reviewed"] = False
-    st.session_state["med_replace_confirm"] = False
-    for key in list(st.session_state):
-        if key.startswith("med_pending_"):
-            st.session_state.pop(key, None)
+def save_room(store: GitHubVault | None) -> None:
+    room = st.session_state.get("current_room")
+    if room:
+        save_rooms(store, [room])
 
 
-def read_medications() -> None:
-    if not require_session():
-        return
-    clear_medication_preview()
+def save_all_rooms(store: GitHubVault | None) -> None:
+    save_rooms(store, list(st.session_state.get("drafts", {})))
+
+
+def reapply_open_mappings() -> None:
     ss = st.session_state
-    parsed = parse_smartphrase(ss.get("paste", ""))
-    if "b" not in parsed.blocks or "b" in parsed.invalid:
-        ss["medication_pending"] = {"room": ss["current_room"], "rows": [], "issues": [],
-            "error": "No valid Medications block was found. Use one complete B-divider pair with Medications: inside.", "empty_confirmed": False}
-        return
-    result = parse_medications(parsed.blocks["b"], ss["vault"]["settings"]["medication_mappings"])
-    ss["medication_pending"] = {"room": ss["current_room"], "rows": result.rows,
-        "issues": result.issues, "error": result.error, "empty_confirmed": result.empty_confirmed}
+    rules = ss["vault"]["settings"]["medication_mappings"]
+    for sheet in ss.get("drafts", {}).values():
+        sheet["medications"] = remap(sheet["medications"], rules)
+    # These callbacks run before the widgets are instantiated on the next run.
+    for key in list(ss):
+        if key.startswith("med_") and key.endswith("_section"):
+            ss.pop(key, None)
 
 
-def read_sections() -> None:
-    if not require_session():
-        return
-    read_diagnoses()
-    read_medications()
-
-
-def apply_medication_import() -> None:
-    if not require_session():
-        return
-    ss = st.session_state
-    room = ss["current_room"]
-    pending = ss.get("medication_pending", {})
-    if pending.get("room") != room or pending.get("error"):
-        note("Read and review a valid medication block for this room first.", "error")
-        return
-    if not ss.get("med_import_reviewed"):
-        note("Review the medication names, doses, routes, frequencies, and rates before applying.", "error")
-        return
-    if ss["drafts"][room]["medications"] and not ss.get("med_replace_confirm"):
-        note("Confirm replacement of the previous medication import. Your system notes will be kept.", "error")
-        return
-    try:
-        ss["drafts"][room] = apply_medications(ss["drafts"][room], pending["rows"])
-    except ValidationError as exc:
-        note(str(exc), "error")
-        return
-    clear_medication_preview()
-    ss["reviewed"] = False
-    if not ss.get("pending") or ss["pending"].get("error"):
-        ss["paste"] = ""
-    note("Medications applied to this room's draft. Save the handoff explicitly to store it in GitHub.")
-
-
-def medication_row_change(context: str, room: str, row_id: str, field: str, widget_key: str) -> None:
+def medication_row_change(room: str, row_id: str, field: str, widget_key: str, store: GitHubVault | None = None) -> None:
     if not require_session():
         return
     ss = st.session_state
     if room != ss.get("current_room"):
         return
-    rows = ss.get("medication_pending", {}).get("rows", []) if context == "pending" else ss["drafts"][room]["medications"]
-    for row in rows:
-        if row["id"] == row_id:
-            row[field] = ss[widget_key]
-            break
-    ss["reviewed"] = False
-    ss["med_import_reviewed"] = False
+    rows = ss["drafts"][room]["medications"]
+    original = next((r for r in rows if r["id"] == row_id), None)
+    if original is None:
+        return
+    old_value = original[field]
+    edited = deepcopy(original)
+    edited[field] = ss[widget_key]
+    try:
+        validate_medication(edited)
+        if field == "section":
+            rules = ss["vault"]["settings"]["medication_mappings"]
+            name, match = rule_for_inline_mapping(edited["name"], rules)
+            new_rules = upsert_rule(rules, name, edited["section"], match)
+            if new_rules != rules:
+                candidate = deepcopy(ss["vault"])
+                candidate["settings"]["medication_mappings"] = new_rules
+                commit(candidate, store)  # Persist the rule, not any draft clinical text.
+            reapply_open_mappings()
+            ss["admin_rule_index"] = -1
+            for key in ("mapping_name", "mapping_destination", "mapping_match", "mapping_original"):
+                ss.pop(key, None)
+            note("Medication destination remembered in Admin." + (" Saved to encrypted GitHub." if store else " Session-only test mode."), "success")
+        else:
+            original.update(edited)
+    except (ValueError, ValidationError, StorageError) as exc:
+        # Do not claim a remembered mapping or move orders after a rejected save.
+        ss[widget_key] = old_value
+        note(str(exc) + " The change was not saved.", "error")
 
 
-def reapply_current_mappings() -> None:
+def ventilation_change(room: str, label: str, key: str) -> None:
     if not require_session():
         return
     ss = st.session_state
-    room = ss.get("current_room")
-    if not room:
+    old = ss["drafts"][room]["ventilation"]
+    if old is None:
         return
-    rules = ss["vault"]["settings"]["medication_mappings"]
-    ss["drafts"][room]["medications"] = remap(ss["drafts"][room]["medications"], rules)
-    if ss.get("medication_pending", {}).get("room") == room:
-        ss["medication_pending"]["rows"] = remap(ss["medication_pending"]["rows"], rules)
-    # Update or discard widget backing values before rendering them on the next run.
-    for key in list(ss):
-        if key.startswith("med_") and key.endswith("_section"):
-            ss.pop(key, None)
-    ss["reviewed"] = False
-    ss["med_import_reviewed"] = False
-    note("Saved mappings reapplied to this room's medication draft. Per-order destinations were reset. Other saved handoffs were not changed.")
-
-
-def medication_editor(rows: list[dict], context: str, room: str) -> None:
-    for number, row in enumerate(rows, 1):
-        st.text(f"{number}. [{row['section']}] " + format_medication(row) + ("" if row['include'] else " [EXCLUDED]"))
-        label = f"Edit order {number}: {row['name']}"
-        with st.expander(label, expanded=False):
-            prefix = "med_" + context + "_" + row["id"] + "_"
-            def widget(field: str, label: str, kind: str = "text"):
-                key = prefix + field
-                if key not in st.session_state:
-                    st.session_state[key] = row[field]
-                args = (context, room, row["id"], field, key)
-                if kind == "check":
-                    st.checkbox(label, key=key, on_change=medication_row_change, args=args)
-                elif kind == "select":
-                    st.selectbox(label, DESTINATIONS, key=key, on_change=medication_row_change, args=args)
-                elif kind == "area":
-                    st.text_area(label, key=key, height=85, max_chars=4000, on_change=medication_row_change, args=args)
-                else:
-                    st.text_input(label, key=key, max_chars=4000, on_change=medication_row_change, args=args)
-            widget("include", "Include this order in the handoff", "check")
-            widget("section", "Handoff destination for this order", "select")
-            widget("name", "Medication / formulation")
-            left, right = st.columns(2)
-            with left:
-                widget("dose", "Dose from the Dose column")
-                widget("frequency", "Frequency")
-            with right:
-                widget("route", "Route")
-                widget("last_rate", "Last recorded rate, value and units")
-            widget("rate_time", "Rate timestamp from Epic")
-            widget("custom_text", "Optional custom handoff wording, overrides generated wording", "area")
-            for warning in row["warnings"]:
-                st.caption(warning)
-            st.caption("Preview")
-            st.text(format_medication(row))
-            st.caption("To remember a system for future imports, add its medication name in Admin. This dropdown changes only this order.")
-
-
-def medications_page(room: str, sheet: dict) -> None:
-    st.caption("Each Epic order stays separate. Providers and Last Admin are omitted. A blank Dose with a continuous Last Rate uses @ rate.")
-    pending = st.session_state.get("medication_pending")
-    if pending and pending["room"] == room:
-        st.subheader("Medication import review")
-        for issue in pending["issues"]:
-            st.warning(issue)
-        if pending["error"]:
-            st.error(pending["error"])
-        else:
-            rows = pending["rows"]
-            st.text(f"Detected {len(rows)} orders. Unmapped orders: {sum(r['section'] == 'Other Medications' for r in rows)}.")
-            if pending["empty_confirmed"]:
-                st.warning("The source explicitly says there are no medications. Applying it removes the previous imported medication list.")
-            medication_editor(rows, "pending", room)
-            st.checkbox("I checked the imported medication names, doses, routes, frequencies, and recorded rates against Epic.", key="med_import_reviewed")
-            if sheet["medications"]:
-                st.checkbox("Replace the previous imported medication list. Keep my system notes.", key="med_replace_confirm")
-            st.button("Apply medications to handoff", on_click=apply_medication_import, disabled=not st.session_state.get("med_import_reviewed"), type="primary")
-    st.subheader("Medications in this handoff")
-    if sheet["medications"]:
-        st.caption("Edit an order below, then save the handoff. Excluding an order hides it from the output without merging it with another order.")
-        medication_editor(sheet["medications"], "draft", room)
-        st.button("Reapply saved mappings to this room", on_click=reapply_current_mappings,
-                  help="Resets per-order destinations to the current Admin rules. Unmatched orders move to Other Medications.")
+    updated = deepcopy(old)
+    value = ss[key].strip()
+    if label == "Vent Mode":
+        updated["mode"] = value
+    elif value:
+        updated["values"][label] = value
     else:
-        st.info("No medications have been applied to this handoff yet. Read the B block in Paste / import.")
+        updated["values"].pop(label, None)
+    try:
+        validate_ventilation(updated)
+    except ValueError as exc:
+        ss[key] = old["mode"] if label == "Vent Mode" else old["values"].get(label, "")
+        note(str(exc), "error")
+        return
+    ss["drafts"][room]["ventilation"] = updated
 
+
+def clear_ventilation() -> None:
+    if require_session():
+        ss = st.session_state
+        ss["drafts"][ss["current_room"]]["ventilation"] = None
+        for key in list(ss):
+            if key.startswith("vent_"):
+                ss.pop(key, None)
+
+
+def upgrade_existing_session() -> None:
+    ss = st.session_state
+    vault = ss.get("vault")
+    if not vault or vault.get("schema") == 3:
+        return
+    old_schema, old_settings = vault["schema"], deepcopy(vault["settings"])
+    converted = upgrade_vault(vault)
+    changes = {}
+    for key in ("drafts", "base_sheets"):
+        changes[key] = {}
+        for room, sheet in ss.get(key, {}).items():
+            changes[key][room] = None if sheet is None else upgrade_vault({"schema": old_schema, "settings": old_settings, "rooms": {room: sheet}})["rooms"][room]
+    ss.update(vault=converted, **changes)
+    for key in ("pending", "diagnosis_preview", "medication_pending"):
+        ss.pop(key, None)
+    discard_editor_widget_values()
 
 def load_config() -> tuple[dict, GitHubVault | None]:
     try:
@@ -421,23 +336,16 @@ def idle_guard(minutes: int) -> None:
             st.rerun()
 
 
-def upgrade_existing_session() -> None:
-    ss = st.session_state
-    vault = ss.get("vault")
-    if not vault or vault.get("schema") != 1:
+
+def reload_archive(store: GitHubVault | None) -> None:
+    if not require_session() or store is None:
         return
-    legacy_settings = deepcopy(vault["settings"])
-    converted = upgrade_vault(vault)
-    drafts, bases = {}, {}
-    for source_key, target in (("drafts", drafts), ("base_sheets", bases)):
-        for room, sheet in ss.get(source_key, {}).items():
-            if sheet is None:
-                target[room] = None
-            else:
-                wrapper = {"schema": 1, "settings": legacy_settings, "rooms": {room: sheet}}
-                target[room] = upgrade_vault(wrapper)["rooms"][room]
-    ss.update(vault=converted, drafts=drafts, base_sheets=bases)
-    ss["reviewed"] = False
+    try:
+        fresh, sha = store.load()
+        st.session_state.update(vault=fresh, vault_sha=sha)
+        note("Saved archive reloaded. Open drafts were kept.")
+    except (StorageError, ValidationError) as exc:
+        note(str(exc), "error")
 
 
 def main() -> None:
@@ -447,13 +355,11 @@ def main() -> None:
         clear_session()
     if not st.session_state.get("authenticated"):
         st.title("PICU Handoff")
-        st.caption("SmartPhrase foundation | Sign in")
         with st.form("login"):
             st.text_input("App password", type="password", key="login_password", max_chars=1024)
             st.form_submit_button("Open app", on_click=authenticate, args=(app["password_hash"],))
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
-        st.caption("Use synthetic data until the hosting and storage have institutional approval. No separate Admin password is required.")
         return
     st.session_state["last_activity"] = now
     st.session_state["idle_seconds"] = app["idle_minutes"] * 60
@@ -470,215 +376,304 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        page = st.radio("Workspace", ["Handoff", "Admin"], key="page")
+        page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
-        if st.button("Reload saved archive", disabled=store is None):
-            try:
-                fresh, sha = store.load()
-                st.session_state.update(vault=fresh, vault_sha=sha)
-                note("Saved archive reloaded. Your open drafts were kept for comparison.")
-            except (StorageError, ValidationError) as exc:
-                note(str(exc), "error")
-        st.button("Log out and clear session", on_click=clear_session)
-        st.caption("Unsaved drafts are lost on logout, timeout, or browser-session loss.")
-    if not app.get("clinical_use_approved", False):
-        st.warning("Synthetic-data testing only. Do not paste clinical records until your institution has approved BOTH the Streamlit host and the GitHub storage arrangement. Encryption alone is not approval.")
-    else:
-        st.caption("Clinical-use approval is an administrator declaration, not a compliance certification. Confirm patient identity in Epic.")
+        st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
+        st.button("Log out", on_click=clear_session)
+        st.caption("Save handoffs before logout. Medication mappings save when you change their destination.")
+        if not app.get("clinical_use_approved", False):
+            st.caption("Use synthetic data unless your hosting and storage have institutional approval. See the setup guide.")
     if "notice" in st.session_state:
         kind, text = st.session_state.pop("notice")
         getattr(st, kind)(text)
     if page == "Admin":
         admin_page(store)
+    elif page == "Print all":
+        print_all_page(store)
     else:
         handoff_page(store)
 
 
+def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) -> None:
+    for number, row in enumerate(rows, 1):
+        prefix = "med_draft_" + row["id"] + "_"
+        summary, destination = st.columns([3, 1])
+        with summary:
+            st.text(f"{number}. " + format_medication(row) + ("" if row["include"] else " [EXCLUDED]"))
+        with destination:
+            key = prefix + "section"
+            if key not in st.session_state:
+                st.session_state[key] = row["section"]
+            st.selectbox("System for order " + str(number), DESTINATIONS, key=key,
+                         on_change=medication_row_change, args=(room, row["id"], "section", key, store))
+        with st.expander("Edit details for order " + str(number), expanded=False):
+            def widget(field: str, label: str, kind: str = "text"):
+                key = prefix + field
+                if key not in st.session_state:
+                    st.session_state[key] = row[field]
+                args = (room, row["id"], field, key, store)
+                if kind == "check":
+                    st.checkbox(label, key=key, on_change=medication_row_change, args=args)
+                elif kind == "area":
+                    st.text_area(label, key=key, height=90, max_chars=4000, on_change=medication_row_change, args=args)
+                else:
+                    st.text_input(label, key=key, max_chars=4000, on_change=medication_row_change, args=args)
+            widget("include", "Include order", "check")
+            widget("name", "Medication / formulation")
+            left, right = st.columns(2)
+            with left:
+                widget("dose", "Dose")
+                widget("frequency", "Frequency")
+            with right:
+                widget("route", "Route")
+                widget("last_rate", "Last recorded rate")
+            widget("rate_time", "Rate timestamp")
+            widget("custom_text", "Custom handoff wording", "area")
+            name, match = rule_for_inline_mapping(row["name"], st.session_state["vault"]["settings"]["medication_mappings"])
+            st.caption("Changing the system remembers this rule: " + name + " [" + match + "].")
+            for warning in row["warnings"]:
+                st.caption(warning)
+
+
+def ventilation_editor(sheet: dict) -> None:
+    data = sheet["ventilation"]
+    if data is None:
+        st.caption("No automatic invasive-ventilation block is currently included.")
+        return
+    st.text(format_ventilation(data))
+    with st.expander("Edit ventilator values"):
+        for index, label in enumerate(LABELS):
+            key = "vent_" + sheet["id"] + "_" + str(index)
+            if key not in st.session_state:
+                st.session_state[key] = data["mode"] if index == 0 else data["values"].get(label, "")
+            st.text_input(label, key=key, max_chars=500, on_change=ventilation_change,
+                          args=(sheet["room"], label, key))
+        st.button("Clear ventilator block", on_click=clear_ventilation)
+
+
 def handoff_page(store: GitHubVault | None) -> None:
     st.title("Room handoff")
-    st.caption("Import Diagnoses and Medications. Unmapped orders go to Other Medications. Print in landscape.")
-    settings = st.session_state["vault"]["settings"]
-    choices = list(dict.fromkeys(settings["rooms"] + list(st.session_state["vault"]["rooms"]) + list(st.session_state.get("drafts", {}))))
-    st.selectbox("Choose room", ["Choose a room"] + choices + ["Other room"], key="room_choice")
-    if st.session_state.get("room_choice") == "Other room":
+    ss = st.session_state
+    settings = ss["vault"]["settings"]
+    choices = list(dict.fromkeys(settings["rooms"] + list(ss["vault"]["rooms"]) + list(ss.get("drafts", {}))))
+    if "room_choice" not in ss:
+        ss["room_choice"] = ss.get("current_room", "Choose a room")
+    st.selectbox("Room", ["Choose a room"] + choices + ["Other room"], key="room_choice", on_change=room_changed)
+    if ss.get("room_choice") == "Other room":
         st.text_input("Other room number", key="other_room", max_chars=16)
-    st.button("Open room", on_click=open_room, disabled=st.session_state.get("room_choice") == "Choose a room")
-    room = st.session_state.get("current_room")
-    if not room:
-        st.info("Choose a room and click Open room before pasting text.")
+        st.button("Open room", on_click=open_room)
+        st.info("Enter the other room number and click Open room.")
         return
-    sheet = st.session_state["drafts"][room]
-    st.subheader("Editing room " + room)
-    st.caption("Handoff reference: " + sheet["id"][:8] + " | Saved (UTC): " + (sheet["updated_at"] or "Not yet saved"))
-    saved = st.session_state["vault"]["rooms"].get(room)
-    if saved is None or saved != sheet:
-        st.info("This handoff has unsaved changes.")
-    if st.session_state.get("base_sheets", {}).get(room) != saved:
-        st.warning("The saved handoff changed after you opened this draft. Review the latest version below before saving.")
-    with st.expander("New patient / reload saved handoff"):
-        st.checkbox("This is a NEW patient in this room. Start a blank handoff.", key="confirm_new")
+    if ss.get("room_choice") == "Choose a room":
+        st.info("Select a room to begin.")
+        return
+    room = ss.get("current_room")
+    if not room:
+        st.info("Select a room to begin.")
+        return
+    sheet = ss["drafts"][room]
+    st.subheader("Room " + room)
+    saved = ss["vault"]["rooms"].get(room)
+    st.caption("Saved" if saved == sheet else "Unsaved handoff changes")
+    if ss.get("base_sheets", {}).get(room) != saved:
+        st.warning("A newer saved handoff exists for this room. Reload it before saving your edits.")
+    top1, top2 = st.columns(2)
+    top1.button("Save handoff", on_click=save_room, args=(store,), type="primary")
+    top2.caption("Use Print all in the sidebar for the complete packet.")
+    with st.expander("Start over / reload"):
         st.button("Start blank for new patient", on_click=start_new_patient)
-        st.caption("The previous saved sheet is replaced only when you save the new sheet. GitHub history retains earlier encrypted versions.")
-        if saved:
-            st.text(handoff_text(saved))
-        st.checkbox("Discard the current draft and load the saved handoff.", key="confirm_discard")
-        st.button("Load saved handoff into editor", on_click=load_saved_into_editor)
-    import_tab, medication_tab, edit_tab, preview_tab = st.tabs(["Paste / import", "Medications", "Edit handoff", "Preview / export"])
-    with import_tab:
-        st.caption("Paste the complete SmartPhrase, or the paired A and/or B blocks. Copy directly from Epic so medication columns retain their tabs. No OCR is needed.")
+        st.button("Load saved handoff", on_click=load_saved_into_editor)
+        st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
+    paste_tab, meds_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Edit handoff", "Preview / print"])
+    with paste_tab:
+        st.caption("Paste paired A, B and/or C blocks. Create / update replaces only the sections included in the paste. Other sections stay unchanged.")
         left, right = st.columns(2)
         left.button("Load synthetic example", on_click=load_sample)
         right.button("Clear pasted text", on_click=clear_paste)
         with st.form("parse_smartphrase"):
-            st.text_area("SmartPhrase text", key="paste", height=250, max_chars=MAX_PASTE)
-            st.form_submit_button("Read Diagnoses + Medications", on_click=read_sections)
-        medication_pending = st.session_state.get("medication_pending")
-        if medication_pending and not medication_pending.get("error"):
-            st.info("Medication results are ready in the Medications tab. Review and apply them there.")
-        pending = st.session_state.get("pending")
-        if pending and pending["room"] == room:
-            for issue in pending["issues"]:
-                st.warning(issue)
-            with st.expander("Detected section boundaries"):
-                for key, status in pending["status"]:
-                    suffix = "Import available" if key in ("a", "b") else "Boundary detection only, not imported yet"
-                    st.text(f"{key.upper()} | {SECTION_NAMES[key]} | {status} | {suffix}")
-            if pending["error"]:
-                st.info(pending["error"])
-            else:
-                if "diagnosis_preview" not in st.session_state:
-                    st.session_state["diagnosis_preview"] = pending.get("text", "")
-                if "import_destination" not in st.session_state:
-                    st.session_state["import_destination"] = settings["diagnoses_destination"]
-                st.text_area("Extracted diagnoses, editable", key="diagnosis_preview", height=120, max_chars=MAX_FIELD,
-                             on_change=update_diagnosis_preview)
-                st.selectbox("Place diagnoses in", SYSTEMS, key="import_destination")
-                st.radio("When applying", ["Replace", "Append"], key="import_mode", horizontal=True)
-                destination = st.session_state.get("import_destination", "Diagnoses")
-                if sheet["fields"][destination].strip() and st.session_state.get("import_mode") == "Replace":
-                    st.checkbox("Replace the existing text in the selected section.", key="replace_confirm")
-                st.button("Apply diagnoses to handoff", on_click=apply_import)
-    with medication_tab:
-        medications_page(room, sheet)
+            st.text_area("SmartPhrase text", key="paste", height=240, max_chars=MAX_PASTE)
+            st.form_submit_button("Create / update handoff", on_click=create_handoff, type="primary")
+        result = ss.get("import_result", {})
+        if result.get("room") == room:
+            for error in result["errors"]:
+                st.error(error)
+            if result["imported"]:
+                st.caption("Updated: " + ", ".join(result["imported"]) + ". Edit below or save the handoff.")
+            for message in result["notices"]:
+                st.info(message)
+        st.subheader("Invasive ventilation to RESP")
+        ventilation_editor(sheet)
+    with meds_tab:
+        st.caption("Choose a system beside an order. It is remembered immediately in Admin and reused on future imports. Unmapped orders remain in Other Medications.")
+        if sheet["medications"]:
+            medication_editor(sheet["medications"], room, store)
+        else:
+            st.info("Paste a B block and create the handoff to add medications.")
     with edit_tab:
-        st.caption("System notes are editable below. Medication wording and destinations are edited in the Medications tab, so reimporting cannot erase your notes.")
-        display_fields = fields_with_medications(sheet)
+        st.caption("These are your separate notes. Re-pasting medications or ventilation does not erase them.")
         for section in SYSTEMS:
             key = edit_key(sheet, section)
-            if key not in st.session_state:
-                st.session_state[key] = sheet["fields"][section]
+            if key not in ss:
+                ss[key] = sheet["fields"][section]
             with st.expander(section, expanded=section == "Diagnoses"):
+                if section == "Respiratory" and sheet["ventilation"]:
+                    st.text(format_ventilation(sheet["ventilation"]) + "\n-----")
+                    st.caption("The automatic block prints first. Edit its values under Paste / create.")
                 st.text_area("Notes: " + section, key=key, height=100, max_chars=MAX_FIELD,
                              on_change=update_field, args=(room, section, key))
-                meds_here = [m for m in sheet["medications"] if m["include"] and m["section"] == section]
-                if meds_here:
-                    st.caption("Medications included below these notes. Edit them in the Medications tab.")
-                    for row in meds_here:
+                for row in sheet["medications"]:
+                    if row["include"] and row["section"] == section:
                         st.text(format_medication(row))
     with preview_tab:
         import streamlit.components.v1 as components
-        st.caption("Landscape Letter. Long content continues onto additional pages in the PDF rather than being cut off.")
-        components.html(handoff_html(sheet), height=660, scrolling=True)
-        st.caption("Downloads are unencrypted. Check all entries against Epic and store copies only in an approved location.")
+        st.caption("Landscape Letter. Ventilator settings appear first in RESP, followed by ----- and the respiratory notes and medications.")
+        components.html(handoff_html(sheet), height=650, scrolling=True)
         try:
-            pdf = handoff_pdf(sheet)
-            st.download_button("Download landscape handoff (PDF)", pdf, "handoff.pdf", "application/pdf")
+            st.download_button("Download this handoff (PDF)", handoff_pdf(sheet), "handoff.pdf", "application/pdf")
         except (ValueError, ImportError):
-            st.warning("PDF export is unavailable. Confirm requirements.txt was installed, or use printable HTML/text.")
-        st.download_button("Download printable landscape handoff (HTML)", handoff_html(sheet).encode("utf-8"), "handoff.html", "text/html")
+            st.error("PDF export could not be created. Confirm requirements.txt is installed or use HTML.")
+        st.download_button("Download printable handoff (HTML)", handoffs_html([sheet]).encode("utf-8"), "handoff.html", "text/html")
         st.download_button("Download handoff text", handoff_text(sheet).encode("utf-8"), "handoff.txt", "text/plain")
-    st.divider()
-    st.checkbox("I checked this room's current patient and all included handoff text against Epic.", key="reviewed")
-    st.button("Save handoff to encrypted GitHub" if store else "Save handoff in this session only",
-              on_click=save_room, args=(store,), disabled=not st.session_state.get("reviewed"), type="primary")
 
 
-def select_mapping_candidate() -> None:
+def print_all_page(store: GitHubVault | None) -> None:
+    st.title("Print all handoffs")
+    ss = st.session_state
+    ready = available_handoffs(ss["vault"], ss.get("drafts", {}))
+    if not ready:
+        st.info("Create a handoff first. Saved handoffs will also appear here after sign-in.")
+        return
+    st.caption("Includes saved rooms and the latest open drafts. Printing does not save changes. Blank sheets are omitted.")
+    st.button("Save all open handoffs", on_click=save_all_rooms, args=(store,))
+    options = list(ready)
+    # A fresh room list selects all rooms. Explicit selections survive normal reruns.
+    if ss.get("print_room_options") != options or "print_rooms" not in ss:
+        ss["print_room_options"] = options
+        ss["print_rooms"] = options
+    selected = st.multiselect("Rooms to print", options, key="print_rooms")
+    selected_sheets = [ready[r] for r in options if r in selected]
+    if not selected_sheets:
+        st.info("Select at least one room.")
+        return
+    unsaved = sum(sheet != ss["vault"]["rooms"].get(sheet["room"]) for sheet in selected_sheets)
+    st.caption(str(len(selected_sheets)) + " handoffs selected. " + str(unsaved) + " include unsaved draft changes. Each room starts on a new page.")
+    try:
+        st.download_button("Download all selected handoffs (PDF)", handoffs_pdf(selected_sheets), "all_handoffs.pdf", "application/pdf", type="primary")
+    except (ValueError, ImportError):
+        st.error("The combined PDF could not be created. Use HTML or check the export requirements.")
+    st.download_button("Download all selected handoffs (printable HTML)", handoffs_html(selected_sheets).encode("utf-8"), "all_handoffs.html", "text/html")
+    st.caption("Open the PDF and print it, or open the HTML file and click Print all handoffs. Downloaded files are not encrypted.")
+    for sheet in selected_sheets:
+        st.text("Room " + sheet["room"] + (" | draft" if sheet != ss["vault"]["rooms"].get(sheet["room"]) else " | saved"))
+
+
+def select_admin_rule() -> None:
     if not require_session():
         return
-    choice = st.session_state.get("mapping_candidate", "")
-    if choice and choice != "Type a medication name":
-        st.session_state["mapping_name"] = choice
+    ss = st.session_state
+    index = ss.get("admin_rule_index", -1)
+    rules = ss["vault"]["settings"]["medication_mappings"]
+    rule = rules[index] if isinstance(index, int) and 0 <= index < len(rules) else None
+    ss["mapping_name"] = rule["name"] if rule else ""
+    ss["mapping_destination"] = rule["destination"] if rule else "Other Medications"
+    ss["mapping_match"] = rule["match"] if rule else "prefix"
+    ss["mapping_original"] = (rule["name"], rule["match"]) if rule else None
+
+
+def save_admin_rule(store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    candidate = deepcopy(ss["vault"])
+    rules = candidate["settings"]["medication_mappings"]
+    original = ss.get("mapping_original")
+    if original:
+        rules = [r for r in rules if (r["name"], r["match"]) != tuple(original)]
+    try:
+        candidate["settings"]["medication_mappings"] = upsert_rule(rules, ss.get("mapping_name", ""), ss.get("mapping_destination", "Other Medications"), ss.get("mapping_match", "prefix"))
+        commit(candidate, store)
+        reapply_open_mappings()
+        ss["admin_rule_index"] = -1
+        ss["mapping_original"] = None
+        note("Medication mapping saved. Open drafts use the updated mappings.", "success")
+    except (ValueError, ValidationError, StorageError) as exc:
+        note(str(exc), "error")
+
+
+def remove_admin_rule(store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    index = ss.get("admin_rule_index", -1)
+    rules = ss["vault"]["settings"]["medication_mappings"]
+    if not isinstance(index, int) or not 0 <= index < len(rules):
+        return
+    candidate = deepcopy(ss["vault"])
+    candidate["settings"]["medication_mappings"].pop(index)
+    try:
+        commit(candidate, store)
+        reapply_open_mappings()
+        ss["admin_rule_index"] = -1
+        select_admin_rule()
+        note("Mapping removed. Open drafts have been remapped.")
+    except (StorageError, ValidationError) as exc:
+        note(str(exc), "error")
+
+
+def save_admin_settings(store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    try:
+        rooms = [normalize_room(line) for line in ss.get("admin_rooms", "").splitlines() if line.strip()]
+        candidate = deepcopy(ss["vault"])
+        candidate["settings"].update(diagnoses_destination=ss["admin_diagnosis_dest"], rooms=rooms)
+        commit(candidate, store)
+        note("Room and diagnosis settings saved.", "success")
+    except (ValidationError, StorageError) as exc:
+        note(str(exc), "error")
 
 
 def admin_page(store: GitHubVault | None) -> None:
     st.title("Admin")
-    settings = st.session_state["vault"]["settings"]
-    st.caption("The app password protects this workspace too. There is no second Admin password.")
-    st.subheader("Medication-to-system mappings")
-    st.caption("Save a name such as acetaminophen, not a patient's dose. Matching is case-insensitive and starts at the beginning of the medication name. A more specific matching rule takes priority.")
-    room = st.session_state.get("current_room")
-    detected = []
-    if room:
-        detected += st.session_state["drafts"][room]["medications"]
-        if st.session_state.get("medication_pending", {}).get("room") == room:
-            detected += st.session_state["medication_pending"]["rows"]
-    candidates = sorted({suggested_key(row["name"]) for row in detected})
-    choices = ["Type a medication name"] + candidates
-    if st.session_state.get("mapping_candidate") not in choices:
-        st.session_state["mapping_candidate"] = choices[0]
-    st.selectbox("Choose a detected medication or type a name below", choices, key="mapping_candidate", on_change=select_mapping_candidate)
+    ss = st.session_state
+    settings = ss["vault"]["settings"]
+    rules = settings["medication_mappings"]
+    st.caption("Medication destinations chosen in a handoff appear here automatically. Edit these rules at any time, even with no handoff open.")
+    st.subheader("Medication mappings")
+    choices = [-1] + list(range(len(rules)))
+    if ss.get("admin_rule_index", -1) not in choices:
+        ss["admin_rule_index"] = -1
+    st.selectbox("Edit a rule or add one", choices, key="admin_rule_index", on_change=select_admin_rule,
+                 format_func=lambda i: "Add a new rule" if i == -1 else rules[i]["name"] + " -> " + rules[i]["destination"])
+    if "mapping_name" not in ss:
+        select_admin_rule()
     with st.form("medication_mapping"):
-        name = st.text_input("Medication name or name prefix", key="mapping_name", max_chars=250, placeholder="acetaminophen")
-        destination = st.selectbox("Default system", DESTINATIONS, key="mapping_destination")
-        match_label = st.selectbox("Match rule", ["Medication name starts with this text", "Exact complete medication name"])
-        apply_now = st.checkbox("Reapply all saved mappings to the current room's draft and import preview", value=True,
-                                help="This resets any per-order destination choices in the open room. It does not save the clinical handoff.")
-        confirmed = st.checkbox("This rule contains only a medication name or formulation, not patient information.")
-        submit_mapping = st.form_submit_button("Save medication mapping")
-    if submit_mapping:
-        if not confirmed:
-            st.warning("Confirm that the rule does not contain patient information.")
-        else:
-            try:
-                candidate = deepcopy(st.session_state["vault"])
-                match = "exact" if match_label == "Exact complete medication name" else "prefix"
-                candidate["settings"]["medication_mappings"] = upsert_rule(settings["medication_mappings"], name, destination, match)
-                commit(candidate, store)
-                settings = candidate["settings"]
-                if apply_now and room:
-                    reapply_current_mappings()
-                st.success("Medication mapping saved." + (" It is encrypted in GitHub." if store else " Session-only test mode."))
-            except (StorageError, ValidationError, ValueError) as exc:
-                st.error(str(exc))
-    rules = st.session_state["vault"]["settings"]["medication_mappings"]
+        st.text_input("Medication name / prefix", key="mapping_name", max_chars=250)
+        st.selectbox("System", DESTINATIONS, key="mapping_destination")
+        st.selectbox("Match", ["prefix", "exact"], key="mapping_match", format_func=lambda value: "Name starts with this text" if value == "prefix" else "Exact complete name")
+        st.form_submit_button("Save mapping", on_click=save_admin_rule, args=(store,))
+    if ss.get("admin_rule_index", -1) != -1:
+        st.button("Delete selected mapping", on_click=remove_admin_rule, args=(store,))
     if rules:
-        with st.expander("Saved medication mappings", expanded=True):
+        with st.expander("All saved mappings", expanded=True):
             for rule in rules:
                 st.text(rule["name"] + " [" + rule["match"] + "] -> " + rule["destination"])
-            labels = [r["name"] + " [" + r["match"] + "]" for r in rules]
-            selected = st.selectbox("Mapping to remove", labels)
-            remove_confirm = st.checkbox("Remove this mapping from future imports")
-            if st.button("Remove selected mapping", disabled=not remove_confirm):
-                candidate = deepcopy(st.session_state["vault"])
-                candidate["settings"]["medication_mappings"].pop(labels.index(selected))
-                try:
-                    commit(candidate, store)
-                    note("Mapping removed. Use Reapply saved mappings in the current handoff to update its destinations.")
-                    st.rerun()
-                except (StorageError, ValidationError) as exc:
-                    st.error(str(exc))
     else:
-        st.info("No medication mappings yet. All imported orders go to Other Medications until you assign them.")
+        st.info("No saved mappings yet. Unmapped medications go to Other Medications.")
     st.subheader("Room and diagnosis settings")
+    if "admin_rooms" not in ss:
+        ss["admin_rooms"] = "\n".join(settings["rooms"])
+    if "admin_diagnosis_dest" not in ss:
+        ss["admin_diagnosis_dest"] = settings["diagnoses_destination"]
     with st.form("admin_settings"):
-        destination = st.selectbox("Default destination for Diagnoses", SYSTEMS, index=SYSTEMS.index(settings["diagnoses_destination"]))
-        rooms_text = st.text_area("Room dropdown, one room per line", "\n".join(settings["rooms"]), height=160)
-        submit = st.form_submit_button("Save Admin settings")
-    if submit:
-        try:
-            rooms = [normalize_room(line) for line in rooms_text.splitlines() if line.strip()]
-            candidate = deepcopy(st.session_state["vault"])
-            candidate["settings"].update(diagnoses_destination=destination, rooms=rooms)
-            commit(candidate, store)
-        except (StorageError, ValidationError) as exc:
-            st.error(str(exc))
-        else:
-            st.success("Admin settings saved. Medication mappings were preserved.")
-    with st.expander("Section separators"):
+        st.selectbox("Diagnosis destination", SYSTEMS, key="admin_diagnosis_dest")
+        st.text_area("Rooms, one per line", key="admin_rooms", height=150)
+        st.form_submit_button("Save settings", on_click=save_admin_settings, args=(store,))
+    with st.expander("Section imports"):
         for key, heading in SECTION_NAMES.items():
-            st.text(f"{key * 8}  =  {heading}" + ("  | import available" if key in ("a", "b") else "  | not imported yet"))
-        st.caption("Only Diagnoses and Medications are imported automatically in this version. Other sections remain editable manually.")
+            st.text(key * 8 + " = " + heading + (" | automatic import" if key in "abc" else " | not imported yet"))
+        st.caption("The C-block mode rule controls display only, not clinical determination of the airway. BiLevel, CPAP and NIV labels are excluded. Unknown modes are not guessed.")
 
 
 if __name__ == "__main__":
@@ -687,5 +682,4 @@ if __name__ == "__main__":
     except (ValidationError, StorageError) as error:
         st.error(str(error))
     except Exception:
-        # Do not send exception strings, local variables, or patient text to logs/UI.
-        st.error("The app encountered an unexpected problem. No save is confirmed. Keep your draft, reload the saved archive, and compare before retrying. Reproduce with the synthetic example when troubleshooting.")
+        st.error("The app encountered an unexpected problem. No save is confirmed. Keep your draft and reproduce with the synthetic example when troubleshooting.")

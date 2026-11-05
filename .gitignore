@@ -16,3 +16,9 @@ handoff.txt
 handoff*.pdf
 handoff*.html
 handoff*.txt
+
+all_handoffs*.pdf
+all_handoffs*.html
+all_handoffs*.txt
+!examples/all_handoffs_example.pdf
+!examples/all_handoffs_example.html

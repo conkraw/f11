@@ -1,143 +1,160 @@
 from copy import deepcopy
 from pathlib import Path
-from test_callbacks import app,open_room
+from test_callbacks import app, open_room
 from medications import upsert_rule
+from github_store import StorageError
 
-SAMPLE=Path(__file__).parents[1]/'examples'/'synthetic_smartphrase.txt'
+SAMPLE = Path(__file__).parents[1] / 'examples' / 'synthetic_smartphrase.txt'
 
 
 def read(app):
     open_room(app)
-    app.st.session_state['paste']=SAMPLE.read_text()
-    app.read_sections()
+    app.st.session_state['paste'] = SAMPLE.read_text()
+    app.create_handoff()
 
 
-def apply(app):
+def map_first(app, destination='Neurologic', store=None):
     ss=app.st.session_state
-    ss['med_import_reviewed']=True
-    ss['med_replace_confirm']=True
-    app.apply_medication_import()
+    row=ss['drafts']['P4102']['medications'][0]
+    ss['map_test']=destination
+    app.medication_row_change('P4102',row['id'],'section','map_test',store)
 
 
-def test_combined_read_diagnoses_and_meds(app):
+def test_one_click_import_all_three_sections(app):
     read(app)
+    sheet=app.st.session_state['drafts']['P4102']
+    assert sheet['fields']['Diagnoses'] and len(sheet['medications'])==9
+    assert sheet['ventilation']['mode']=='Volume Targeted Pressure Control - PS'
+
+
+def test_inline_mapping_immediately_saved_to_admin_without_saving_handoff(app):
+    read(app)
+    map_first(app)
     ss=app.st.session_state
-    assert not ss['pending']['error']
-    assert len(ss['medication_pending']['rows'])==9
-
-
-def test_apply_diagnoses_keeps_medication_preview(app):
-    read(app)
-    app.apply_import()
-    ss=app.st.session_state
-    assert len(ss['medication_pending']['rows'])==9
-    assert 'Synthetic practice diagnosis' in ss['drafts']['P4102']['fields']['Diagnoses']
-    apply(app)
-    assert len(ss['drafts']['P4102']['medications'])==9
-    assert ss['paste']==''
-
-
-def test_apply_meds_first_keeps_diagnosis_preview(app):
-    read(app)
-    apply(app)
-    ss=app.st.session_state
-    assert ss['pending']['text']
-    app.apply_import()
-    assert len(ss['drafts']['P4102']['medications'])==9
-    assert ss['drafts']['P4102']['fields']['Diagnoses']
-    assert ss['paste']==''
-
-
-def test_medication_import_does_not_save_until_clicked(app):
-    read(app)
-    apply(app)
-    ss=app.st.session_state
-    assert not ss['vault']['rooms']
-    ss['reviewed']=True
-    app.save_room(None)
-    assert len(ss['vault']['rooms']['P4102']['medications'])==9
-    assert 'Example Clinician' not in str(ss['vault'])
-
-
-def test_import_requires_medication_review(app):
-    read(app)
-    app.apply_medication_import()
-    assert not app.st.session_state['drafts']['P4102']['medications']
-
-
-def test_import_replace_requires_confirmation(app):
-    read(app)
-    apply(app)
-    ss=app.st.session_state
-    previous=deepcopy(ss['drafts']['P4102']['medications'])
-    ss['paste']=SAMPLE.read_text()
-    app.read_sections()
-    ss['med_import_reviewed']=True
-    app.apply_medication_import()
-    assert ss['drafts']['P4102']['medications']==previous
-    ss['med_replace_confirm']=True
-    app.apply_medication_import()
-    assert len(ss['drafts']['P4102']['medications'])==9
-    assert ss['drafts']['P4102']['medications']!=previous
-
-
-def test_switch_rooms_clears_medication_preview(app):
-    read(app)
-    open_room(app,'P4104')
-    assert 'medication_pending' not in app.st.session_state
-    assert app.st.session_state['paste']==''
-
-
-def test_remap_current_draft_and_pending_only(app):
-    read(app)
-    apply(app)
-    ss=app.st.session_state
-    ss['reviewed']=True
-    app.save_room(None)
-    before=deepcopy(ss['vault']['rooms']['P4102'])
-    ss['vault']['settings']['medication_mappings']=upsert_rule([],'acetaminophen','Neurologic')
-    app.reapply_current_mappings()
+    assert ss['vault']['settings']['medication_mappings']==[{'name':'acetaminophen','match':'prefix','destination':'Neurologic'}]
     assert ss['drafts']['P4102']['medications'][0]['section']=='Neurologic'
-    assert ss['vault']['rooms']['P4102']==before
-    assert not ss['reviewed']
+    assert ss['vault']['rooms']=={}
 
 
-def test_new_patient_clears_medications(app):
+def test_inline_mapping_persists_with_expected_sha(app):
     read(app)
-    apply(app)
     ss=app.st.session_state
-    ss['confirm_new']=True
-    app.start_new_patient()
-    assert not ss['drafts']['P4102']['medications']
-    assert 'medication_pending' not in ss
+    ss['vault_sha']='before'
+    class Store:
+        saved=None
+        def save(self, candidate, sha):
+            assert sha=='before'
+            self.saved=deepcopy(candidate)
+            return 'after'
+    store=Store()
+    map_first(app,store=store)
+    assert store.saved['settings']['medication_mappings'][0]['name']=='acetaminophen'
+    assert store.saved['rooms']=={}
+    assert ss['vault_sha']=='after'
+
+
+def test_failed_inline_mapping_rolls_back_without_false_success(app):
+    read(app)
+    ss=app.st.session_state
+    before=deepcopy(ss['drafts']['P4102'])
+    class BrokenStore:
+        def save(self, candidate, sha):
+            raise StorageError('Synthetic save failure.')
+    map_first(app,store=BrokenStore())
+    assert ss['drafts']['P4102']==before
+    assert ss['vault']['settings']['medication_mappings']==[]
+    assert ss['map_test']=='Other Medications'
+    assert ss['notice'][0]=='error'
+
+
+def test_future_import_different_dose_uses_saved_mapping(app):
+    read(app)
+    map_first(app)
+    ss=app.st.session_state
+    ss['paste']='bbbbbbbb\nMedications:\n• acetaminophen injection 250 mg\t250 mg\tIntravenous\tq6h\nbbbbbbbb'
+    app.create_handoff()
+    row=ss['drafts']['P4102']['medications'][0]
+    assert row['section']=='Neurologic' and row['dose']=='250 mg'
+    assert len(ss['vault']['settings']['medication_mappings'])==1
+
+
+def test_other_medications_selection_is_remembered(app):
+    read(app)
+    map_first(app)
+    map_first(app,'Other Medications')
+    ss=app.st.session_state
+    assert len(ss['vault']['settings']['medication_mappings'])==1
+    assert ss['vault']['settings']['medication_mappings'][0]['destination']=='Other Medications'
+
+
+def test_mapping_both_albuterol_orders_keeps_separate_doses_and_frequencies(app):
+    read(app)
+    ss=app.st.session_state
+    row=ss['drafts']['P4102']['medications'][1]
+    ss['map_test']='Respiratory'
+    app.medication_row_change('P4102',row['id'],'section','map_test')
+    albuterol=[r for r in ss['drafts']['P4102']['medications'] if r['name'].startswith('albuterol')]
+    assert len(albuterol)==2 and all(r['section']=='Respiratory' for r in albuterol)
+    assert {r['frequency'] for r in albuterol}=={'q4h','q2h PRN'}
+
+
+def test_remap_open_drafts_but_does_not_rewrite_saved_rooms(app):
+    read(app)
+    app.save_room(None)
+    ss=app.st.session_state
+    before=deepcopy(ss['vault']['rooms']['P4102'])
+    map_first(app)
+    assert ss['vault']['rooms']['P4102']==before
+    assert ss['drafts']['P4102']['medications'][0]['section']=='Neurologic'
+
+
+def test_admin_can_edit_without_any_handoff_open(app):
+    ss=app.st.session_state
+    ss.update(mapping_name='acetaminophen',mapping_destination='Neurologic',mapping_match='prefix')
+    app.save_admin_rule(None)
+    assert ss['vault']['settings']['medication_mappings'][0]['destination']=='Neurologic'
+    ss['admin_rule_index']=0
+    app.select_admin_rule()
+    ss['mapping_destination']='Other Medications'
+    app.save_admin_rule(None)
+    assert len(ss['vault']['settings']['medication_mappings'])==1
+    assert ss['vault']['settings']['medication_mappings'][0]['destination']=='Other Medications'
+    assert not ss['drafts']
+
+
+def test_admin_can_remove_rule_without_handoff(app):
+    ss=app.st.session_state
+    ss['vault']['settings']['medication_mappings']=upsert_rule([],'acetaminophen','Neurologic')
+    ss['admin_rule_index']=0
+    app.remove_admin_rule(None)
+    assert ss['vault']['settings']['medication_mappings']==[]
 
 
 def test_bad_medication_block_cannot_partially_apply(app):
     read(app)
     ss=app.st.session_state
-    ss['paste']='bbbbbbbb\nMedications:\n• med\t1 mg\tIV\tq4h\n• no tabs here\nbbbbbbbb'
-    app.read_medications()
-    ss['med_import_reviewed']=True
-    app.apply_medication_import()
-    assert not ss['drafts']['P4102']['medications']
+    before=deepcopy(ss['drafts']['P4102'])
+    ss['paste']='aaaaaaaa\nDiagnoses:\n1. Changed diagnosis\naaaaaaaa\nbbbbbbbb\nMedications:\n• med\t1 mg\tIV\tq4h\n• no tabs here\nbbbbbbbb'
+    app.create_handoff()
+    assert ss['drafts']['P4102']==before
+    assert ss['import_result']['errors']
 
 
-def test_b_only_paste_imports_without_diagnosis(app):
+def test_medication_details_edit_does_not_save_mapping_or_vault(app):
     read(app)
-    ss=app.st.session_state
-    ss['paste']='bbbbbbbb\nMedications:\n• med\t1 mg\tIV\tq4h\nbbbbbbbb'
-    app.read_sections()
-    assert ss['pending']['error'] and not ss['medication_pending']['error']
-    apply(app)
-    assert len(ss['drafts']['P4102']['medications'])==1
-
-
-def test_medication_edit_marks_draft_unreviewed(app):
-    read(app)
-    apply(app)
     ss=app.st.session_state
     row=ss['drafts']['P4102']['medications'][0]
     ss['edit_test']='Changed route'
-    ss['reviewed']=True
-    app.medication_row_change('draft','P4102',row['id'],'route','edit_test')
-    assert row['route']=='Changed route' and not ss['reviewed']
+    app.medication_row_change('P4102',row['id'],'route','edit_test')
+    assert row['route']=='Changed route'
+    assert not ss['vault']['settings']['medication_mappings']
+
+
+def test_reimport_replaces_without_duplication_or_confirmations(app):
+    read(app)
+    ss=app.st.session_state
+    ss['drafts']['P4102']['fields']['Respiratory']='Keep note'
+    ss['paste']=SAMPLE.read_text()
+    app.create_handoff()
+    assert len(ss['drafts']['P4102']['medications'])==9
+    assert ss['drafts']['P4102']['fields']['Respiratory']=='Keep note'
