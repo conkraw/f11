@@ -11,3 +11,8 @@ private-secrets*
 encrypted-data/
 handoff.html
 handoff.txt
+
+# Never commit downloaded clinical handoffs.
+handoff*.pdf
+handoff*.html
+handoff*.txt

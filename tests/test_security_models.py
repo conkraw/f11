@@ -110,5 +110,5 @@ def test_export_escapes_html_and_preserves_text():
 
 def test_empty_sections_not_claimed_normal():
     html = handoff_html(new_sheet('P4102'))
-    assert 'Blank sections are omitted' in html
-    assert '<h2>Respiratory</h2>' not in html
+    assert 'Blank sections are not confirmed normal' in html
+    assert '<th>RESP</th>' in html

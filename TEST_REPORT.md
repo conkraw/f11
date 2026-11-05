@@ -1,30 +1,23 @@
 # Validation report
 
-76 automated tests passed in the build environment using Python 3.13.5.
+## Completed
 
-Command: `PYTHONPATH=. python -m pytest -q`
+147 automated tests passed in the final regression run.
 
-Validated:
-- Variable-length, case-insensitive paired dividers and the ten-section synthetic example.
-- Empty, missing, duplicate, malformed, wrong-heading, and mixed-letter divider handling.
-- Diagnosis text preservation, numbered-line wrapping, code/qualifier retention, and no cross-section import.
-- Password hashing/verification and invalid-hash handling.
-- Encryption round trip, wrong-key refusal, ciphertext tamper refusal, and schema validation.
-- Fixed room list, custom labels, normalized aliases, independent room drafts, and new-patient references.
-- Private GitHub checks, branch checks, encrypted-only payloads, generic metadata, stale-save refusal, and safe network/error handling using mocked HTTP responses.
-- HTML escaping and preservation of text in plain-text export.
-- Import/edit/save callbacks, replacement confirmation, review gating, session cleanup, stale-room protection, and refusal of expired-session save callbacks using a minimal Streamlit stub.
-- Source compilation with `python -m compileall -q .`.
+Coverage includes the previous diagnosis parser, password hashing, encryption, room handling, save conflicts, medication parsing and formatting, provider/Last Admin exclusion, blank-dose infusion rate fallback, separate scheduled and PRN orders, no silent duplicate-order removal, case-insensitive mapping, specific-prefix priority, explicit medication replacement, room isolation, schema-1 encrypted archive migration, and schema-2 encrypted save/load round trips.
 
-Callback tests do not instantiate real Streamlit widgets. No clinical data was submitted to GitHub or another service. The supplied examples are synthetic.
+A separate acceptance check used the nine medication rows supplied for this change. It detected all nine orders, preserved both albuterol frequencies, retained the ordered ceftriaxone Dose column, kept the topical dose blank, omitted the intermittent zero pump rate from its handoff wording, and used 40 mL/hr for the continuous fluid with a blank Dose. The clinical input and provider names are not bundled in this package.
 
-Not validated here:
-- An actual Streamlit browser session or Streamlit AppTest execution.
-- A live GitHub token, repository, institution network, or hosting environment.
-- End-to-end login, WebSocket idle refresh, widget lifecycle behavior, deployment package resolution, or browser printing on the user's computer.
-- Visual browser rendering of the HTML guide or handoff. HTML structure and escaping were checked, but the available Playwright installation had no browser executable.
-- Clinical accuracy, patient identity, institutional policy compliance, or HIPAA compliance.
+PDF tests verified landscape Letter dimensions, required headings, long-column continuation, long lower-band and access-field continuation, retention of every unique test text token exactly once, and page-bound geometry for the long-column case. The synthetic landscape PDF was rendered to an image and visually inspected for overlaps and clipping.
 
-The build environment could not install Streamlit because network name resolution was unavailable. Core modules were tested with cryptography 46.0.4 and requests 2.32.5. Dependency ranges must be reviewed, resolved and tested on the intended host.
+Full handoff and Admin page-render code was exercised using a widget stub, including both draft and pending medication editors on one page. Callback tests cover applying diagnoses/medications in either order, confirmation before replacement, review gating, mapping changes, and new-patient resets.
 
-Before clinical use: complete institutional review, deploy with synthetic data, verify the complete login/import/edit/save/reload/new-patient/export workflow, and verify required audit, identity, retention, and recovery controls. The shared app password and encrypted GitHub archive do not replace these controls.
+## Not completed
+
+The actual Streamlit package could not be installed in this build environment because network package retrieval was unavailable. Stub tests do not reproduce the browser's full widget lifecycle and are not a substitute for a real Streamlit browser test.
+
+No live deployment, live GitHub read/write, institution-specific Epic clipboard behavior, clinical validation, or privacy/compliance assessment was performed. GitHub calls were simulated in tests. The sample PDF is a layout check, not proof of clinical correctness.
+
+## Deployment check
+
+Use Load synthetic example first. Expect two synthetic diagnosis lines and nine medication orders. All medications begin in Other Medications with an empty mapping dictionary. Save a test mapping for acetaminophen to Neurologic and for sodium acetate to FEN / GI, apply/review/save the room, then reopen it to check persistence. Confirm that your existing deployment's encrypted archive and Secrets are preserved before entering clinical information.

@@ -1,13 +1,22 @@
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 Diagnoses:
-1. Example diagnosis for a synthetic test case
-2. Second example diagnosis
-
+1. Synthetic practice diagnosis. Not a patient record.
+2. Second practice diagnosis.
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 Medications:
-Synthetic medication placeholder. Medication parsing is not enabled in this version.
+Current Facility-Administered Medications
+Medication	Dose	Route	Frequency	Provider	Last Rate	Last Admin
+•	acetaminophen injection 120 mg	120 mg	Intravenous	q6h PRN	Example Clinician	48 mL/hr at 01/01/26 1200	120 mg at 01/01/26 1200
+•	albuterol (2.5 MG/0.5ML) 0.5% nebulizer solution 2.5 mg	2.5 mg	Nebulization	q2h PRN	Example Clinician	 	 
+•	albuterol (2.5 MG/0.5ML) 0.5% nebulizer solution 2.5 mg	2.5 mg	Nebulization	q4h	Example Clinician	 	2.5 mg at 01/01/26 1200
+•	budesonide (Pulmicort) 0.5 MG/2ML nebulizer solution 0.5 mg	0.5 mg	Nebulization	BID	Example Clinician	 	0.5 mg at 01/01/26 1200
+•	cefTRIAXone (Rocephin) syringe 500 mg	50 mg/kg (Dosing Weight)	Intravenous	q24h	Example Clinician	 	500 mg at 01/01/26 1200
+•	lidocaine (LMX) 4 % cream	 	Topical	PRN	Example Clinician	 	 
+•	methylPREDNISolone sodium succinate (SOLU-Medrol) 10 mg/mL in NaCl 0.9 % injection 5 mg	5 mg	Intravenous	q6h	Example Clinician	0 mL/hr at 01/01/26 0000	5 mg at 01/01/26 1200
+•	pantoprazole (Protonix) injection 10 mg	10 mg	Intravenous	q24h	Example Clinician	10 mL/hr at 01/01/26 1200	10 mg at 01/01/26 1200
+•	sodium acetate 60 mEq in dextrose 5 % and sodium chloride 0.45 % 1,000 mL infusion	 	Intravenous	Continuous	Example Clinician	30 mL/hr at 01/01/26 1200	New Bag at 01/01/26 1200
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 cccccccccccccccccccccccccccccccc

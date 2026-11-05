@@ -6,11 +6,14 @@ from datetime import datetime, timezone
 import re
 import uuid
 
-SYSTEMS = (
+LEGACY_SYSTEMS = (
     "Diagnoses", "Demographics / Weight", "Neurologic", "Respiratory",
     "Cardiovascular", "FEN / GI", "Hematology", "Infectious Disease",
     "Labs", "Skin / Wounds", "Tasks", "Other",
 )
+SYSTEMS = LEGACY_SYSTEMS + ("Other Medications", "Lab Results / Trends", "Goals / Follow-up", "Airway", "Last Intubation", "Access", "Drains / Tubes")
+from medications import validate_medication, validate_rules, format_medication
+
 # Interpretation of the user's ranges: even P4102..P4116, then the listed 4200 rooms.
 DEFAULT_ROOMS = [f"P{n}" for n in range(4102, 4117, 2)] + ["4201", "4203", "4209"] + [str(n) for n in range(4211, 4224, 2)]
 MAX_FIELD = 20_000
@@ -39,15 +42,15 @@ def normalize_room(value: str) -> str:
 
 def new_sheet(room: str) -> dict:
     return {"id": uuid.uuid4().hex, "room": normalize_room(room), "created_at": utc_now(),
-            "updated_at": None, "fields": {s: "" for s in SYSTEMS}}
+            "updated_at": None, "fields": {s: "" for s in SYSTEMS}, "medications": []}
 
 
 def new_vault() -> dict:
-    return {"schema": 1, "settings": {"diagnoses_destination": "Diagnoses", "rooms": list(DEFAULT_ROOMS)}, "rooms": {}}
+    return {"schema": 2, "settings": {"diagnoses_destination": "Diagnoses", "rooms": list(DEFAULT_ROOMS), "medication_mappings": []}, "rooms": {}}
 
 
 def validate_sheet(sheet: dict) -> None:
-    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields"}:
+    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields", "medications"}:
         raise ValidationError("The handoff structure is invalid.")
     if not isinstance(sheet["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", sheet["id"]):
         raise ValidationError("The handoff identifier is invalid.")
@@ -61,13 +64,29 @@ def validate_sheet(sheet: dict) -> None:
         if not isinstance(value, str) or len(value) > MAX_FIELD:
             raise ValidationError("A handoff section is too long or invalid.")
 
+    if not isinstance(sheet["medications"], list) or len(sheet["medications"]) > 300:
+        raise ValidationError("The medication list is invalid or too large.")
+    ids = set()
+    for row in sheet["medications"]:
+        try:
+            validate_medication(row)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from None
+        if row["id"] in ids:
+            raise ValidationError("Medication row identifiers must be unique.")
+        ids.add(row["id"])
+
 
 def validate_vault(vault: dict) -> None:
-    if not isinstance(vault, dict) or set(vault) != {"schema", "settings", "rooms"} or vault["schema"] != 1:
+    if not isinstance(vault, dict) or set(vault) != {"schema", "settings", "rooms"} or vault["schema"] != 2:
         raise ValidationError("The encrypted archive has an unsupported structure. It was not overwritten.")
     settings = vault["settings"]
-    if not isinstance(settings, dict) or set(settings) != {"diagnoses_destination", "rooms"}:
+    if not isinstance(settings, dict) or set(settings) != {"diagnoses_destination", "rooms", "medication_mappings"}:
         raise ValidationError("The saved Admin settings are invalid.")
+    try:
+        validate_rules(settings["medication_mappings"])
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from None
     if settings["diagnoses_destination"] not in SYSTEMS:
         raise ValidationError("The saved diagnosis destination is invalid.")
     if not isinstance(settings["rooms"], list) or not 1 <= len(settings["rooms"]) <= 100:
@@ -102,4 +121,61 @@ def apply_diagnoses(sheet: dict, diagnosis_text: str, destination: str, append: 
     existing = result["fields"][destination].rstrip()
     result["fields"][destination] = (existing + "\n" if append and existing else "") + diagnosis_text.strip()
     validate_sheet(result)
+    return result
+
+
+def upgrade_vault(vault: dict) -> dict:
+    """Read the original diagnosis-only archive. Never write during migration.
+
+    The existing encryption key/path stay unchanged. A future explicit save
+    persists schema 2. Reject unknown fields instead of dropping them.
+    """
+    if not isinstance(vault, dict):
+        raise ValidationError("The encrypted archive has an invalid structure.")
+    if vault.get("schema") == 2:
+        validate_vault(vault)
+        return vault
+    if vault.get("schema") != 1 or set(vault) != {"schema", "settings", "rooms"}:
+        raise ValidationError("The encrypted archive has an unsupported structure. It was not overwritten.")
+    settings = vault["settings"]
+    if not isinstance(settings, dict) or set(settings) != {"diagnoses_destination", "rooms"}:
+        raise ValidationError("The previous Admin settings are invalid.")
+    if not isinstance(vault["rooms"], dict):
+        raise ValidationError("The previous room archive is invalid.")
+    candidate = deepcopy(vault)
+    candidate["schema"] = 2
+    candidate["settings"]["medication_mappings"] = []
+    for sheet in candidate["rooms"].values():
+        if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields"}:
+            raise ValidationError("A previous handoff structure is invalid.")
+        if not isinstance(sheet["fields"], dict) or set(sheet["fields"]) != set(LEGACY_SYSTEMS):
+            raise ValidationError("A previous handoff has unexpected fields. Nothing was discarded.")
+        for section in SYSTEMS:
+            sheet["fields"].setdefault(section, "")
+        sheet["medications"] = []
+    validate_vault(candidate)
+    return candidate
+
+
+def apply_medications(sheet: dict, rows: list[dict]) -> dict:
+    """Replace the previous medication import, never append duplicate orders.
+
+    System notes remain separate, so reimporting/remapping cannot erase them.
+    Each source order remains separate even when names/doses repeat.
+    """
+    candidate = deepcopy(sheet)
+    candidate["medications"] = deepcopy(rows)
+    validate_sheet(candidate)
+    return candidate
+
+
+def fields_with_medications(sheet: dict) -> dict[str, str]:
+    validate_sheet(sheet)
+    result = dict(sheet["fields"])
+    for row in sheet["medications"]:
+        if not row["include"]:
+            continue
+        section = row["section"]
+        content = format_medication(row)
+        result[section] = (result[section].rstrip() + "\n" if result[section].strip() else "") + content
     return result

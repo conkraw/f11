@@ -6,7 +6,7 @@ import hmac
 import json
 import secrets
 from cryptography.fernet import Fernet, InvalidToken
-from models import ValidationError, validate_vault
+from models import ValidationError, validate_vault, upgrade_vault
 
 ITERATIONS = 600_000
 
@@ -52,7 +52,6 @@ def seal_vault(vault: dict, key: str) -> bytes:
 def open_vault(token: bytes, key: str) -> dict:
     try:
         vault = json.loads(Fernet(key.encode("ascii")).decrypt(token).decode("utf-8"))
-        validate_vault(vault)
-        return vault
+        return upgrade_vault(vault)
     except (InvalidToken, ValueError, TypeError, UnicodeError, KeyError):
         raise ValidationError("The archive could not be decrypted or validated. Check the original encryption key. Nothing was overwritten.") from None
