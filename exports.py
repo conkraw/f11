@@ -75,15 +75,36 @@ def _pdf_text(text: str) -> str:
     return text
 
 
-def handoff_pdf(sheet: dict) -> bytes:
+def handoffs_pdf(sheets: list[dict]) -> bytes:
+    """One landscape document. Each room starts on a new page, in memory only."""
     from reportlab.lib.pagesizes import landscape, letter
-    from reportlab.lib.styles import ParagraphStyle
     from reportlab.pdfgen import canvas
+    if not sheets or len(sheets) > 100:
+        raise ValueError("Select between 1 and 100 handoffs to print.")
+    for sheet in sheets:
+        validate_sheet(sheet)
+    if len({s["room"] for s in sheets}) != len(sheets):
+        raise ValueError("A room cannot be included twice in one print packet.")
+    output = BytesIO()
+    width, height = landscape(letter)
+    c = canvas.Canvas(output, pagesize=(width, height), pageCompression=1)
+    c.setTitle("PICU handoffs")
+    c.setAuthor("")
+    for position, sheet in enumerate(sheets, 1):
+        _draw_sheet(c, sheet, width, height, position, len(sheets))
+    c.save()
+    return output.getvalue()
+
+
+def handoff_pdf(sheet: dict) -> bytes:
+    return handoffs_pdf([sheet])
+
+
+def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, count: int = 1) -> None:
+    from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph
 
     fields = fields_with_medications(sheet)
-    output = BytesIO()
-    width, height = landscape(letter)
     margin = 21.6
     total_width = width - 2 * margin
     widths = [total_width * v for v in WIDTHS]
@@ -91,9 +112,6 @@ def handoff_pdf(sheet: dict) -> bytes:
     normal = ParagraphStyle('clinical', fontName='Times-Roman', fontSize=font_size, leading=leading,
                             splitLongWords=True, spaceAfter=0, allowWidows=1, allowOrphans=1)
     wide = ParagraphStyle('bands', parent=normal, fontSize=9, leading=10.5)
-    c = canvas.Canvas(output, pagesize=(width, height), pageCompression=1)
-    c.setTitle('PICU handoff')
-    c.setAuthor('')
 
     def paragraphs(text: str, style=normal):
         if not text.strip():
@@ -144,7 +162,7 @@ def handoff_pdf(sheet: dict) -> bytes:
             raise ValueError('The handoff is too long to export safely. Shorten it or export text.')
         c.setFont('Helvetica', 8)
         c.drawString(margin, height-margin-5, 'PICU HANDOFF | Room ' + sheet['room'] + (' | Continued' if page > 1 else ''))
-        c.drawRightString(width-margin, height-margin-5, 'Reference ' + sheet['id'][:8] + ' | Page ' + str(page))
+        c.drawRightString(width-margin, height-margin-5, 'Sheet ' + str(position) + '/' + str(count) + ' | Reference ' + sheet['id'][:8] + ' | Page ' + str(page))
         y = height-margin-17
         # Keep all eight columns, matching the supplied handoff. Continue long columns.
         main_needed = max((needed(q, w-8) for q, w in zip(queues, widths)), default=0)
@@ -198,5 +216,19 @@ def handoff_pdf(sheet: dict) -> bytes:
         c.showPage()
         if not any(queues) and not any(q for _,q in bands) and not any(q for _,q in access):
             break
-    c.save()
-    return output.getvalue()
+
+
+def handoffs_html(sheets: list[dict]) -> str:
+    if not sheets or len(sheets) > 100:
+        raise ValueError("Select between 1 and 100 handoffs to print.")
+    if len({s["room"] for s in sheets}) != len(sheets):
+        raise ValueError("A room cannot be included twice in one print packet.")
+    docs = [handoff_html(sheet) for sheet in sheets]
+    head = docs[0].split("</head>", 1)[0]
+    head += """<style>
+main{margin-bottom:24px}.printbar{font:15px Arial,sans-serif;max-width:11in;margin:0 auto 18px}
+.printbar button{padding:10px 16px;cursor:pointer}
+@media print{.printbar{display:none}main{break-after:page;margin:0}main:last-child{break-after:auto}}
+</style></head>"""
+    pages = ["<main>" + doc.split("<main>", 1)[1].split("</main>", 1)[0] + "</main>" for doc in docs]
+    return head + '<body><div class="printbar"><button onclick="window.print()">Print all handoffs</button> Landscape Letter. Each room starts on a new page.</div>' + "".join(pages) + "</body></html>"

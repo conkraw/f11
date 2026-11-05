@@ -42,6 +42,14 @@ def equip(app,monkeypatch):
     st.button=lambda *a,**k:False
     st.form_submit_button=lambda *a,**k:False
     st.download_button=lambda label,data,*a,**k:downloads.append((label,data))
+    def multiselect(label,options,**kwargs):
+        key=kwargs.get('key')
+        if key:
+            assert key not in keys
+            keys.add(key)
+            return st.session_state.get(key,[])
+        return kwargs.get('default',[])
+    st.multiselect=multiselect
     st.sidebar=Panel(st)
     comp=types.ModuleType('streamlit.components')
     v1=types.ModuleType('streamlit.components.v1')
@@ -64,7 +72,7 @@ def test_render_combined_import_preview(app,monkeypatch):
     open_room(app)
     ss=app.st.session_state
     ss['paste']=(Path(__file__).parents[1]/'examples/synthetic_smartphrase.txt').read_text()
-    app.read_sections()
+    app.create_handoff()
     equip(app,monkeypatch)
     app.handoff_page(None)
 
@@ -74,11 +82,9 @@ def test_render_imported_meds_and_new_pending_same_room(app,monkeypatch):
     ss=app.st.session_state
     source=(Path(__file__).parents[1]/'examples/synthetic_smartphrase.txt').read_text()
     ss['paste']=source
-    app.read_sections()
-    ss['med_import_reviewed']=True
-    app.apply_medication_import()
+    app.create_handoff()
     ss['paste']=source
-    app.read_sections()
+    app.create_handoff()
     equip(app,monkeypatch)
     app.handoff_page(None)
 
@@ -99,7 +105,35 @@ def test_session_upgrade_preserves_unsaved_notes(app):
     ss.update(vault=old,drafts={'P4102':deepcopy(old['rooms']['P4102'])},base_sheets={'P4102':deepcopy(old['rooms']['P4102'])})
     ss['drafts']['P4102']['fields']['Respiratory']='Unsaved old draft'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==2
+    assert ss['vault']['schema']==3
     assert ss['drafts']['P4102']['fields']['Respiratory']=='Unsaved old draft'
     assert ss['base_sheets']['P4102']['fields']['Respiratory']==''
     assert ss['drafts']['P4102']['medications']==[]
+
+
+def test_render_print_all_saved_and_draft(app,monkeypatch):
+    open_room(app)
+    ss=app.st.session_state
+    ss['drafts']['P4102']['fields']['Diagnoses']='Synthetic first'
+    app.save_room(None)
+    open_room(app,'P4104')
+    ss['drafts']['P4104']['fields']['Diagnoses']='Synthetic second'
+    downloads=equip(app,monkeypatch)
+    app.print_all_page(None)
+    assert any(isinstance(data,bytes) and data.startswith(b'%PDF') for _,data in downloads)
+
+
+def test_render_admin_without_open_handoff(app,monkeypatch):
+    equip(app,monkeypatch)
+    app.admin_page(None)
+
+
+def test_return_to_print_page_selects_all_after_widget_cleanup(app,monkeypatch):
+    open_room(app)
+    ss=app.st.session_state
+    ss['drafts']['P4102']['fields']['Diagnoses']='Practice'
+    ss['print_room_options']=['P4102']
+    ss.pop('print_rooms',None)
+    equip(app,monkeypatch)
+    app.print_all_page(None)
+    assert ss['print_rooms']==['P4102']

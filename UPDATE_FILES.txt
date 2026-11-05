@@ -1,0 +1,29 @@
+PICU Handoff SmartPhrase version 3
+
+Upload the whole contents of this folder into your existing CODE repository.
+Replace matching files. Keep app.py as the Streamlit entry point.
+
+New required source files:
+  ventilation.py
+  importing.py
+  batching.py
+
+Updated required source files:
+  app.py
+  models.py
+  medications.py
+  exports.py
+
+Keep the other supplied files together, including parser.py, security.py,
+github_store.py, requirements.txt, examples/ and .streamlit/config.toml.
+
+No new dependency was added beyond the medication/landscape version.
+Your previous version already uses ReportLab for PDF generation.
+
+Keep your Streamlit Secrets, app password hash, encryption key, GitHub token,
+private data repository and branch unchanged. Do not generate new secrets.
+Do not upload .streamlit/secrets.toml or downloaded clinical handoffs.
+
+Save open work before updating and reboot the Streamlit deployment afterward.
+Old archive schemas 1 and 2 are read and migrated without clearing handoffs.
+The next successful save writes schema 3 with the existing key and file path.

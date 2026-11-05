@@ -31,10 +31,11 @@ def match_name(value: str) -> str:
 
 
 def suggested_key(name: str) -> str:
-    """A suggestion only, never an automatically saved/clinically inferred rule."""
+    """A stable name prefix, used only after a user chooses a destination."""
     head = re.split(r"\(|\d", re.sub(r"^\[[^]]+\]\s*", "", name), maxsplit=1)[0].strip()
     head = re.split(r"\s+(?:in\s+(?:NaCl|sodium chloride)|injection|infusion|syringe|nebulizer|ophthalmic|cream)\b", head, maxsplit=1, flags=re.I)[0]
     head = re.sub(r"\s+(?:NCS|PF|neo/ped)$", "", head, flags=re.I).strip(" ,-:;")
+    head = re.sub(r"\s+continuous$", "", head, flags=re.I).strip()
     return normalized(head or name)
 
 
@@ -225,3 +226,28 @@ def parse_medications(block: str, rules: list[dict] | None = None) -> Medication
     if result.rows and result.empty_confirmed:
         result.error = "The block says no medications but also contains orders. Check the source before importing."
     return result
+
+
+def rule_for_inline_mapping(name: str, rules: list[dict]) -> tuple[str, str]:
+    """Reuse the most specific matching rule, else a dose-free name prefix.
+
+    Prefer a more-specific generated formulation prefix over a broad matched
+    prefix (for example heparin flush rather than heparin). Exact rules remain
+    editable without creating a conflicting lower-priority rule.
+    """
+    name_key = match_name(name)
+    matches = []
+    for rule in rules:
+        term = normalized(rule["name"])
+        if rule["match"] == "exact":
+            match = name_key == term
+        else:
+            match = name_key == term or (name_key.startswith(term) and len(name_key) > len(term) and not name_key[len(term)].isalnum())
+        if match:
+            matches.append(rule)
+    suggested = suggested_key(name)
+    if matches:
+        best = max(matches, key=lambda r: (r["match"] == "exact", len(normalized(r["name"]))))
+        if best["match"] == "exact" or len(normalized(best["name"])) >= len(suggested):
+            return best["name"], best["match"]
+    return suggested, "prefix"

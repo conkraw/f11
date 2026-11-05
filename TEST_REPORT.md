@@ -1,23 +1,23 @@
-# Validation report
+# Validation report: version 3
 
-## Completed
+## Executed checks
 
-147 automated tests passed in the final regression run.
+The 199-test suite passed again before this repository update, with no tests skipped. Command: PYTHONPATH=. python -m pytest -q --disable-warnings.
 
-Coverage includes the previous diagnosis parser, password hashing, encryption, room handling, save conflicts, medication parsing and formatting, provider/Last Admin exclusion, blank-dose infusion rate fallback, separate scheduled and PRN orders, no silent duplicate-order removal, case-insensitive mapping, specific-prefix priority, explicit medication replacement, room isolation, schema-1 encrypted archive migration, and schema-2 encrypted save/load round trips.
+All runtime source files and tests uploaded in this update were compared by their Git blob hashes with the locally tested release. The starting main commit was 0d099a8ce99ac94d25eee1e6c45bd50586637d8a. Unrelated repository files were preserved.
 
-A separate acceptance check used the nine medication rows supplied for this change. It detected all nine orders, preserved both albuterol frequencies, retained the ordered ceftriaxone Dose column, kept the topical dose blank, omitted the intermittent zero pump rate from its handoff wording, and used 40 mL/hr for the continuous fluid with a blank Dose. The clinical input and provider names are not bundled in this package.
+Coverage includes divider parsing, diagnosis import, tab-separated medication parsing, dose/rate preservation, provider omission, unmapped medication behavior, immediate mapping persistence, rollback after failed mapping writes, Admin editing with no handoff open, exact ventilation field order, exclusion of CPAP/BiLevel labels, missing and conflicting settings, preservation of manual notes, repeated imports, room switching, schema 1/2 migration, encryption and tamper rejection, expected-SHA GitHub conflicts with mocked responses, save-all atomicity, multi-room printing, long-content pagination and HTML escaping.
 
-PDF tests verified landscape Letter dimensions, required headings, long-column continuation, long lower-band and access-field continuation, retention of every unique test text token exactly once, and page-bound geometry for the long-column case. The synthetic landscape PDF was rendered to an image and visually inspected for overlaps and clipping.
+Callback and page-render tests use a minimal Streamlit stub. They exercise application functions, widget keys, render branches and generated downloads. They do not implement the complete Streamlit widget or browser lifecycle.
 
-Full handoff and Admin page-render code was exercised using a widget stub, including both draft and pending medication editors on one page. Callback tests cover applying diagnoses/medications in either order, confirmation before replacement, review gating, mapping changes, and new-patient resets.
+PDF tests verify landscape Letter dimensions, separate pages for different rooms, ventilation before the respiratory medication entries, and continuation pages without dropped or duplicated sentinel text. The bundled two-room PDF and HTML are synthetic examples.
 
-## Not completed
+## Not tested here
 
-The actual Streamlit package could not be installed in this build environment because network package retrieval was unavailable. Stub tests do not reproduce the browser's full widget lifecycle and are not a substitute for a real Streamlit browser test.
+The actual hosted Streamlit application, a real browser session, and the application's authenticated connection to its private handoff-data repository were not tested. The GitHub connector was used only to inspect and update the public application-code repository. Deployment secrets and saved handoff data were not accessed.
 
-No live deployment, live GitHub read/write, institution-specific Epic clipboard behavior, clinical validation, or privacy/compliance assessment was performed. GitHub calls were simulated in tests. The sample PDF is a layout check, not proof of clinical correctness.
+These tests do not establish clinical validity, completeness of an Epic source record, identity of a room occupant, or privacy/regulatory compliance. Mode-name matching is only a display rule. External hosting, backups, platform logs, operating-system behavior and browser behavior were not audited.
 
-## Deployment check
+## First deployment check
 
-Use Load synthetic example first. Expect two synthetic diagnosis lines and nine medication orders. All medications begin in Other Medications with an empty mapping dictionary. Save a test mapping for acetaminophen to Neurologic and for sodium acetate to FEN / GI, apply/review/save the room, then reopen it to check persistence. Confirm that your existing deployment's encrypted archive and Secrets are preserved before entering clinical information.
+Keep existing Secrets and encryption key. Sign in, select a room, load the synthetic example and click Create / update handoff. Choose a medication system, open Admin and confirm the rule is present. With GitHub enabled, sign out and sign in again to test rule persistence. Create another room and use Print all to test the combined PDF. Save handoffs explicitly to test durable content storage.

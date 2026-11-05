@@ -1,40 +1,42 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PICU Handoff: medication update</title><style>
-body{font:17px/1.6 system-ui,Arial,sans-serif;color:#172c3d;background:#eef2f6;margin:0;padding:28px}main{max-width:950px;margin:auto;background:white;padding:34px 44px;border:1px solid #d5dee5}h1{font-size:32px;line-height:1.2}h2{font-size:23px;margin-top:28px}code{background:#f1f5f7;padding:2px 5px}pre{background:#f1f5f7;padding:14px;white-space:pre-wrap}.note{background:#edf5f6;border-left:4px solid #245766;padding:14px 20px}.warning{background:#fff5e6;border-left:4px solid #975a16;padding:14px 20px}li{margin:10px 0}a{color:#245766}table{border-collapse:collapse;width:100%;font-size:15px}td,th{border-bottom:1px solid #d5dee5;padding:10px;text-align:left}small{color:#536879}@media(max-width:680px){body{padding:10px}main{padding:22px}}</style></head><body><main>
-<small>PICU SMARTPHRASE / VERSION 2</small><h1>Medications and a landscape handoff</h1>
-<p>This updates your working web app. It does not require another Python installation or the older local OCR packages.</p>
-<div class="note"><p>Keep your existing Streamlit Secrets, including the password hash and encryption key. Keep the current private data repository. Do not generate new secrets for this update.</p></div>
-<h2>Update the existing app</h2>
-<ol><li>Save your open handoffs. Extract this ZIP.</li><li>Upload the contents of this folder to the existing application code repository. Replace matching files and add <code>medications.py</code>. Include the updated <code>requirements.txt</code>, which adds ReportLab for PDF export.</li><li>Keep <code>app.py</code> as the entry point and keep your current deployment Secrets unchanged. Never upload <code>.streamlit/secrets.toml</code> or clinical records.</li><li>Restart/reboot the deployment after dependencies install. Sign in and select <code>Load synthetic example</code> for the first test.</li></ol>
-<p>The existing encrypted archive is read with the same key and path. Its contents are upgraded in memory. Your next explicit save writes the new schema with medication records and mapping rules. This does not create a new data repository or clear old handoffs. Avoid rolling back only some application files after saving the new schema.</p>
-<h2>Use the medication import</h2>
-<ol><li>Open a room and paste the complete SmartPhrase or its paired A/B blocks. Copy directly from Epic so tabs between table columns are preserved.</li><li>Click <code>Read Diagnoses + Medications</code>. Review and apply diagnoses in the first tab. Open <code>Medications</code> to review the detected orders.</li><li>Each line shows its complete handoff wording and destination. Expand an order to correct the name, dose, route, frequency, recorded rate, destination, or custom wording. Check the review box, then click <code>Apply medications to handoff</code>.</li><li>In <code>Admin</code>, select a detected medication, choose its system, confirm the rule contains no patient information, and save it. The optional checked setting reapplies all saved mappings to the current room's draft and import preview. This resets per-order destination overrides in that room. It does not save the clinical handoff.</li><li>Review the landscape preview and save the handoff to encrypted GitHub. Download the landscape PDF for printing.</li></ol>
-<h2>What is recognized</h2>
-<table><thead><tr><th>Source</th><th>Result</th></tr></thead><tbody>
-<tr><td>Bullet followed by medication table columns</td><td>One separate order with medication/formulation, Dose, Route, and Frequency.</td></tr>
-<tr><td>Provider and Last Admin</td><td>Not retained in the parsed medication record or included in the generated handoff.</td></tr>
-<tr><td>Continuous fluid with blank Dose and a Last Rate</td><td>Complete fluid description followed by <code>@ rate</code>. No dose is inferred. The timestamp remains available in the editor.</td></tr>
-<tr><td>Medication without a saved system rule</td><td><code>Other Medications</code>.</td></tr>
-<tr><td>Scheduled and PRN orders for the same medication</td><td>Separate entries. No order is silently merged or discarded.</td></tr>
-<tr><td>Different product-label amount and ordered dose</td><td>The formulation remains visible and the actual Dose column is explicitly labeled. No dose is recalculated.</td></tr>
-</tbody></table>
-<p>A Last Rate of zero does not mean the app has determined that an order was discontinued. Rates are source records, not a live pump feed. Confirm them against Epic.</p>
-<h2>Save your own rules</h2>
-<p>For example, save <code>acetaminophen</code> to <code>Neurologic</code> and <code>sodium acetate</code> to <code>FEN / GI</code>. The starting mapping dictionary is empty, so you remain in control. Match by medication name, not by a patient's dose.</p>
-<p>Matching ignores capitalization and uses complete name prefixes, not fuzzy drug-name guesses. A more specific prefix takes priority. <code>heparin flush</code> can therefore have a different destination from <code>heparin</code>. An exact complete-name rule has the highest priority.</p>
-<p>Changing mappings does not silently rewrite every saved room. It updates the current draft if you select that option, or applies on the next import. Save the reviewed handoff explicitly.</p>
-<h2>Landscape output</h2>
-<p>The handoff has eight top columns: PATIENT, NEURO, RESP, CARDIAC, FEN / GI, HEME, ID, and LABS. Other Medications spans the width below them. Lower rows provide laboratory trends, goals/follow-up, airway, last intubation, access, and drains/tubes. Longer entries continue onto additional landscape pages rather than being cut off.</p>
-<p><a href="examples/landscape_handoff_example.pdf">Open the synthetic PDF layout example</a> or <a href="examples/landscape_handoff_example.html">open its printable HTML version</a>.</p>
-<p>Only Diagnoses and Medications are automatically imported at this stage. The remaining clinical sections and the lab trend area are editable manually. No lab fishbone values or ventilation settings are invented from the sample.</p>
-<h2>Existing notes and reimports</h2>
-<p>System notes and medication records are kept separately. Replacing an imported medication list does not erase your notes. Reimporting requires a confirmation rather than accumulating repeated copies. The per-order destination dropdown affects that order only. Admin rules affect future matching entries.</p>
-<h2>Privacy and deployment limits</h2>
-<div class="warning"><p>Use synthetic information until your institution approves both hosting and storage. The host receives pasted text before encryption. A private repository, shared app password, and encryption alone do not establish clinical approval or HIPAA compliance.</p></div>
-<p>Clinical handoff fields, structured medication entries, room data, and mapping rules are encrypted before a GitHub save. The original pasted SmartPhrase is not saved into the archive. It may remain in browser/server session memory until cleared. Exported PDFs/HTML/text are unencrypted. Git history retains earlier encrypted versions.</p>
-<p>No patient-name or MRN field was added. Other clinical details and room assignments can still identify a patient. Always confirm the current patient in Epic, especially after a room changes occupants.</p>
-<h2>First-time deployment only</h2>
-<p>For a new app, initialize a private code repository and a separate private data repository. Use the included <code>create_secrets.py</code> or <code>Generate_Secrets.ipynb</code> helper to create a password hash and an independent encryption key. Keep the key in an approved password manager. Give a fine-grained GitHub token Contents read/write access only to the data repository.</p>
-<p>Set <code>app.py</code> as the Streamlit entry point, add the generated configuration to deployment Secrets, and start with <code>clinical_use_approved = false</code>. There is one app sign-in password. Admin does not have a second password. These helpers are not needed to update your current working deployment.</p>
-<h2>Validation</h2><p>147 automated checks passed, including medication parsing, encrypted archive migration, callbacks, synthetic page-render stubs, and multi-page PDF tests. The example PDF was rendered and visually checked. The actual Streamlit browser interface and live GitHub connection were not tested here. See <code>TEST_REPORT.md</code>.</p>
-<p><a href="https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management">Streamlit Secrets documentation</a> | <a href="https://docs.github.com/en/rest/repos/contents">GitHub Contents API</a></p>
-</main></body></html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PICU Handoff version 3</title><style>body{font:17px/1.6 system-ui,Arial,sans-serif;color:#172c3d;background:#eef2f6;margin:0;padding:28px}main{max-width:940px;margin:auto;background:white;padding:36px 44px;border:1px solid #d5dee5}h1{font-size:32px;line-height:1.2}h2{font-size:23px;margin-top:30px}code,pre{background:#f1f5f7;font-family:Consolas,monospace}code{padding:2px 5px}pre{padding:14px;white-space:pre-wrap;font-size:14px}.note{background:#edf5f6;border-left:4px solid #245766;padding:14px 20px}a{color:#245766}li{margin:10px 0}small{color:#536879}@media(max-width:680px){body{padding:10px}main{padding:22px}}</style></head><body><main><small>PICU SMARTPHRASE / VERSION 3</small>
+<h1>Remember mappings. Import ventilation. Print all rooms.</h1>
+<p>This is a complete update to your existing web app, not another local installation.</p>
+<div class="note"><p>Keep your current Streamlit Secrets, password, encryption key and private data repository. Do not generate new secrets.</p></div>
+<h2>Update the app</h2>
+<p>Save your open work. Extract the ZIP and upload the contents of this folder to your existing application code repository, replacing matching files. Include the new <code>ventilation.py</code>, <code>importing.py</code> and <code>batching.py</code> files. Keep <code>app.py</code> as the entry point and reboot the deployment.</p>
+<p>No new dependencies are needed beyond the previous medication/landscape version. Existing saved notes and mappings migrate automatically. The archive path and encryption key stay unchanged. The next successful save writes the new schema. Do not roll back only some files afterward.</p>
+<h2>Use the simplified workflow</h2>
+<p>Select a room, paste the SmartPhrase and click <code>Create / update handoff</code>. Diagnoses, medications and the requested ventilation block go straight into the editable draft. There are no review or replacement-confirmation checkboxes. Incomplete or conflicting input still produces an error rather than a silent partial import.</p>
+<p>Only included A/B/C sections are updated. Other imported sections and manually entered system notes are kept. Click <code>Save handoff</code> to store the room's content.</p>
+<h2>Medication mappings</h2>
+<p>Choose a system beside an order in the Medications tab. That choice is immediately saved as a medication-name rule in encrypted GitHub and appears in Admin. It also updates matching orders in the open drafts and applies to future imports. The rule remembers the destination, not the dose.</p>
+<p>Unmapped orders stay in Other Medications. Admin lets you change or remove saved rules even without an open handoff. No second Admin password or confirmation checkbox is required. A failed save is shown as an error, not as a remembered mapping.</p>
+<h2>Ventilation at the top of RESP</h2>
+<p>For the supplied supported mode, this is the automatic block, in the requested order:</p>
+<pre>Vent Mode: Volume Targeted Pressure Control - PS
+Resp Rate (Set): 16
+Vt (Set, mL): 160 mL
+PEEP (cm H2O): 5 cm H2O
+Mean Airway Pressure: 10
+Insp Time (sec): 1 sec
+PIP Observed (cm H2O): 24 cm H2O
+Pressure Support (cm H2O): 10 cm H20
+Trigger Sensitivity Flow (L/min): 0.4 L/min
+FiO2 (%): 35 %
+-----</pre>
+<p>Respiratory notes and medications follow the separator. No equipment, billing, heater, rise-time or minute-ventilation lines are added. Missing fields stay omitted, without substituting target tidal volume, observed rate or values from another section. Values remain editable.</p>
+<p>BiLevel, CPAP, BiPAP and NIV labels are excluded by this display rule. Unknown modes are not guessed. The heading alone is not enough. Mode matching controls display, not clinical determination of the airway.</p>
+<p>A valid excluded or empty C block clears the previous automatic block. A paste without C leaves it unchanged. Manual Respiratory notes and medications are preserved.</p>
+<h2>Print every handoff</h2>
+<p>Open <code>Print all</code> in the sidebar. All nonblank saved rooms and current drafts are selected initially. Deselect any rooms you do not need. Each room is included once, using its current draft when one exists.</p>
+<p>Click <code>Download all selected handoffs (PDF)</code>. Open the PDF and print it. Each room begins on a new landscape page, with continuation pages when needed. Printing does not save drafts. <code>Save all open handoffs</code> stores them together.</p>
+<p>The HTML download has a <code>Print all handoffs</code> button when opened in a browser. PDF provides the most predictable pagination.</p>
+<p><a href="examples/all_handoffs_example.pdf">View the two-room synthetic PDF example</a> or <a href="examples/all_handoffs_example.html">view the printable HTML example</a>.</p>
+<h2>What remains manual</h2>
+<p>Non-invasive ventilation, vitals, cultures, labs, intake/output, nutrition and wounds are not automatically imported yet. No data is invented for those sections.</p>
+<h2>Data and deployment</h2>
+<p>The app sign-in and encrypted private GitHub archive remain. The full pasted SmartPhrase is not saved in that archive, and no external OCR or AI service is called. Successful import clears the paste field, but this is not secure erasure of server/browser memory. Downloads are unencrypted, and earlier encrypted saves remain in Git history.</p>
+<p>Use synthetic information unless hosting and storage are institutionally approved. Omitting names and MRNs does not automatically de-identify room-linked clinical text. See README.md for storage and retention details.</p>
+<h2>Validation</h2>
+<p>199 automated checks passed. The two-room landscape PDF was rendered and both pages were visually checked. Live Streamlit browser behavior and an authenticated live GitHub connection were not tested here. Start with <code>Load synthetic example</code> after deployment. Full details are in TEST_REPORT.md.</p>
+<p><a href="https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state">Streamlit callback documentation</a> | <a href="https://docs.github.com/en/rest/repos/contents">GitHub Contents API</a></p></main></body></html>
