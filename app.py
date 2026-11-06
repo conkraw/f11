@@ -116,6 +116,12 @@ def update_field(room: str, section: str, key: str) -> None:
         st.session_state["drafts"][room]["fields"][section] = st.session_state[key]
 
 
+def load_taper_sample() -> None:
+    if require_session():
+        st.session_state["paste"] = (ROOT / "examples" / "synthetic_medication_taper.txt").read_text(encoding="utf-8")
+        st.session_state.pop("import_result", None)
+
+
 def load_labs_sample() -> None:
     if require_session():
         st.session_state["paste"] = (ROOT / "examples" / "synthetic_labs_vitals.txt").read_text(encoding="utf-8")
@@ -506,7 +512,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6 | Labs, vitals and hidden medications")
+        st.caption("Version 6.1 | Medication taper parsing fix")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -679,6 +685,7 @@ def handoff_page(store: GitHubVault | None) -> None:
         left, right = st.columns(2)
         left.button("Load synthetic example", on_click=load_sample)
         left.button("Load labs / vitals example", on_click=load_labs_sample)
+        left.button("Load medication-taper example", on_click=load_taper_sample)
         left.button("Load nasal-cannula example", on_click=load_niv_sample)
         right.button("Clear pasted text", on_click=clear_paste)
         with st.form("parse_smartphrase"):

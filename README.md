@@ -1,14 +1,30 @@
-# PICU Handoff, Version 6
+# PICU Handoff, Version 6.1
 
 Dated lab trees, routed vital signs, and reversible medication hiding. This is the complete web-based application. It retains the Version 5 respiratory-support handling, remembered system mappings, encrypted GitHub storage, editable landscape handoffs and Print all.
 
+## Medication taper fix
+
+Version 6.1 fixes the Epic `Followed by` rows that previously added an eighth column to the preceding medication and stopped the full import. The connector is now preserved as `Followed by:` on the next, separate medication entry. It is not interpreted as a new medication or attached to a discarded Provider/Last Admin cell.
+
+`[START ON ...]` annotations remain in the editable name, encrypted handoff and printed output exactly as supplied. Each taper step keeps its own dose, route and frequency. The app does not combine steps, calculate a schedule, infer an end date, or decide which step is current from the server date.
+
+Saved drug-to-system mappings now match scheduled orders without being blocked by start-date prefixes. Known hold/discontinued labels also remain visible. Mapping suggestions omit these annotations and the sequence marker. An unknown bracket annotation is not silently removed for drug-name matching.
+
+Hiding a dated step is specific to its complete name and start-date annotation. It does not hide another dated step with the same formulation. An explicit broad prefix rule in Admin can still cover a drug family. The saved rule ignores the `Followed by:` display prefix but keeps the start date for exact hiding.
+
+Standalone connectors, tab-indented connectors, a connector in an extra final tab cell, normal Windows line endings, and clearly tabular rows without bullets are supported. Ambiguous or incomplete sequences, missing medication columns and unrelated extra columns still stop the import without changing the existing draft. Arbitrary future Epic formats are not guaranteed to work.
+
+Use `Load medication-taper example`, then `Create / update handoff`, for a synthetic test. The example includes three separate steroid steps, an infusion, blank respiratory blocks, vitals and laboratory results. An empty C/D section is valid: it supplies no respiratory device. The blue respiratory and lab notices are informational, not medication-import failures.
+
+The archive stays at schema 6. No password reset, key replacement, settings reset or new runtime dependency is needed. Existing lab trees, vital routing, hidden medications, respiratory support and Print all remain included.
+
 ## Update a working deployment
 
-Save open handoffs. Extract the complete ZIP and copy the contents of the PICU_Handoff_v6_Labs_Vitals folder into your existing application code repository, replacing matching files. Keep app.py at the repository root. Include the new labs.py, vitals.py and lab_layout.py files and all other supplied Python files. Restart the deployment after the upload.
+Save open handoffs. Extract the complete ZIP and copy the contents of the PICU_Handoff_v6_1_Taper_Fix folder into your existing application code repository, replacing matching files. Keep app.py at the repository root. Include the new labs.py, vitals.py and lab_layout.py files and all other supplied Python files. Restart the deployment after the upload.
 
 Keep your current Streamlit Secrets, app password, encryption key, GitHub token and private data repository unchanged. Do not run create_secrets.py or Generate_Secrets.ipynb again for an update. No new runtime dependencies are needed beyond the existing ReportLab/Streamlit requirements. The notebook and secrets helper are only for a first-time deployment.
 
-The sidebar should say: Version 6 | Labs, vitals and hidden medications.
+The sidebar should say: Version 6.1 | Medication taper parsing fix.
 
 This package does not upload or change your repository for you. It does not reset stored medication assignments or saved handoffs. Schema 1-5 archives migrate in memory to schema 6, and the next successful save writes schema 6 with the same key. Update all application files together. Do not downgrade after saving with the new schema.
 

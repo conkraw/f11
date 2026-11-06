@@ -1,19 +1,23 @@
-# Version 6 validation
+# Version 6.1 validation
 
-## Executed
+## Tests actually run
 
-377 automated tests passed in this build, using Python 3.13 and the installed ReportLab library. The run was `PYTHONPATH=. pytest -q --disable-warnings`. No tests were skipped in that run.
+The unmodified Version 6 package passed all 377 existing tests in this environment before changes. A minimal reproduction of the supplied taper failed on medication rows 2 and 3 with the same column-separation error shown in the screenshot.
 
-The existing respiratory, medication, encryption, migration, parser and print tests were retained. Historical schema fixtures were updated to construct genuine old structures without new fields. An old test that verified unimplemented lab text was not saved now uses the still-unimplemented culture block instead.
+After the fix, 432 automated tests passed using `PYTHONPATH=. pytest -q --disable-warnings`. This includes the original 377 checks and 55 additional taper-related cases. No tests were skipped. See tests/test_medication_tapers.py.
 
-New coverage includes per-component latest/preceding results, date sorting, same-date source-order preservation, optional times, missing/invalid dates, flag/unit preservation, no invented glucose, separate arterial and venous gases, lactate routing, unknown analyte retention, blank G replacement, independent E/G updates, all-or-nothing malformed imports, K/L/M boundaries, vital routing/priority, ADS Override Pull retention, exact-formulation hide/restore, future import persistence, failed visibility-write rollback, no-handoff Admin restore, editing callbacks, schema 5 migration, encrypted round trips, HTML escaping, lab-only rooms, multi-room PDF printing and long-result pagination.
+New coverage includes tab-indented/standalone/bulleted Followed by connectors, a final tab-cell connector, missing trailing empty columns, blank topical doses, wrapped medication names, Windows/Mac/Unix line endings, explicitly tabular bulletless orders, preserved start dates and order sequence, date-independent drug mapping, unchanged unknown annotations, exact dated hide/restore rules, broad Admin visibility rules, malformed/orphan connector rejection, unchanged prior drafts on errors, repeated imports, encryption round trips without a schema change, inline mapping callbacks, synthetic-example loading, PDF/HTML/text date and frequency retention, and multi-room printing.
 
-A separate integration check generated a synthetic encrypted archive using the unmodified Version 5 package. Version 6 opened it with the same key and preserved manual notes, medication mappings, BiPAP and nasal cannula entries, then saved/reopened schema 6 successfully. The supplied same-date hemoglobin/potassium and mixed-date preceding-result pattern was checked separately without including the complete source clinical record in the package.
+A separate local-only reproduction checked both supplied medication lists with provider and Last Admin values replaced by sentinels. The first retained all 12 orders, including the three distinct dexamethasone steps and their dates/frequencies. The second retained all 36 orders, including blank topical doses, enteral routes, elemental doses and continuous/PRN infusions. Names, doses, routes, frequencies and Last Rate values matched their source columns. C/D patterns were checked in the same import: blank respiratory blocks in the first and documented invasive ventilation in the second. These source-pattern reproductions are not bundled clinical records.
 
-The two-page synthetic PDF was rendered to PNG and visually inspected. CBC/BMP values, component dates, abnormal flags, graph labels, branch panels, vital-sign order, hidden-medication exclusion and page continuation were checked. PDF tests also verify landscape Letter dimensions, retention of long sentinel text and text within page bounds.
+The synthetic taper preview was generated from the same application export functions used by the app. Its landscape PDF was rendered and inspected. Start-date/sequence labels and medication frequencies were checked in PDF text as well as HTML/text exports.
 
-## Not executed
+## Storage compatibility
 
-The complete real Streamlit browser lifecycle, deployment startup, live app sign-in and authenticated private GitHub storage were not tested. Streamlit installation was attempted but failed because the build environment could not resolve the package host. UI tests therefore use widget stubs and callbacks, not a real browser. GitHub write tests use simulated responses, not a live repository. No GitHub repository was modified for this task.
+This fix retains schema 6 and does not alter security.py, github_store.py, models.py, the encrypted data filename, dependency requirements, or secrets configuration. A newly saved taper handoff opens with the same existing encryption mechanism. The previous migration, encryption/tamper and mocked GitHub conflict tests remain in the passing suite. No real handoff archive or account secret was read.
 
-These checks do not establish completeness or clinical correctness of Epic source records, device status, specimen pairing, reference intervals, de-identification or institutional approval. The application formats documented information rather than making treatment decisions.
+## Limits
+
+Streamlit is not installed in this build environment. UI and callback checks use the existing test stubs, not a complete live Streamlit browser lifecycle. No deployment, real login, live GitHub save or private data-repository connection was tested. No GitHub repository was changed.
+
+The fix addresses the documented clipboard patterns, not every possible future Epic format. Unknown/malformed medication structure still fails without applying a partial import. The app displays source scheduling labels rather than determining current treatment, doses or taper timing. Test the supplied synthetic example after deployment, then compare any clinical handoff against its source.
