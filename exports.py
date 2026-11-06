@@ -6,6 +6,7 @@ Long content continues onto additional landscape pages instead of being clipped.
 from __future__ import annotations
 from html import escape
 from io import BytesIO
+import re
 from models import SYSTEMS, fields_with_medications, validate_sheet
 from lab_layout import laboratory_flowables, laboratory_html, LabRow
 
@@ -55,16 +56,16 @@ def handoff_html(sheet: dict) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>PICU handoff</title>
 <style>
 *{box-sizing:border-box}body{margin:0;padding:18px;background:#eee;color:#111;font-family:"Times New Roman",serif}
-main{width:11in;min-height:8.5in;margin:0 auto;background:white;padding:.28in .30in}
-.meta{font:10px Arial,sans-serif;margin-bottom:9px;display:flex;justify-content:space-between}
-table{border-collapse:collapse;width:100%;table-layout:fixed}th{font-size:10pt;text-align:center;padding:3px;border-bottom:1px solid black}
-.systems td{border:1px solid black;vertical-align:top;height:4.05in;padding:4px;font-size:8.5pt;line-height:1.08}
-.content{white-space:pre-wrap;overflow-wrap:anywhere}.band{border:1px solid black;border-top:0;font-size:9pt;line-height:1.15;padding:5px;min-height:24px}
-.access{font-size:9pt}.access td{vertical-align:top;border:1px solid black;border-top:0;padding:5px;overflow-wrap:anywhere}
-.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;align-items:start}.labcard{width:100%;height:auto;border:1px solid #888;break-inside:avoid}.labnote{font:7.5pt/1.2 "Times New Roman",serif;margin:3px 0}
-footer{font:9px/1.3 Arial,sans-serif;margin-top:7px}
-@page{size:letter landscape;margin:.3in}
-@media print{body{margin:0;padding:0;background:white}main{width:100%;min-height:0;padding:0;margin:0}.systems td{height:3.95in}thead{display:table-header-group}footer{font-size:7pt}.band{break-inside:auto}}
+main{width:11in;min-height:8.5in;margin:0 auto;background:white;padding:.25in}
+.meta{font:10px Arial,sans-serif;margin-bottom:5px;display:flex;justify-content:space-between}
+table{border-collapse:collapse;width:100%;table-layout:fixed}th{font-size:8pt;text-align:center;padding:2px;border-bottom:1px solid black}
+.systems td{border:1px solid black;vertical-align:top;height:auto;min-height:0;padding:3px;font-size:7.2pt;line-height:1.14}
+.content{white-space:pre-wrap;overflow-wrap:anywhere}.band{border:1px solid black;border-top:0;font-size:7.2pt;line-height:1.14;padding:3px;min-height:15px}
+.access{font-size:7.2pt}.access td{vertical-align:top;border:1px solid black;border-top:0;padding:3px;overflow-wrap:anywhere}
+.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;align-items:start}.labcard{width:100%;height:auto;border:1px solid #888;break-inside:avoid}.labnote{font:6.1pt/1.15 "Times New Roman",serif;margin:1px 0}.lab-summary{font:7.2pt/1.14 "Times New Roman",serif;overflow-wrap:anywhere;margin:1px 0}.lab-full{grid-column:1/-1}
+footer{font:6.1pt/1.2 Arial,sans-serif;margin-top:4px}
+@page{size:letter landscape;margin:.25in}
+@media print{body{margin:0;padding:0;background:white}main{width:100%;min-height:0;padding:0;margin:0}.systems td{height:auto}thead{display:table-header-group}footer{font-size:6.1pt}.band{break-inside:auto}}
 </style></head><body><main><div class="meta"><span>PICU HANDOFF | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | Saved (UTC): ' + escape(sheet['updated_at'] or 'Unsaved draft') + '''</span></div>
 <table class="systems"><colgroup>''' + cols + '</colgroup><thead><tr>' + headers + '</tr></thead><tbody><tr>' + cells + '</tr></tbody></table>' + ''.join(bands) + '<table class="access"><tbody><tr>' + access + '''</tr></tbody></table>
 <footer>Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted. Infusion rates reflect the source Last Rate, not a live feed.</footer>
@@ -103,131 +104,213 @@ def handoff_pdf(sheet: dict) -> bytes:
     return handoffs_pdf([sheet])
 
 
-def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, count: int = 1) -> None:
+# Print layout is independent of persisted handoff content or encryption schema.
+# Clinical text may shrink only within this explicit, bounded range. Beyond it,
+# pagination is used. Nothing is cropped or silently left out to force one page.
+PRINT_FONT_SIZES = (7.2, 7.0, 6.8, 6.5)
+PRINT_MARGIN = 18.0
+BAND_LABEL_HEIGHT = 10.0
+BAND_PADDING = 5.0
+
+
+def _queue_height(queue, width: float) -> float:
+    return sum(item.wrap(width, 100000)[1] for item in queue)
+
+
+def _clinical_markup(text: str) -> str:
+    value = escape(_pdf_text(text))
+    # Keep short score/value pairs together at a line boundary. This changes
+    # layout only, never the underlying score or stored text.
+    return re.sub(r"\b(SBS|RASS)\s+([+-]?\d+(?:\.\d+)?)", r"\1&#160;\2", value)
+
+
+def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph
-
     fields = fields_with_medications(sheet, include_lab_text=False)
-    margin = 21.6
-    total_width = width - 2 * margin
-    widths = [total_width * v for v in WIDTHS]
-    font_size, leading = 8.2, 9.4
-    normal = ParagraphStyle('clinical', fontName='Times-Roman', fontSize=font_size, leading=leading,
-                            splitLongWords=True, spaceAfter=0, allowWidows=1, allowOrphans=1)
-    wide = ParagraphStyle('bands', parent=normal, fontSize=9, leading=10.5)
+    total_width = page_width - 2 * PRINT_MARGIN
+    widths = [total_width * value for value in WIDTHS]
+    style = ParagraphStyle('compact-clinical', fontName='Times-Roman', fontSize=font_size,
+                           leading=font_size+1, splitLongWords=True, spaceAfter=0,
+                           allowWidows=1, allowOrphans=1)
 
-    def paragraphs(text: str, style=normal):
+    def paragraphs(text):
         if not text.strip():
             return []
-        return [Paragraph(escape(_pdf_text(line)) if line else '&#160;', style) for line in text.split('\n')]
+        return [Paragraph(_clinical_markup(line) if line else '&#160;', style)
+                for line in text.split('\n')]
 
-    queues = [paragraphs(patient_column(sheet, fields) if s is None else fields[s]) for _, s in COLUMNS]
-    band_items = [(k, fields[k]) for k in BOTTOM]
-    extra = '\n'.join(k + ': ' + fields[k] for k in ('Skin / Wounds', 'Tasks', 'Other') if fields[k].strip())
+    columns = [paragraphs(patient_column(sheet, fields) if section is None else fields[section])
+               for _, section in COLUMNS]
+    band_items = [(name, fields[name]) for name in BOTTOM]
+    extra = '\n'.join(name + ': ' + fields[name] for name in ('Skin / Wounds', 'Tasks', 'Other')
+                      if fields[name].strip())
     if extra:
         band_items.insert(2, ('Additional notes', extra))
-    bands = [(k, (laboratory_flowables(sheet["labs"], total_width-8) if k == "Lab Results / Trends" else []) + paragraphs(value, wide)) for k, value in band_items]
-    access = [(k, paragraphs(fields[k], wide)) for k in ACCESS_FIELDS]
+    bands = [(name, (laboratory_flowables(sheet['labs'], total_width-6, font_size)
+                    if name == 'Lab Results / Trends' else []) + paragraphs(text))
+             for name, text in band_items]
+    access = [(name, paragraphs(fields[name])) for name in ACCESS_FIELDS]
+    return {'font_size': font_size, 'leading': font_size+1, 'width': total_width,
+            'widths': widths, 'columns': columns, 'bands': bands, 'access': access}
 
-    def needed(queue, w):
-        return sum(p.wrap(w, 100000)[1] for p in queue)
+
+def _plan_heights(plan: dict) -> tuple[float, list[float], float]:
+    width = plan['width']
+    main = max(20, max((_queue_height(q, w-6) for q, w in zip(plan['columns'], plan['widths'])), default=0)+6)
+    bands = [max(15, _queue_height(q, width-6) + BAND_LABEL_HEIGHT + BAND_PADDING)
+             for _, q in plan['bands']]
+    access = max(24, max((_queue_height(q, width/4-6) for _, q in plan['access']), default=0)+14)
+    return main, bands, access
+
+
+def _select_pdf_plan(sheet: dict, width: float, height: float) -> tuple[dict, bool]:
+    # Meta line 16 pt, column headings 12 pt, footer 18 pt, plus both margins.
+    available = height - 2 * PRINT_MARGIN - 46
+    original = None
+    for size in PRINT_FONT_SIZES:
+        plan = _make_pdf_plan(sheet, width, size)
+        if original is None:
+            original = plan
+        main, bands, access = _plan_heights(plan)
+        if main + sum(bands) + access <= available + .01:
+            return plan, True
+    # Do not leave a multi-page handoff needlessly tiny when a single page is
+    # impossible. Revert to the default compact size and keep every item.
+    return original, False
+
+
+def print_layout_info(sheet: dict) -> dict:
+    """Patient-free layout status for UI/tests. No source content is returned."""
+    plan, fits = _select_pdf_plan(sheet, 792, 612)
+    return {'font_size': plan['font_size'], 'fits_one_page': fits}
+
+
+def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, count: int = 1) -> None:
+    plan, _ = _select_pdf_plan(sheet, width, height)
+    margin = PRINT_MARGIN
+    total_width = plan['width']
+    widths = plan['widths']
+    leading = plan['leading']
+    queues, bands, access = plan['columns'], plan['bands'], plan['access']
+    # Top of columns after the metadata and column headings.
+    column_top = height-margin-28
+    body_height = column_top-(margin+18)
 
     def draw_queue(queue, x, y, w, available):
-        """Draw into one cell and return leftover flowables. No clipping."""
         remaining = list(queue)
-        while remaining and available >= leading + .1:
-            p = remaining[0]
-            _, h = p.wrap(w, available)
+        while remaining and available > .01:
+            item = remaining[0]
+            _, h = item.wrap(w, available)
             if h <= available + .01:
-                p.drawOn(c, x, y-h)
+                item.drawOn(c, x, y-h)
                 y -= h
                 available -= h
                 remaining.pop(0)
-            else:
-                parts = p.split(w, available)
-                if not parts:
-                    break
-                first = parts[0]
-                _, h = first.wrap(w, available)
-                if h > available + .1:
-                    break
-                first.drawOn(c, x, y-h)
-                y -= h
-                available -= h
-                remaining = parts[1:] + remaining[1:]
+                continue
+            parts = item.split(w, available)
+            if not parts:
+                break
+            first = parts[0]
+            _, h = first.wrap(w, available)
+            if h > available + .01 or h <= 0:
+                break
+            first.drawOn(c, x, y-h)
+            y -= h
+            available -= h
+            remaining = parts[1:] + remaining[1:]
         return remaining
+
+    def minimum_band(queue):
+        if not queue:
+            return 15.0
+        minimum = BAND_LABEL_HEIGHT+BAND_PADDING+2*leading
+        # A fishbone row must fit intact. Reserve its preceding short note too,
+        # so a large Other Medications band cannot starve the lab row forever.
+        before = 0.0
+        for item in queue:
+            h = item.wrap(total_width-6, 100000)[1]
+            if isinstance(item, LabRow):
+                return min(195, max(minimum, before+h+BAND_LABEL_HEIGHT+BAND_PADDING))
+            before += h
+            if before > 30:
+                break
+        return minimum
 
     page = 0
     while True:
         page += 1
         if page > 150:
             raise ValueError('The handoff is too long to export safely. Shorten it or export text.')
-        c.setFont('Helvetica', 8)
+        c.setFont('Helvetica', 7)
         c.drawString(margin, height-margin-5, 'PICU HANDOFF | Room ' + sheet['room'] + (' | Continued' if page > 1 else ''))
-        c.drawRightString(width-margin, height-margin-5, 'Sheet ' + str(position) + '/' + str(count) + ' | Reference ' + sheet['id'][:8] + ' | Page ' + str(page))
-        y = height-margin-17
-        # Keep all eight columns, matching the supplied handoff. Continue long columns.
-        main_needed = max((needed(q, w-8) for q, w in zip(queues, widths)), default=0)
-        main_height = min(280 if sheet["labs"]["rows"] else 300, max((190 if sheet["labs"]["rows"] else 260) if page == 1 else 28, main_needed+8))
-        c.setLineWidth(.6)
+        c.drawRightString(width-margin, height-margin-5,
+                         'Sheet ' + str(position) + '/' + str(count) + ' | Reference ' + sheet['id'][:8] + ' | Page ' + str(page))
+        plan.update(columns=queues, bands=bands, access=access)
+        main_need, band_needs, access_need = _plan_heights(plan)
+        all_fit = main_need+sum(band_needs)+access_need <= body_height+.01
+        if all_fit:
+            access_height = access_need
+            band_heights = band_needs
+            # Use remaining space for the system columns, rather than imposing
+            # an arbitrary minimum that would push otherwise-fitting labs out.
+            main_height = body_height-sum(band_heights)-access_height
+        else:
+            access_height = min(54, access_need)
+            minimums = [minimum_band(q) for _, q in bands]
+            main_cap = max(24, body_height-access_height-sum(minimums))
+            main_height = min(main_need, main_cap, 250)
+            remaining_height = body_height-main_height-access_height
+            band_heights = []
+            for index, wanted in enumerate(band_needs):
+                later = sum(minimums[index+1:])
+                allowed = max(minimums[index], remaining_height-later)
+                actual = min(wanted, allowed)
+                band_heights.append(actual)
+                remaining_height -= actual
+
+        y = column_top+12
+        c.setLineWidth(.5)
         x = margin
-        for (label, _), w, q in zip(COLUMNS, widths, queues):
-            c.setFont('Times-Bold', 9)
-            c.drawCentredString(x+w/2, y-10, label)
-            c.line(x, y-14, x+w, y-14)
+        for (label, _), w in zip(COLUMNS, widths):
+            c.setFont('Times-Bold', 8)
+            c.drawCentredString(x+w/2, y-9, label)
+            c.line(x, y-12, x+w, y-12)
             x += w
-        y -= 14
+        y -= 12
         updated = []
         x = margin
         for w, q in zip(widths, queues):
             c.rect(x, y-main_height, w, main_height)
-            updated.append(draw_queue(q, x+4, y-4, w-8, main_height-8))
+            updated.append(draw_queue(q, x+3, y-3, w-6, main_height-6))
             x += w
         queues = updated
         y -= main_height
         updated_bands = []
-        # Reserve room for the access row and a readable footer on every page.
-        available_bands = y - (margin + 54)
-        for index, (label, queue) in enumerate(bands):
-            label_height = 12
-            reserve = (len(bands)-index-1) * 23
-            limit = max(23, min(450 if label == "Lab Results / Trends" else 105, available_bands-reserve))
-            bh = max(23, min(limit, needed(queue, total_width-10) + label_height+6))
-            if label == 'Lab Results / Trends' and any(isinstance(item, LabRow) for item in queue):
-                # Reserve only space actually usable on this page, not blank
-                # space left by a whole tree row that must move to the next page.
-                used = 0.0
-                capacity = max(0.0, limit-label_height-5)
-                for item in queue:
-                    _, item_height = item.wrap(total_width-8, capacity-used)
-                    if item_height + used > capacity + .01:
-                        break
-                    used += item_height
-                bh = max(23, min(limit, used+label_height+6))
+        for (label, queue), bh in zip(bands, band_heights):
             c.rect(margin, y-bh, total_width, bh)
-            c.setFont('Times-Bold', 9)
-            c.drawString(margin+4, y-10, label + (':' if page == 1 else ' (continued):'))
-            rest = draw_queue(queue, margin+4, y-label_height-2, total_width-8, bh-label_height-5)
+            c.setFont('Times-Bold', 7.5)
+            c.drawString(margin+3, y-8, label + (':' if page == 1 else ' (continued):'))
+            rest = draw_queue(queue, margin+3, y-BAND_LABEL_HEIGHT-2,
+                              total_width-6, bh-BAND_LABEL_HEIGHT-BAND_PADDING)
             updated_bands.append((label, rest))
             y -= bh
-            available_bands -= bh
         bands = updated_bands
         aw = total_width/4
-        ah = max(30, min(48, y-margin-18))
         updated_access = []
         for index, (label, queue) in enumerate(access):
             x = margin+index*aw
-            c.rect(x,y-ah,aw,ah)
-            c.setFont('Times-Bold',9)
-            c.drawString(x+4,y-10,label+':')
-            rest = draw_queue(queue,x+4,y-14,aw-8,ah-17)
-            updated_access.append((label,rest))
-        access=updated_access
-        c.setFont('Helvetica',6.7)
-        c.drawString(margin, margin-1, 'Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted.')
-        c.drawRightString(width-margin, margin-10, 'Last Rate is a recorded source value, not a live pump feed.')
+            c.rect(x, y-access_height, aw, access_height)
+            c.setFont('Times-Bold', 7.5)
+            c.drawString(x+3, y-8, label+':')
+            rest = draw_queue(queue, x+3, y-11, aw-6, access_height-14)
+            updated_access.append((label, rest))
+        access = updated_access
+        c.setFont('Helvetica', 6.1)
+        c.drawString(margin, margin+6, 'Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted.')
+        c.drawRightString(width-margin, margin-2, 'Last Rate is a recorded source value, not a live pump feed.')
         c.showPage()
-        if not any(queues) and not any(q for _,q in bands) and not any(q for _,q in access):
+        if not any(queues) and not any(q for _, q in bands) and not any(q for _, q in access):
             break
 
 

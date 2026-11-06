@@ -1,53 +1,56 @@
-# Version 6.2 validation
+# Version 6.3 validation
 
 ## Executed checks
 
-The unmodified Version 6.1 package passed all 432 tests before changes.
-The updated suite passes 515 tests, including 83 new cases in
-tests/test_neuro_weight.py. No tests were skipped. The suite was also run
-from the extracted delivery ZIP. Command: PYTHONPATH=. pytest -q --disable-warnings
+The unmodified Version 6.2 package passed all 515 tests before changes.
+The updated package passes 552 tests, including 37 new tests in
+tests/test_compact_pn.py. No tests were skipped. The complete suite was also rerun from the extracted delivery ZIP. Command:
+PYTHONPATH=. pytest -q --disable-warnings
 
-Historical fixtures were adjusted to remove fields that did not exist in their
-old schemas. Current-schema assertions now expect 7. Existing medication,
-respiratory, laboratory, security and mocked-storage tests remain in the suite.
+The new checks cover standalone/tab-indented/bulleted/trailing-cell And
+connectors, line endings, preserved PN doses/rates, separate lipid orders,
+held/start-date context, mapping and exact hiding, mixed taper/And sequences,
+atomic rejection of incomplete connectors, all 18 synthetic orders, horizontal
+dated lab summaries, independent arterial/venous groups, complete small-font
+one-page output, multi-room printing and deliberate overflow without dropped
+or duplicated sentinel text. User-editable long lab values use wrapping text
+rather than spilling across trees.
 
-New tests cover zero WAT-1, negative/zero SBS, blank headings and placeholders,
-ICP/CPP source values, ranges, conflict rejection, independent I/K/L/M imports,
-E-only imports preserving neuro values, weight/Z-score-only output, omitted
-percentiles and footnotes, missing Z-score, dated weight selection, observed
-versus set Vt, observed zero, missing observed Vt, field conflicts, new-patient
-clearing, same-room editing, reversible inclusion, HTML escaping, schema-6
-migration, encryption round trips, print-all selection, two-room landscape
-exports and long-content continuation without dropped or duplicated values.
+One inherited encryption test was made non-flaky. It previously required the
+three characters WBC to be absent anywhere in random base64 ciphertext, where
+that short sequence can occur by chance. It now checks a structured plaintext
+JSON marker and the exact decrypted archive. Runtime encryption was not changed.
 
-UI page rendering and callbacks use the existing Streamlit widget stub. They
-do not implement a live browser lifecycle.
+## Reproduction and layout checks
 
-## Original-package compatibility
+The old parser reproduced row 5's column error on the supplied PN/And/lipid
+pattern. The corrected parser accepted all 18 orders. Provider and Last Admin
+are not retained. The supplied medication, vitals, respiratory, laboratory and
+weight pattern was exercised locally, with provider names substituted by test
+sentinels. This local verification source is not bundled in the ZIP.
 
-A separate process running the unmodified Version 6.1 code generated a synthetic
-encrypted schema-6 archive with routing and visibility rules, four medications,
-46 lab rows, vital signs, respiratory settings and notes. The new code opened
-that ciphertext with the same generated test key. Every original room field and
-Admin setting matched. Only new empty fields and schema 7 were added. No real
-handoff archive, password or GitHub token was accessed.
+That verification handoff fits on one landscape Letter PDF page at 7.2 pt.
+The independent synthetic 18-order fixture also fits on one page, both unmapped
+and with demonstration system mappings. Its PDF preview was rendered and
+visually inspected. Dates, abnormal flags, PN rates, status labels and all
+included orders remain visible. The CBC/BMP trees are intact. Other lab groups
+are horizontal. Very long handoffs are tested to continue without clipping.
 
-## Export review
+PDF fitting uses an explicit 7.2 to 6.5 pt body-font range. It never shrinks
+unboundedly to force one page. If it cannot fit, the default 7.2 pt continues
+onto more pages. HTML is compact but is not guaranteed to share PDF pagination.
 
-The two-room preview was generated with the application export functions,
-rendered at 160 dpi and visually checked on both pages. It retains dated CBC
-and BMP trees. Weight/Z-score follow diagnoses, WAT/ICP/CPP lead NEURO on page
-one, SBS -1 leads NEURO on page two, and observed Vt follows set Vt in RESP.
-No clipped or overlapping text was observed in this preview.
+## Compatibility and limits
 
-## Limits
+Storage remains schema 7. Models, encryption, GitHub storage and requirements
+are unchanged from 6.2. The regression suite includes prior-schema migration,
+round trips, editable fields, hidden medication rules and mocked save conflicts.
+A separate compatibility check opens a synthetic encrypted archive generated
+by the original 6.2 code with the same temporary test key and verifies exact
+content equality. No user password, key or private record is used.
 
-Streamlit is not installed in this environment. A real browser session, hosted
-app deployment and authenticated private storage connection were not tested.
-No direct GitHub changes were made. Storage tests use mocked requests.
-
-This is source-text extraction, not a clinical determination of treatment,
-current device use or bedside accuracy. No score, weight, Z-score, pressure or
-volume is calculated. Unfamiliar source formats may need additional handling.
-Use the synthetic examples after deployment, then compare clinical handoffs
-with their source. Tests do not establish privacy or regulatory compliance.
+UI tests use a Streamlit widget stub rather than a real browser. The hosted
+Streamlit deployment and authenticated private data repository were not tested.
+No direct GitHub updates were made. No parsing rule is a promise that every
+future Epic format will work. Unreadable rows still raise an error instead of
+silently disappearing or having a guessed dose. Check output against the source.

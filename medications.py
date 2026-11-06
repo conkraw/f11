@@ -2,7 +2,7 @@
 
 TAB boundaries are authoritative. Providers and Last Admin are never retained.
 Mapping rules match medication-name prefixes/exact names, not patient doses.
-Epic taper connectors are retained on the next order, outside the table columns.
+Epic Followed by / And connectors stay on the next separate order, outside table columns.
 Start/hold annotations stay in the displayed name but do not prevent drug mapping.
 """
 from __future__ import annotations
@@ -15,8 +15,9 @@ DESTINATIONS = ("Neurologic", "Respiratory", "Cardiovascular", "FEN / GI", "Hema
                 "Infectious Disease", "Labs", "Skin / Wounds", "Other Medications")
 BULLET = re.compile(r"^\s*[•●▪◦\-]\s*")
 SPACE = re.compile(r"\s+")
-FOLLOWED_BY = re.compile(r"^followed\s+by\s*:?$", re.I)
+CONNECTOR = re.compile(r"^(followed\s+by|and)\s*:?$", re.I)
 FOLLOW_PREFIX = re.compile(r"^followed\s+by\s*:?\s+", re.I)
+AND_PREFIX = re.compile(r"^and\s*:\s+", re.I)
 STATUS_PREFIX = re.compile(r"^\[(?:held by provider|discontinued)\]\s*", re.I)
 SCHEDULE_PREFIX = re.compile(r"^\[START\s+ON\s+[^\]\r\n]+\]\s*", re.I)
 RATE = re.compile(r"^\s*(\d+(?:\.\d+)?\s*(?:m[lL]|[uµμ]g|mcg|mg|g|units?|Units?|mEq)(?:\s*/\s*(?:kg|hr|min|h|day|24h)){1,3})\b", re.I)
@@ -40,7 +41,7 @@ def _without_context(value: str, *, strip_schedule: bool) -> str:
     existing drug rule still applies. Unknown bracketed text is not discarded.
     """
     value = clean(value)
-    patterns = (FOLLOW_PREFIX, STATUS_PREFIX, SCHEDULE_PREFIX) if strip_schedule else (FOLLOW_PREFIX, STATUS_PREFIX)
+    patterns = (FOLLOW_PREFIX, AND_PREFIX, STATUS_PREFIX, SCHEDULE_PREFIX) if strip_schedule else (FOLLOW_PREFIX, AND_PREFIX, STATUS_PREFIX)
     while value:
         previous = value
         for pattern in patterns:
@@ -177,14 +178,14 @@ def parse_medications(block: str, rules: list[dict] | None = None, visibility: l
     The standard table is Medication, Dose, Route, Frequency, Provider,
     Last Rate, Last Admin. Tabs preserve blank dose/rate cells. A malformed
     or tab-less row stops the import, rather than guessing medication boundaries.
-    Standalone Followed by connectors belong to the next separate order. START
+    Standalone Followed by and And connectors belong to the next separate order. START
     ON labels are preserved as source text, never compared with the server clock.
     """
     result = MedicationResult()
     rules = rules or []
     chunks: list[str] = []
     current = ""
-    pending_sequence = False
+    pending_sequence = ""
     leftovers = []
 
     def sequence_error(message: str) -> None:
@@ -197,22 +198,22 @@ def parse_medications(block: str, rules: list[dict] | None = None, visibility: l
             chunks.append(current)
             current = ""
 
-    def mark_sequence() -> None:
+    def mark_sequence(label: str) -> None:
         nonlocal pending_sequence
         finish_current()
         if not chunks:
-            sequence_error("A Followed by line has no preceding medication. Copy the complete sequence.")
+            sequence_error("A " + label + " line has no preceding medication. Copy the complete sequence.")
         if pending_sequence:
-            sequence_error("Repeated Followed by lines have no medication between them. Check the original table.")
-        pending_sequence = True
+            sequence_error("Repeated medication connector lines have no medication between them. Check the original table.")
+        pending_sequence = label
 
     def begin_order(value: str) -> None:
         nonlocal current, pending_sequence
         finish_current()
         # Preserve the source relationship in the editable/displayed name. No
         # extra schema fields and no doses/frequencies are supplied or inferred.
-        current = ("Followed by: " if pending_sequence else "") + value
-        pending_sequence = False
+        current = (pending_sequence + ": " if pending_sequence else "") + value
+        pending_sequence = ""
 
     text = block.replace("\r\n", "\n").replace("\r", "\n").replace("\u00a0", " ")
     for raw in text.splitlines():
@@ -228,19 +229,20 @@ def parse_medications(block: str, rules: list[dict] | None = None, visibility: l
             continue
         # This connector is table structure, NOT another column of Last Admin.
         # Accept ordinary whitespace, table indentation, and bullet-only forms.
-        if FOLLOWED_BY.fullmatch(clean(BULLET.sub("", raw, count=1))):
-            mark_sequence()
+        connector = CONNECTOR.fullmatch(clean(BULLET.sub("", raw, count=1)))
+        if connector:
+            mark_sequence("And" if connector.group(1).casefold() == "and" else "Followed by")
             continue
 
         # Some clipboard versions place the connector in a final TAB cell.
         # Remove only that exact cell, leaving every preceding blank cell intact.
-        after_row_sequence = False
+        after_row_sequence = ""
         cells = raw.split("\t")
         last_nonempty = next((i for i in range(len(cells)-1, -1, -1) if cells[i].strip()), None)
         if (last_nonempty is not None and last_nonempty >= 4
-                and FOLLOWED_BY.fullmatch(clean(cells[last_nonempty]))):
+                and CONNECTOR.fullmatch(clean(cells[last_nonempty]))):
+            after_row_sequence = "And" if clean(cells[last_nonempty]).rstrip(":").strip().casefold() == "and" else "Followed by"
             raw = "\t".join(cells[:last_nonempty])
-            after_row_sequence = True
 
         if BULLET.match(raw):
             # Do not strip tabs. A trailing empty field is meaningful.
@@ -265,10 +267,10 @@ def parse_medications(block: str, rules: list[dict] | None = None, visibility: l
         else:
             leftovers.append(raw.strip())
         if after_row_sequence:
-            mark_sequence()
+            mark_sequence(after_row_sequence)
     finish_current()
     if pending_sequence:
-        sequence_error("A Followed by line has no next medication. Copy the complete sequence.")
+        sequence_error("A " + pending_sequence + " line has no next medication. Copy the complete sequence.")
     if leftovers:
         result.issues.append("Some text in the medication block was not a table row. Check that the full Epic table was copied.")
         result.error = "The medication block contains unrecognized text. Nothing has been applied. Copy the table again with its column tabs."

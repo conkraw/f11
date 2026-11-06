@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.2: neurologic observations, weight/Z-score and observed Vt."""
+"""PICU SmartPhrase v6.3: linked PN orders and compact landscape handoffs."""
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
@@ -6,7 +6,7 @@ import time
 
 import streamlit as st
 from cryptography.fernet import Fernet
-from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, handoffs_html
+from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, handoffs_html, print_layout_info
 from github_store import GitHubConfig, GitHubVault, StorageError
 from models import (MAX_FIELD, SYSTEMS, ValidationError, new_sheet, new_vault,
                     normalize_room, save_sheet_in, validate_vault, validate_sheet,
@@ -120,6 +120,12 @@ def update_field(room: str, section: str, key: str) -> None:
 def load_neuro_sample() -> None:
     if require_session():
         st.session_state["paste"] = (ROOT / "examples" / "synthetic_neuro_weight.txt").read_text(encoding="utf-8")
+        st.session_state.pop("import_result", None)
+
+
+def load_compact_sample() -> None:
+    if require_session():
+        st.session_state["paste"] = (ROOT / "examples" / "synthetic_compact_pn.txt").read_text(encoding="utf-8")
         st.session_state.pop("import_result", None)
 
 
@@ -291,7 +297,7 @@ def labs_vitals_editor(sheet: dict) -> None:
     neuro_weight_editor(sheet)
     st.subheader("Laboratory results")
     st.caption("CBC and BMP show the last two supplied results per component. Other tests show the latest result per component. Arterial and venous gases stay separate. Dates and source flags are preserved. No collection times or same-draw groupings are invented.")
-    components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}</style>' + laboratory_html(sheet["labs"]), height=490, scrolling=True)
+    components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}.lab-summary{font:14px/1.3 sans-serif;overflow-wrap:anywhere;margin:3px 0}.lab-full{grid-column:1/-1}</style>' + laboratory_html(sheet["labs"]), height=490, scrolling=True)
     if lactate_text(sheet["labs"]):
         st.text("Cardiovascular: " + lactate_text(sheet["labs"]))
     with st.expander("Edit retained laboratory rows (" + str(len(sheet["labs"]["rows"])) + ")"):
@@ -596,7 +602,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.2 | Neuro observations, weight and observed Vt")
+        st.caption("Version 6.3 | Compact print and linked PN orders")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -767,6 +773,7 @@ def handoff_page(store: GitHubVault | None) -> None:
     with paste_tab:
         st.caption("Paste the full SmartPhrase or only the paired sections you are updating. A/B import diagnoses and medications, C/D respiratory support, E vital signs, G labs, I weight/Z-score and K/L/M neurologic observations. Omitted sections and separate notes stay unchanged.")
         left, right = st.columns(2)
+        left.button("Load compact / PN example", on_click=load_compact_sample)
         left.button("Load neuro / weight example", on_click=load_neuro_sample)
         left.button("Load observed-Vt example", on_click=load_observed_sample)
         left.button("Load synthetic example", on_click=load_sample)
@@ -824,9 +831,11 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.caption("Edit the imported weight and Z-score in Labs / Vitals.")
     with preview_tab:
         import streamlit.components.v1 as components
-        st.caption("Landscape Letter. Vitals lead each system column, followed by support settings, notes and medications. Dated lab trees appear below the columns.")
+        st.caption("Compact landscape Letter. CBC/BMP keep their dated trees. Other lab groups print horizontally. The PDF fits one page when space permits, without cutting off content.")
         components.html(handoff_html(sheet), height=650, scrolling=True)
         try:
+            layout = print_layout_info(sheet)
+            st.caption(("Fits on one PDF page" if layout["fits_one_page"] else "Needs continuation pages to keep all content") + " | Body text: " + str(layout["font_size"]) + " pt. HTML pagination can differ.")
             st.download_button("Download this handoff (PDF)", handoff_pdf(sheet), "handoff.pdf", "application/pdf")
         except (ValueError, ImportError):
             st.error("PDF export could not be created. Confirm requirements.txt is installed or use HTML.")
@@ -860,7 +869,7 @@ def print_all_page(store: GitHubVault | None) -> None:
     except (ValueError, ImportError):
         st.error("The combined PDF could not be created. Use HTML or check the export requirements.")
     st.download_button("Download all selected handoffs (printable HTML)", handoffs_html(selected_sheets).encode("utf-8"), "all_handoffs.html", "text/html")
-    st.caption("Open the PDF and print it, or open the HTML file and click Print all handoffs. Downloaded files are not encrypted.")
+    st.caption("Compact PDF is preferred for printing. Each room starts on its own page. Exceptionally long handoffs continue rather than losing content. Downloads are not encrypted.")
     for sheet in selected_sheets:
         st.text("Room " + sheet["room"] + (" | draft" if sheet != ss["vault"]["rooms"].get(sheet["room"]) else " | saved"))
 

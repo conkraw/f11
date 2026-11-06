@@ -1,4 +1,29 @@
-# PICU Handoff, Version 6.2
+# PICU Handoff 6.3: compact landscape printing and linked PN orders
+
+This is the complete application update delivered as a ZIP. No direct GitHub changes are made by this package.
+
+## New in this release
+
+Epic's standalone And connector between PN and lipid orders is now handled as a relationship, not an extra table column. Both orders keep their own name, dose, route, frequency and recorded rate. The next order retains an And: prefix in the editable handoff. That prefix does not prevent a saved medication mapping or hiding rule from matching. Existing Followed by taper support, held-order labels and future start dates are preserved. Arbitrary missing columns or incomplete connectors still stop the import rather than guessing or dropping an order.
+
+CBC and BMP retain their latest/preceding per-component dated fishbones. Hepatic, coagulation, blood-gas, inflammatory and other groups now print as horizontal summaries, with one latest result per component. Arterial/venous/capillary groups stay separate. A shared date is shown once only when all the displayed dates in a group match. Otherwise each component keeps its own displayed date. No units, missing values or collection times are invented.
+
+The print body starts at 7.2 pt, with tighter margins, spacing and tree geometry. PDF layout measures the whole handoff and tries 7.2, 7.0, 6.8 and 6.5 pt to fit one landscape Letter page. When one page is still insufficient, it uses 7.2 pt and continues without clipping or omitting content. Each room still starts on a new page in Print all. HTML is also compact, but browser pagination can differ. Prefer the PDF for printing. Input/edit text is not made smaller.
+
+The synthetic 18-order example, including both PN orders and all its lab groups, fits on one page. The same-page result is not a guarantee for arbitrary long handoffs or all possible mapping arrangements. The preview tab reports whether the current PDF fits one page and the chosen body size.
+
+Use Load compact / PN example followed by Create / update handoff. The fixture has invented values and test-only labels. The PDF example includes demonstration mappings, not changes to your saved defaults.
+
+## Updating
+
+Extract PICU63.zip and open PICU_Handoff_v6_3_Compact. Upload the folder's contents to your existing application code repository, replacing matching files. Keep app.py at the root. Update all supplied files together.
+
+Keep your existing Streamlit Secrets, password, encryption key, GitHub token, medication rules and private data repository. Do not run the secrets generator again. No new dependencies or storage-schema changes are needed. This release continues to use schema 7. The sidebar reads Version 6.3 | Compact print and linked PN orders.
+
+Re-paste a previously rejected SmartPhrase. Previously saved content can be re-exported to use the new layout without changing its data. No patient records or secrets are included in this package.
+
+## Existing functionality
+
 
 Dated lab trees, routed vital signs, and reversible medication hiding. This is the complete web-based application. It retains the Version 5 respiratory-support handling, remembered system mappings, encrypted GitHub storage, editable landscape handoffs and Print all.
 
@@ -34,11 +59,11 @@ Version 6.1 retained schema 6. Version 6.2 migrates to schema 7 for the new inde
 
 ## Update a working deployment
 
-Save open handoffs. Extract the complete ZIP and copy the contents of the PICU_Handoff_v6_2_Neuro_Weight folder into your existing application code repository, replacing matching files. Keep app.py at the repository root. Include observations.py and every supplied application module. Do not replace only app.py. Restart the deployment after the upload.
+Save open handoffs. Extract the complete ZIP and copy the contents of the PICU_Handoff_v6_3_Compact folder into your existing application code repository, replacing matching files. Keep app.py at the repository root. Include observations.py and every supplied application module. Do not replace only app.py. Restart the deployment after the upload.
 
 Keep your current Streamlit Secrets, app password, encryption key, GitHub token and private data repository unchanged. Do not run create_secrets.py or Generate_Secrets.ipynb again for an update. No new runtime dependencies are needed beyond the existing ReportLab/Streamlit requirements. The notebook and secrets helper are only for a first-time deployment.
 
-The sidebar should say: Version 6.2 | Neuro observations, weight and observed Vt.
+The sidebar should say: Version 6.3 | Compact print and linked PN orders.
 
 This package does not upload or change your repository for you. It does not reset stored medication assignments or saved handoffs. Schema 1-6 archives migrate in memory to schema 7, and the next successful save writes schema 7 with the same key. Version 6.1 used schema 6. Existing rooms, notes, labs, vitals, hidden-medication rules and mapping rules are preserved. Update all application files together. Do not downgrade after saving with the new schema.
 
@@ -54,7 +79,7 @@ CBC and BMP each have two dated result trees: latest per component and preceding
 
 The source provides individual component rows, not verified panel/specimen identifiers. Therefore these trees are not claimed to be results from one blood draw. Every value has its own source date. Dates are sorted newest first. When multiple rows have the same date and no collection times, their source order is retained, assuming the Epic table is newest-first within that date. When every result for a component on a date includes a time, those times are used. Mixed timed/untimed rows on one date keep source order because their exact relative timing cannot be determined. Identical rows are retained because the paste does not establish whether they are duplicates or separate observations.
 
-Hepatic, coagulation, inflammatory and other components show one latest result each in labelled branch diagrams. Arterial, venous and capillary blood gases remain separate. No bicarbonate, reference range, unit, calcium, glucose or missing lab is calculated. Original flags such as (H), (L), (LL) and inequalities are preserved.
+Hepatic, coagulation, inflammatory and other components show one latest result each in horizontal summaries. Arterial, venous and capillary blood gases remain separate. No bicarbonate, reference range, unit, calcium, glucose or missing lab is calculated. Original flags such as (H), (L), (LL) and inequalities are preserved.
 
 Recognized lactate/lactic-acid components go to Cardiovascular, below its vitals and before notes/medications. Lactate is not repeated in the lab-tree band. If no lactate is in the paste, none is added. Distinct source-specimen labels remain distinct.
 

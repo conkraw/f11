@@ -307,7 +307,9 @@ def test_v6_encrypted_roundtrip_and_v5_migration():
     s=whole();v=save_sheet_in(new_vault(),s)
     v['settings']['medication_visibility']=set_visibility_rule([],s['medications'][0]['name'],True)
     key=generate_key();token=seal_vault(v,key)
-    assert b'WBC' not in token and b'12.80' not in token and open_vault(token,key)==v
+    # Short strings such as WBC can occur by chance in base64 ciphertext.
+    # Check structured plaintext markers instead, plus the exact decrypted vault.
+    assert b'"component": "WBC"' not in token and b'12.80' not in token and open_vault(token,key)==v
     old=strip_v6_fields(deepcopy(v));old['schema']=5
     baseline=deepcopy(old)
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(old).encode())

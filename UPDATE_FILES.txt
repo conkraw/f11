@@ -1,22 +1,24 @@
-PICU Handoff 6.2 - complete application
+PICU Handoff 6.3 - complete application
 
-Save open handoffs, extract PICU62.zip, open PICU_Handoff_v6_2_Neuro_Weight.
-Upload its CONTENTS into the existing application code repository. Keep app.py
-at the root. Replace matching files and include observations.py. Then reboot.
+Extract PICU63.zip. Open PICU_Handoff_v6_3_Compact and upload its CONTENTS to
+existing application code storage. Keep app.py at the root. Replace matching
+files. No direct repository changes are made in delivering this ZIP.
 
-Keep all existing deployment Secrets, encryption key and data repository.
-Do not run create_secrets.py or Generate_Secrets.ipynb for this update.
-No new dependencies. No direct GitHub changes were made in creating this ZIP.
+Keep existing deployment Secrets, password, encryption key, token and data
+repository. Do not run create_secrets.py or Generate_Secrets.ipynb again.
+No dependency or schema change. Saved handoffs and medication rules remain.
 
-Sidebar: Version 6.2 | Neuro observations, weight and observed Vt
+Sidebar: Version 6.3 | Compact print and linked PN orders
 
-New imports: I weight/Z-score; K target arousal; L WAT-1; M ICP/CPP.
-Observed Vt is added after set Vt. Blank fields add no assumed values.
-Included empty sections clear their old values. Omitted sections stay unchanged.
+Changed runtime files: app.py, medications.py, exports.py, lab_layout.py.
+All existing runtime files are included. Examples, tests and guides are included.
 
-Schemas 1-6 migrate to schema 7 with the same key. Saved notes, rules and
-handoffs are preserved. Update all files together. Do not downgrade after saving.
+Try Load compact / PN example, then Create / update handoff.
+Download PDF for printing. Existing handoffs use the compact layout on export.
+Re-paste any previously failed medication import.
 
-New: observations.py and synthetic examples/tests.
-Changed: app.py, models.py, importing.py, vitals.py, ventilation.py, exports.py,
-batching.py and documentation. All existing application files are included.
+Standalone And no longer becomes an eighth PN table column. PN and lipid
+orders remain separate. Followed by, held status and start dates remain.
+CBC/BMP stay as trees. Other lab groups print horizontally with dates.
+Fonts are smaller and content is measured to fit one page where possible.
+Excessively long content still continues instead of being cut off.
