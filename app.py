@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.3: linked PN orders and compact landscape handoffs."""
+"""PICU SmartPhrase v6.4: SpO2 ranges in respiratory vitals and compact handoffs."""
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
@@ -602,7 +602,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.3 | Compact print and linked PN orders")
+        st.caption("Version 6.4 | SpO2 range in respiratory vitals")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)

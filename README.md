@@ -1,8 +1,30 @@
-# PICU Handoff 6.3: compact landscape printing and linked PN orders
+# PICU Handoff 6.4: SpO2 ranges in respiratory vitals
 
 This is the complete application update delivered as a ZIP. No direct GitHub changes are made by this package.
 
-## New in this release
+## New in 6.4
+
+Inside the E / VITALS block, this Epic summary:
+
+```text
+SpO2  Avg: 99.2 %  Min: 93 %  Max: 100 %
+```
+
+now becomes only:
+
+```text
+SpO2: 93% to 100%
+```
+
+The recorded Min and Max are used directly. Avg is not included. This row appears with the other respiratory vitals above support settings, notes and medications in the editor, PDF, HTML, text export and Print all. Decimal endpoints keep their supplied precision. Normal SpO2 readings and other vital-sign formats are unchanged.
+
+Keep the line inside your existing paired E dividers. To update a saved handoff, re-paste its full VITALS section or full SmartPhrase and click Create / update handoff. An E-only paste replaces ALL imported E vital signs, so keep the other desired vital-sign lines in that block. It does not replace medications, labs, device settings, or independent neurologic observations. Omitted E blocks leave prior vitals unchanged. A present empty E block clears them. No saved handoff is silently reinterpreted during installation.
+
+The existing Labs / Vitals editor can edit or exclude the new range. A summary with a missing, contradictory or malformed limit produces an error without replacing the draft. Avg never supplies a missing endpoint. Use examples/synthetic_spo2_vitals.txt to test in a blank test room.
+
+The only runtime changes are vitals.py and the version label in app.py. No dependency, archive schema, authentication, encryption, mapping or storage changes are made.
+
+## Retained from 6.3
 
 Epic's standalone And connector between PN and lipid orders is now handled as a relationship, not an extra table column. Both orders keep their own name, dose, route, frequency and recorded rate. The next order retains an And: prefix in the editable handoff. That prefix does not prevent a saved medication mapping or hiding rule from matching. Existing Followed by taper support, held-order labels and future start dates are preserved. Arbitrary missing columns or incomplete connectors still stop the import rather than guessing or dropping an order.
 
@@ -16,9 +38,9 @@ Use Load compact / PN example followed by Create / update handoff. The fixture h
 
 ## Updating
 
-Extract PICU63.zip and open PICU_Handoff_v6_3_Compact. Upload the folder's contents to your existing application code repository, replacing matching files. Keep app.py at the root. Update all supplied files together.
+Extract PICU64.zip and open PICU_Handoff_v6_4_SpO2. Upload the folder's contents to your existing application code repository, replacing matching files. Keep app.py at the root. Update all supplied files together.
 
-Keep your existing Streamlit Secrets, password, encryption key, GitHub token, medication rules and private data repository. Do not run the secrets generator again. No new dependencies or storage-schema changes are needed. This release continues to use schema 7. The sidebar reads Version 6.3 | Compact print and linked PN orders.
+Keep your existing Streamlit Secrets, password, encryption key, GitHub token, medication rules and private data repository. Do not run the secrets generator again. No new dependencies or storage-schema changes are needed. This release continues to use schema 7. The sidebar reads Version 6.4 | SpO2 range in respiratory vitals.
 
 Re-paste a previously rejected SmartPhrase. Previously saved content can be re-exported to use the new layout without changing its data. No patient records or secrets are included in this package.
 
@@ -59,11 +81,11 @@ Version 6.1 retained schema 6. Version 6.2 migrates to schema 7 for the new inde
 
 ## Update a working deployment
 
-Save open handoffs. Extract the complete ZIP and copy the contents of the PICU_Handoff_v6_3_Compact folder into your existing application code repository, replacing matching files. Keep app.py at the repository root. Include observations.py and every supplied application module. Do not replace only app.py. Restart the deployment after the upload.
+Save open handoffs. Extract the complete ZIP and copy the contents of the PICU_Handoff_v6_4_SpO2 folder into your existing application code repository, replacing matching files. Keep app.py at the repository root. Include observations.py and every supplied application module. Do not replace only app.py. Restart the deployment after the upload.
 
 Keep your current Streamlit Secrets, app password, encryption key, GitHub token and private data repository unchanged. Do not run create_secrets.py or Generate_Secrets.ipynb again for an update. No new runtime dependencies are needed beyond the existing ReportLab/Streamlit requirements. The notebook and secrets helper are only for a first-time deployment.
 
-The sidebar should say: Version 6.3 | Compact print and linked PN orders.
+The sidebar should say: Version 6.4 | SpO2 range in respiratory vitals.
 
 This package does not upload or change your repository for you. It does not reset stored medication assignments or saved handoffs. Schema 1-6 archives migrate in memory to schema 7, and the next successful save writes schema 7 with the same key. Version 6.1 used schema 6. Existing rooms, notes, labs, vitals, hidden-medication rules and mapping rules are preserved. Update all application files together. Do not downgrade after saving with the new schema.
 
@@ -119,7 +141,7 @@ Exports are unencrypted. Earlier encrypted saves remain in Git history. Removing
 
 ## Validation
 
-See TEST_REPORT.md. Tests use synthetic fixtures, in-memory encrypted archives, mocked storage requests and Streamlit widget stubs. A separate compatibility check opened a synthetic archive generated by the unmodified Version 6.1 package with the new code and the same key. Every original saved field and Admin setting matched. Streamlit was not installed in the build environment, so a real Streamlit browser session and your hosted private storage connection remain untested.
+See TEST_REPORT.md. The 588 tests use synthetic fixtures, in-memory encrypted archives, mocked storage requests and Streamlit widget stubs. All 552 unmodified Version 6.3 tests passed before the change. The new test coverage includes exact and variant SpO2 summaries, preservation of other vitals, malformed endpoints, placement and all export formats. The hosted Streamlit browser session and private storage connection were not tested.
 
 ## Technical references
 

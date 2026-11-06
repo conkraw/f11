@@ -1,24 +1,31 @@
-PICU Handoff 6.3 - complete application
+PICU Handoff 6.4 - complete application
 
-Extract PICU63.zip. Open PICU_Handoff_v6_3_Compact and upload its CONTENTS to
+Extract PICU64.zip. Open PICU_Handoff_v6_4_SpO2 and upload its CONTENTS to
 existing application code storage. Keep app.py at the root. Replace matching
-files. No direct repository changes are made in delivering this ZIP.
+files. No direct repository changes were made while preparing this ZIP.
 
-Keep existing deployment Secrets, password, encryption key, token and data
-repository. Do not run create_secrets.py or Generate_Secrets.ipynb again.
-No dependency or schema change. Saved handoffs and medication rules remain.
+Keep existing Streamlit Secrets, password, encryption key, token, mappings and
+the private data repository. Do not run create_secrets.py or Generate_Secrets.ipynb.
+There are no new dependencies or storage-schema changes. Schema remains 7.
 
-Sidebar: Version 6.3 | Compact print and linked PN orders
+Sidebar: Version 6.4 | SpO2 range in respiratory vitals
 
-Changed runtime files: app.py, medications.py, exports.py, lab_layout.py.
-All existing runtime files are included. Examples, tests and guides are included.
+Changed runtime files: vitals.py and the version label in app.py.
+The ZIP contains all previous runtime files, guides, examples and regression tests.
 
-Try Load compact / PN example, then Create / update handoff.
-Download PDF for printing. Existing handoffs use the compact layout on export.
-Re-paste any previously failed medication import.
+Keep the SpO2 summary line inside the E / VITALS block:
+SpO2  Avg: 99.2 %  Min: 93 %  Max: 100 %
 
-Standalone And no longer becomes an eighth PN table column. PN and lipid
-orders remain separate. Followed by, held status and start dates remain.
-CBC/BMP stay as trees. Other lab groups print horizontally with dates.
-Fonts are smaller and content is measured to fit one page where possible.
-Excessively long content still continues instead of being cut off.
+Expected RESP vital:
+SpO2: 93% to 100%
+
+The average is not displayed. Source min/max values are not recalculated.
+Existing SpO2 single values and bracketed ranges retain their previous behavior.
+
+Re-paste the full E block or SmartPhrase to update a saved handoff. E replaces
+all previous E vitals, so keep other desired vital lines in the E block.
+No medication, lab, support, neurologic observation or manual note is erased
+by an E-only import. Values remain editable/excludable in Labs / Vitals.
+
+Test examples/synthetic_spo2_vitals.txt in a blank test room. The compact print
+layout, prior medication fixes, hidden rules and Print all remain included.
