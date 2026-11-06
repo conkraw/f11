@@ -1,5 +1,6 @@
 """Synthetic source-pattern tests. These do not validate current bedside device use."""
 from copy import deepcopy
+from migration_helpers import strip_v6_fields
 from io import BytesIO
 import json
 import pytest
@@ -253,13 +254,14 @@ def test_schema_three_migration_preserves_invasive_notes_mappings_and_ids():
     s['fields']['Respiratory']='Old note'
     vault=save_sheet_in(new_vault(),s)
     vault['schema']=3
+    strip_v6_fields(vault)
     vault['rooms']['P4102'].pop('noninvasive')
     migrated=upgrade_vault(vault)
-    assert migrated['schema']==5 and vault['schema']==3
+    assert migrated['schema']==8 and vault['schema']==3
     assert migrated['rooms']['P4102']['noninvasive']==[]
     assert migrated['rooms']['P4102']['ventilation']==s['ventilation']
     assert migrated['rooms']['P4102']['id']==s['id']
-    assert migrated['settings']==vault['settings']
+    assert migrated['settings']==dict(vault['settings'], medication_visibility=[])
     assert migrated['rooms']['P4102']['fields']==s['fields']
 
 
@@ -270,9 +272,10 @@ def test_encrypted_niv_roundtrip_and_schema3_ciphertext_upgrade():
     assert b'BiPAP' not in token and b'IPAP' not in token
     assert open_vault(token,key)==vault
     vault['schema']=3
+    strip_v6_fields(vault)
     vault['rooms']['P4102'].pop('noninvasive')
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(vault).encode())
-    assert open_vault(oldtoken,key)['schema']==5
+    assert open_vault(oldtoken,key)['schema']==8
 
 
 def test_niv_only_rooms_print_all_and_both_exports():
@@ -345,10 +348,17 @@ def test_session_schema3_migration_preserves_unsaved_support_notes(app):
     app.save_room(None)
     ss['drafts']['P4102']['fields']['Respiratory']='Unsaved note'
     ss['vault']['schema']=3
+    ss['vault']['settings'].pop('medication_visibility', None)
     for obj in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):
         obj.pop('noninvasive')
+        obj.pop('neuro_vitals', None)
+        obj.pop('nutrition', None)
+        obj.pop('cultures', None)
+        obj.pop('labs', None)
+        obj.pop('vitals', None)
+        for row in obj.get('medications', []): row.pop('hidden', None)
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==5
+    assert ss['vault']['schema']==8
     assert ss['drafts']['P4102']['fields']['Respiratory']=='Unsaved note'
     assert ss['drafts']['P4102']['noninvasive']==[]
 

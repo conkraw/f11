@@ -13,6 +13,7 @@ LABELS = (
     "Vent Mode",
     "Resp Rate (Set)",
     "Vt (Set, mL)",
+    "Vt (observed, mL)",
     "PEEP (cm H2O)",
     "Mean Airway Pressure",
     "Insp Time (sec)",
@@ -131,7 +132,7 @@ def parse_ventilation(block: str) -> VentilationResult:
         result.data = None
         result.error = str(exc)
         return result
-    missing = [label for label in LABELS[1:] if not entries.get(label, "").strip()]
+    missing = [label for label in LABELS[1:] if label != "Vt (observed, mL)" and not entries.get(label, "").strip()]
     if missing:
         result.issues.append("Requested fields absent from C were left out: " + ", ".join(missing) + ".")
     return result

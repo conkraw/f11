@@ -47,3 +47,18 @@ jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
 Wound Review:
 [Insert your existing Epic wound SmartLink here]
 jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
+
+kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
+Target Arousal Level:
+[Insert your existing Epic SmartLink here. Blank values are omitted.]
+kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
+
+llllllllllllllllllllllllllllllll
+WAT Score:
+[Insert your existing Epic SmartLink here. Blank values are omitted.]
+llllllllllllllllllllllllllllllll
+
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+ICP Trends:
+[Insert your existing Epic SmartLink here. Blank values are omitted.]
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

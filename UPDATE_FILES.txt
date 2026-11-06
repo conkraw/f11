@@ -1,20 +1,23 @@
-PICU HANDOFF VERSION 5: NASAL CANNULA AND MISSING VENT MODE
+PICU Handoff 6.5 - complete application
 
-This is a complete package based on the existing SmartPhrase app.
-Keep app.py at the root of your code repository. Copy/replace this package's
-contents there only if installing manually. Do not nest the application
-inside an additional folder. Keep your existing Streamlit Secrets, encryption
-key, password hash, GitHub token and separate private data repository.
-Do not run the secrets generator for this update. No new dependencies.
+1. Save open work. Extract PICU65.zip.
+2. Open PICU_Handoff_v6_5_Cultures.
+3. Upload the folder CONTENTS to your existing application code repository.
+   Replace matching files and keep app.py at the root. Include cultures.py.
+4. Keep existing Streamlit Secrets, password, encryption key, token, mapping
+   rules and private data repository. Do not rerun the secrets generator.
+5. Restart the deployment. Look for:
+   Version 6.5 | Cultures and ADS medication fix
+6. Use Load cultures / ADS example and Create / update handoff in a test room.
+   Then re-paste a previously failed SmartPhrase or just the complete F block.
 
-After the app updates, the sidebar shows:
-Version 5 | Nasal cannula + pressure-pair support
+This is a full update, not a patch. No direct repository changes were made.
+No new Python dependencies are required.
 
-Choose a room, click Load nasal-cannula example, then Create / update handoff.
-Expected: BiPAP (pressure-based) plus Nasal cannula, above the separator.
-Both entries appear in the landscape single-room and Print all outputs.
-Re-paste C and D for older handoffs to use the new extraction rules.
-Existing saved entries are not silently reclassified.
+Runtime changes: parser.py, medications.py, cultures.py (new), importing.py,
+models.py, batching.py, and app.py. Guides, synthetic examples and tests are
+also included. Existing compact exports use the shared formatted ID content.
 
-The application migrates schema 1-4 archives in memory to schema 5.
-Do not downgrade the app after saving schema 5 data.
+Storage schema advances from 7 to 8 for cultures. Schemas 1-7 migrate without
+changing the encryption key or losing existing fields. Do not downgrade only
+some files after the new archive is saved.

@@ -43,7 +43,7 @@ def test_room_selection_separate_drafts(app):
 def test_one_click_create_does_not_save_raw_paste(app):
     open_room(app)
     ss=app.st.session_state
-    ss['paste']='aaaaaaaa\nDiagnoses:\n1. Example\naaaaaaaa\ngggggggg\nLABS:\nRAW_NOT_SAVED\ngggggggg'
+    ss['paste']='aaaaaaaa\nDiagnoses:\n1. Example\naaaaaaaa\nhhhhhhhh\nINTAKE/OUTPUT:\nRAW_NOT_SAVED\nhhhhhhhh'
     app.create_handoff()
     assert ss['drafts']['P4102']['fields']['Diagnoses']=='Example'
     assert ss['paste']==''

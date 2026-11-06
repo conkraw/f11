@@ -1,3 +1,4 @@
+from migration_helpers import strip_v6_fields
 from copy import deepcopy
 from pathlib import Path
 import pytest
@@ -127,12 +128,13 @@ def test_existing_schema_two_preserved_with_new_field():
     old=new_vault()
     old=save_sheet_in(old,new_sheet('P4102'))
     old['schema']=2
+    strip_v6_fields(old)
     old['rooms']['P4102'].pop('ventilation')
     old['rooms']['P4102'].pop('noninvasive')
     old['rooms']['P4102']['fields']['Respiratory']='Old manual note'
     old['settings']['medication_mappings']=upsert_rule([],'acetaminophen','Neurologic')
     migrated=upgrade_vault(old)
-    assert migrated['schema']==5 and old['schema']==2
+    assert migrated['schema']==8 and old['schema']==2
     assert migrated['rooms']['P4102']['fields']['Respiratory']=='Old manual note'
     assert migrated['settings']['medication_mappings']==old['settings']['medication_mappings']
     assert migrated['rooms']['P4102']['ventilation'] is None

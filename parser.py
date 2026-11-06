@@ -8,9 +8,10 @@ SECTION_NAMES = {
     "a": "Diagnoses", "b": "Medications", "c": "Invasive Ventilation",
     "d": "Non-invasive Ventilation", "e": "VITALS", "f": "CULTURES",
     "g": "LABS", "h": "INTAKE/OUTPUT", "i": "NUTRITION", "j": "Wound Review",
+    "k": "Target Arousal Level", "l": "WAT Score", "m": "ICP Trends",
 }
 MAX_PASTE = 150_000
-DIVIDER = re.compile(r"^([a-j])\1{7,}$", re.I)
+DIVIDER = re.compile(r"^([a-m])\1{7,}$", re.I)
 NUMBER_OR_BULLET = re.compile(r"^\s*(?:\d+[.)]\s+|[•\-]\s+)")
 
 
@@ -32,7 +33,7 @@ class ParseResult:
 
 
 def parse_smartphrase(text: str) -> ParseResult:
-    """Accept matching a..j divider lines of any length >= 8.
+    """Accept matching a..m divider lines of any length >= 8.
 
     Ambiguous/missing/duplicate boundaries fail closed for that section.
     Issues in a later section do not invalidate a complete, unambiguous a block.
@@ -61,7 +62,15 @@ def parse_smartphrase(text: str) -> ParseResult:
                     result.invalid.add(key)
                     result.issues.append(f"More than one {SECTION_NAMES[key]} block was found. Paste one patient at a time.")
                 else:
-                    result.blocks[key] = "\n".join(buffer).strip()
+                    # Trim blank framing lines, not the final row's TAB cells.
+                    # ADS override rows may intentionally have no filled cells
+                    # after the name. Their empty columns are still meaningful.
+                    start, end = 0, len(buffer)
+                    while start < end and not buffer[start].strip():
+                        start += 1
+                    while end > start and not buffer[end - 1].strip():
+                        end -= 1
+                    result.blocks[key] = "\n".join(buffer[start:end])
                 active, buffer = None, []
             else:
                 if active:
@@ -70,7 +79,7 @@ def parse_smartphrase(text: str) -> ParseResult:
                 active, buffer = key, []
             continue
         # A likely divider with one or more wrong letters is NOT silently corrected.
-        if len(line) >= 8 and line.isalpha() and set(line.lower()) <= set("abcdefghij"):
+        if len(line) >= 8 and line.isalpha() and set(line.lower()) <= set("abcdefghijklm"):
             result.issues.append(f"Malformed divider on line {n}. Use only one repeated letter on that line.")
             if active:
                 result.invalid.add(active)

@@ -2,6 +2,8 @@
 
 TAB boundaries are authoritative. Providers and Last Admin are never retained.
 Mapping rules match medication-name prefixes/exact names, not patient doses.
+Epic Followed by / And connectors stay on the next separate order, outside table columns.
+Start/hold annotations stay in the displayed name but do not prevent drug mapping.
 """
 from __future__ import annotations
 from copy import deepcopy
@@ -13,9 +15,14 @@ DESTINATIONS = ("Neurologic", "Respiratory", "Cardiovascular", "FEN / GI", "Hema
                 "Infectious Disease", "Labs", "Skin / Wounds", "Other Medications")
 BULLET = re.compile(r"^\s*[•●▪◦\-]\s*")
 SPACE = re.compile(r"\s+")
+CONNECTOR = re.compile(r"^(followed\s+by|and)\s*:?$", re.I)
+FOLLOW_PREFIX = re.compile(r"^followed\s+by\s*:?\s+", re.I)
+AND_PREFIX = re.compile(r"^and\s*:\s+", re.I)
+STATUS_PREFIX = re.compile(r"^\[(?:held by provider|discontinued)\]\s*", re.I)
+SCHEDULE_PREFIX = re.compile(r"^\[START\s+ON\s+[^\]\r\n]+\]\s*", re.I)
 RATE = re.compile(r"^\s*(\d+(?:\.\d+)?\s*(?:m[lL]|[uµμ]g|mcg|mg|g|units?|Units?|mEq)(?:\s*/\s*(?:kg|hr|min|h|day|24h)){1,3})\b", re.I)
 FIELDS = {"id", "name", "dose", "route", "frequency", "last_rate", "rate_time", "section",
-          "custom_text", "include", "warnings"}
+          "custom_text", "include", "warnings", "hidden"}
 
 
 def clean(value: str) -> str:
@@ -26,13 +33,47 @@ def normalized(value: str) -> str:
     return clean(value).casefold()
 
 
+def _without_context(value: str, *, strip_schedule: bool) -> str:
+    """Remove known display annotations for matching, not from the source record.
+
+    Visibility keeps start dates so hiding one scheduled taper step does not hide
+    another dated step with the same formulation. Routing ignores dates so an
+    existing drug rule still applies. Unknown bracketed text is not discarded.
+    """
+    value = clean(value)
+    patterns = (FOLLOW_PREFIX, AND_PREFIX, STATUS_PREFIX, SCHEDULE_PREFIX) if strip_schedule else (FOLLOW_PREFIX, AND_PREFIX, STATUS_PREFIX)
+    while value:
+        previous = value
+        for pattern in patterns:
+            value = pattern.sub("", value, count=1).strip()
+        if value == previous:
+            break
+    return value
+
+
 def match_name(value: str) -> str:
-    return normalized(re.sub(r"^\s*\[(?:held by provider|discontinued)\]\s*", "", value, flags=re.I))
+    return normalized(_without_context(value, strip_schedule=True))
+
+
+def visibility_name(value: str) -> str:
+    return normalized(_without_context(value, strip_schedule=False))
+
+
+def _matches(name_key: str, term: str, match: str) -> bool:
+    return name_key == term or (match == "prefix" and name_key.startswith(term)
+        and len(name_key) > len(term) and not name_key[len(term)].isalnum())
+
+
+def _destination_rule_matches(name: str, rule: dict) -> bool:
+    term = normalized(rule["name"])
+    # Keep explicitly date-qualified legacy rules working without broadening them.
+    return any(_matches(key, term, rule["match"])
+               for key in (match_name(name), visibility_name(name)))
 
 
 def suggested_key(name: str) -> str:
     """A stable name prefix, used only after a user chooses a destination."""
-    head = re.split(r"\(|\d", re.sub(r"^\[[^]]+\]\s*", "", name), maxsplit=1)[0].strip()
+    head = re.split(r"\(|\d", _without_context(name, strip_schedule=True), maxsplit=1)[0].strip()
     head = re.split(r"\s+(?:in\s+(?:NaCl|sodium chloride)|injection|infusion|syringe|nebulizer|ophthalmic|cream)\b", head, maxsplit=1, flags=re.I)[0]
     head = re.sub(r"\s+(?:NCS|PF|neo/ped)$", "", head, flags=re.I).strip(" ,-:;")
     head = re.sub(r"\s+continuous$", "", head, flags=re.I).strip()
@@ -40,16 +81,10 @@ def suggested_key(name: str) -> str:
 
 
 def destination_for(name: str, rules: list[dict]) -> str:
-    name_key = match_name(name)
     choices = []
     for rule in rules:
         term = normalized(rule["name"])
-        if rule["match"] == "exact":
-            matched = name_key == term
-        else:
-            matched = name_key == term or (name_key.startswith(term) and len(name_key) > len(term)
-                        and not name_key[len(term)].isalnum())
-        if matched:
+        if _destination_rule_matches(name, rule):
             choices.append((rule["match"] == "exact", len(term), rule["destination"]))
     return max(choices)[2] if choices else "Other Medications"
 
@@ -88,7 +123,7 @@ def validate_medication(row: dict) -> None:
     for key in ("name", "dose", "route", "frequency", "last_rate", "rate_time", "custom_text"):
         if not isinstance(row[key], str) or len(row[key]) > 4000:
             raise ValueError("A medication entry is too long or invalid.")
-    if not row["name"].strip() or row["section"] not in DESTINATIONS or not isinstance(row["include"], bool):
+    if not row["name"].strip() or row["section"] not in DESTINATIONS or not isinstance(row["include"], bool) or not isinstance(row["hidden"], bool):
         raise ValueError("Check the medication name, destination, and inclusion setting.")
     if not isinstance(row["warnings"], list) or len(row["warnings"]) > 20 or any(not isinstance(v,str) or len(v)>500 for v in row["warnings"]):
         raise ValueError("Medication review warnings are invalid.")
@@ -120,10 +155,12 @@ def format_medication(row: dict) -> str:
     return text
 
 
-def remap(rows: list[dict], rules: list[dict]) -> list[dict]:
+def remap(rows: list[dict], rules: list[dict], visibility: list[dict] | None = None) -> list[dict]:
     result = deepcopy(rows)
     for row in result:
         row["section"] = destination_for(row["name"], rules)
+        if visibility is not None:
+            row["hidden"] = hidden_for(row["name"], visibility)
     return result
 
 
@@ -135,18 +172,49 @@ class MedicationResult:
     empty_confirmed: bool = False
 
 
-def parse_medications(block: str, rules: list[dict] | None = None) -> MedicationResult:
+def parse_medications(block: str, rules: list[dict] | None = None, visibility: list[dict] | None = None) -> MedicationResult:
     """Receive only a validated B block, not the entire SmartPhrase.
 
     The standard table is Medication, Dose, Route, Frequency, Provider,
     Last Rate, Last Admin. Tabs preserve blank dose/rate cells. A malformed
     or tab-less row stops the import, rather than guessing medication boundaries.
+    Standalone Followed by and And connectors belong to the next separate order. START
+    ON labels are preserved as source text, never compared with the server clock.
     """
     result = MedicationResult()
     rules = rules or []
     chunks: list[str] = []
     current = ""
+    pending_sequence = ""
     leftovers = []
+
+    def sequence_error(message: str) -> None:
+        result.issues.append(message)
+        result.error = "The medication sequence is incomplete. Nothing has been applied."
+
+    def finish_current() -> None:
+        nonlocal current
+        if current:
+            chunks.append(current)
+            current = ""
+
+    def mark_sequence(label: str) -> None:
+        nonlocal pending_sequence
+        finish_current()
+        if not chunks:
+            sequence_error("A " + label + " line has no preceding medication. Copy the complete sequence.")
+        if pending_sequence:
+            sequence_error("Repeated medication connector lines have no medication between them. Check the original table.")
+        pending_sequence = label
+
+    def begin_order(value: str) -> None:
+        nonlocal current, pending_sequence
+        finish_current()
+        # Preserve the source relationship in the editable/displayed name. No
+        # extra schema fields and no doses/frequencies are supplied or inferred.
+        current = (pending_sequence + ": " if pending_sequence else "") + value
+        pending_sequence = ""
+
     text = block.replace("\r\n", "\n").replace("\r", "\n").replace("\u00a0", " ")
     for raw in text.splitlines():
         line = raw.strip()
@@ -159,20 +227,50 @@ def parse_medications(block: str, rules: list[dict] | None = None) -> Medication
         if normalized(line.rstrip('.')) in ("no current facility-administered medications", "no medications", "none"):
             result.empty_confirmed = True
             continue
+        # This connector is table structure, NOT another column of Last Admin.
+        # Accept ordinary whitespace, table indentation, and bullet-only forms.
+        connector = CONNECTOR.fullmatch(clean(BULLET.sub("", raw, count=1)))
+        if connector:
+            mark_sequence("And" if connector.group(1).casefold() == "and" else "Followed by")
+            continue
+
+        # Some clipboard versions place the connector in a final TAB cell.
+        # Remove only that exact cell, leaving every preceding blank cell intact.
+        after_row_sequence = ""
+        cells = raw.split("\t")
+        last_nonempty = next((i for i in range(len(cells)-1, -1, -1) if cells[i].strip()), None)
+        if (last_nonempty is not None and last_nonempty >= 4
+                and CONNECTOR.fullmatch(clean(cells[last_nonempty]))):
+            after_row_sequence = "And" if clean(cells[last_nonempty]).rstrip(":").strip().casefold() == "and" else "Followed by"
+            raw = "\t".join(cells[:last_nonempty])
+
         if BULLET.match(raw):
-            if current:
-                chunks.append(current)
             # Do not strip tabs. A trailing empty field is meaningful.
-            current = BULLET.sub("", raw, count=1)
-        elif '\t' in raw and not current:
-            chunks.append(raw.lstrip(' '))
+            begin_order(BULLET.sub("", raw, count=1))
+        elif pending_sequence:
+            # A complete tabular row can follow a connector even if its bullet
+            # was omitted. A free-text fragment cannot safely identify the order.
+            if "\t" in raw and len(raw.split("\t")) >= 4:
+                begin_order(raw.lstrip(' '))
+            else:
+                leftovers.append(raw.strip())
+        elif "\t" in raw and not current:
+            begin_order(raw.lstrip(' '))
         elif current:
-            # Newline inside an Epic row, before the next bullet.
-            current += " " + raw.lstrip(' ')
+            if len(current.split("\t")) >= 4 and len(raw.split("\t")) >= 4:
+                # Unbulleted, explicitly tab-separated table rows, not arbitrary
+                # space-delimited text. Preserve order and empty interior cells.
+                begin_order(raw.lstrip(' '))
+            else:
+                # Newline inside a cell/name before the next order.
+                current += " " + raw.lstrip(' ')
         else:
-            leftovers.append(line)
-    if current:
-        chunks.append(current)
+            leftovers.append(raw.strip())
+        if after_row_sequence:
+            mark_sequence(after_row_sequence)
+    finish_current()
+    if pending_sequence:
+        sequence_error("A " + pending_sequence + " line has no next medication. Copy the complete sequence.")
     if leftovers:
         result.issues.append("Some text in the medication block was not a table row. Check that the full Epic table was copied.")
         result.error = "The medication block contains unrecognized text. Nothing has been applied. Copy the table again with its column tabs."
@@ -181,6 +279,15 @@ def parse_medications(block: str, rules: list[dict] | None = None) -> Medication
         return result
     for index, chunk in enumerate(chunks, 1):
         cols = [clean(c) for c in chunk.split('\t')]
+        while len(cols) > 7 and not cols[-1]:
+            cols.pop()
+        # A clearly labelled ADS Override Pull can legitimately be a name-only
+        # source row after clipboard trimming. Only pad when every later cell
+        # is blank and the marker ends the name. Never rescue an ordinary order
+        # or silently drop nonempty dose/route/frequency fragments.
+        if (cols and re.search(r"\bADS\s+Override\s+Pull\s*$", cols[0], re.I)
+                and not any(cols[1:])):
+            cols = [cols[0]] + [''] * 6
         # Allow omitted trailing empty cells, but never infer missing internal columns.
         if len(cols) < 4 or len(cols) > 7:
             result.issues.append(f"Medication row {index}: columns could not be separated safely. Copy directly from Epic with tabs between cells.")
@@ -188,11 +295,14 @@ def parse_medications(block: str, rules: list[dict] | None = None) -> Medication
             continue
         cols += [''] * (7-len(cols))
         name, dose, route, frequency, _provider, raw_rate, _last_admin = cols
-        if not name or not route or not frequency:
+        override_pull = bool(re.search(r"\bADS\s+Override\s+Pull\b", name, re.I))
+        if not name or ((not route or not frequency) and not override_pull):
             result.issues.append(f"Medication row {index}: name, route, or frequency is missing. Check the original table.")
             result.error = "At least one medication row is incomplete. Nothing has been applied."
             continue
         warnings = []
+        if override_pull:
+            warnings.append("ADS Override Pull: retained as a separate source entry. Blank dose, route or frequency are not inferred. Hide this exact entry if it should not print.")
         rate, rate_time = '', ''
         if raw_rate:
             m = RATE.match(raw_rate)
@@ -218,7 +328,7 @@ def parse_medications(block: str, rules: list[dict] | None = None) -> Medication
         row = {"id": uuid.uuid4().hex, "name": name, "dose": dose, "route": route,
                "frequency": frequency, "last_rate": rate, "rate_time": rate_time,
                "section": destination_for(name, rules), "custom_text": "", "include": True,
-               "warnings": warnings}
+               "warnings": warnings, "hidden": hidden_for(name, visibility or [])}
         validate_medication(row)
         result.rows.append(row)
     if not result.rows and not result.error and not result.empty_confirmed:
@@ -235,19 +345,54 @@ def rule_for_inline_mapping(name: str, rules: list[dict]) -> tuple[str, str]:
     prefix (for example heparin flush rather than heparin). Exact rules remain
     editable without creating a conflicting lower-priority rule.
     """
-    name_key = match_name(name)
-    matches = []
-    for rule in rules:
-        term = normalized(rule["name"])
-        if rule["match"] == "exact":
-            match = name_key == term
-        else:
-            match = name_key == term or (name_key.startswith(term) and len(name_key) > len(term) and not name_key[len(term)].isalnum())
-        if match:
-            matches.append(rule)
+    matches = [rule for rule in rules if _destination_rule_matches(name, rule)]
     suggested = suggested_key(name)
     if matches:
         best = max(matches, key=lambda r: (r["match"] == "exact", len(normalized(r["name"]))))
         if best["match"] == "exact" or len(normalized(best["name"])) >= len(suggested):
             return best["name"], best["match"]
     return suggested, "prefix"
+
+
+def validate_visibility(rules: list[dict]) -> None:
+    if not isinstance(rules, list) or len(rules) > 2000:
+        raise ValueError("The medication visibility rules are invalid or too large.")
+    seen = set()
+    for rule in rules:
+        if not isinstance(rule, dict) or set(rule) != {"name", "match", "hidden"}:
+            raise ValueError("A medication visibility rule has an invalid structure.")
+        if not isinstance(rule["name"], str) or not 2 <= len(rule["name"]) <= 4000 or any(c in rule["name"] for c in "\n\r\t"):
+            raise ValueError("Use a medication name on one line.")
+        if rule["match"] not in ("prefix", "exact") or not isinstance(rule["hidden"], bool):
+            raise ValueError("A medication visibility rule is invalid.")
+        key = (normalized(rule["name"]), rule["match"])
+        if key in seen:
+            raise ValueError("Medication visibility rules must be unique.")
+        seen.add(key)
+
+
+def hidden_for(name: str, rules: list[dict]) -> bool:
+    name_key = visibility_name(name)
+    choices = []
+    for rule in rules:
+        term = normalized(rule["name"])
+        matched = _matches(name_key, term, rule["match"])
+        if rule["match"] == "prefix":
+            matched = matched or _matches(match_name(name), term, "prefix")
+        if matched:
+            choices.append((rule["match"] == "exact", len(term), rule["hidden"]))
+    return max(choices)[2] if choices else False
+
+
+def set_visibility_rule(rules: list[dict], name: str, hidden: bool, match: str = "exact") -> list[dict]:
+    """An inline hide defaults to the exact formulation, not a broad drug family."""
+    key = visibility_name(name) if match == "exact" else match_name(name)
+    result = [deepcopy(r) for r in rules if (normalized(r["name"]), r["match"]) != (key, match)]
+    result.append({"name": key, "match": match, "hidden": hidden})
+    result.sort(key=lambda r: (r["name"], r["match"]))
+    validate_visibility(result)
+    return result
+
+
+def visible(row: dict) -> bool:
+    return row["include"] and not row.get("hidden", False)

@@ -54,17 +54,20 @@ dddddddddddddddddddddddddddddddd
 
 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 VITALS:
-Synthetic vital-sign placeholder.
+Resp: [18-25] 20
+Heart Rate: [90-120] 108
+BP: (95-110)/(45-65) 100/55
+Temp: [36.5-37.4] 37.1
 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 
 ffffffffffffffffffffffffffffffff
 CULTURES:
-Synthetic culture placeholder.
+No results found for the last 90 days.
 ffffffffffffffffffffffffffffffff
 
 gggggggggggggggggggggggggggggggg
 LABS:
-Synthetic lab placeholder.
+No results found.
 gggggggggggggggggggggggggggggggg
 
 hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
