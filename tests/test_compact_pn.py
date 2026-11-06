@@ -1,3 +1,4 @@
+from models import fields_with_medications
 """Synthetic PN connector and compact print regressions. No patient records."""
 from copy import deepcopy
 from io import BytesIO
@@ -154,7 +155,10 @@ def test_synthetic_18_order_case_is_one_landscape_page_with_all_labs():
 def test_new_lab_summaries_are_horizontal_and_specimens_separate():
     s=sheet();html=handoff_html(s)
     assert html.count('<svg ')==4
-    assert html.count('class="lab-summary"')==5
+    assert html.count('class="lab-summary"')==3  # coagulation/inflammation now print in ID
+    fields = fields_with_medications(s)
+    assert 'Coagulation' in fields['Infectious Disease']
+    assert 'Inflammatory markers' in fields['Infectious Disease']
     assert 'Arterial gas' in html and 'Venous gas' in html
     assert 'Hepatic | latest [01/03/26]' in html
     assert 'AST: 31 | ALT: 22 | ALKPHOS: 210' in html
@@ -224,7 +228,7 @@ def test_same_schema_roundtrip_preserves_mapping_hiding_and_all_order_fields():
     v['settings']['medication_mappings']=upsert_rule([],'fat emulsion','FEN / GI')
     v['settings']['medication_visibility']=set_visibility_rule([],name,True)
     key=generate_key();restored=open_vault(seal_vault(v,key),key)
-    assert restored==v and restored['schema']==8 and upgrade_vault(v)==v
+    assert restored==v and restored['schema']==9 and upgrade_vault(v)==v
 
 
 def test_bounded_small_font_fits_crowded_column_without_deleting_lines():

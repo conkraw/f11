@@ -295,7 +295,7 @@ def legacy_v6():
     vault=save_sheet_in(new_vault(),populated())
     vault['schema']=6
     for sheet in vault['rooms'].values():
-        sheet.pop('neuro_vitals');sheet.pop('nutrition');sheet.pop('cultures')
+        sheet.pop('neuro_vitals');sheet.pop('nutrition');sheet.pop('cultures');sheet.pop('dosing_weight');sheet.pop('admission_date')
     vault['rooms']['P4102']['fields']['Other']='Do not lose this existing note'
     return vault
 
@@ -303,7 +303,7 @@ def legacy_v6():
 def test_schema6_migration_preserves_every_old_field_and_does_not_mutate():
     old=legacy_v6();before=deepcopy(old)
     new=upgrade_vault(old)
-    assert old==before and new['schema']==8
+    assert old==before and new['schema']==9
     for key,value in old['rooms']['P4102'].items():assert new['rooms']['P4102'][key]==value
     assert new['settings']==old['settings']
     assert new['rooms']['P4102']['neuro_vitals']==empty_neuro() and new['rooms']['P4102']['nutrition'] is None
@@ -313,7 +313,7 @@ def test_schema6_encrypted_archive_opens_with_same_key_and_preserves_notes():
     old=legacy_v6();key=Fernet.generate_key().decode()
     ciphertext=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     new=open_vault(ciphertext,key)
-    assert new['schema']==8 and new['rooms']['P4102']['fields']['Other']==old['rooms']['P4102']['fields']['Other']
+    assert new['schema']==9 and new['rooms']['P4102']['fields']['Other']==old['rooms']['P4102']['fields']['Other']
 
 
 def test_new_observations_encrypt_roundtrip():
@@ -359,7 +359,7 @@ def test_session_v6_migration_preserves_unsaved_drafts(app):
     ss['drafts']['P4102']['fields']['Neurologic']='Unsaved edit'
     ss['vent_old']='old index'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==8 and ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved edit'
+    assert ss['vault']['schema']==9 and ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved edit'
     assert 'vent_old' not in ss
 
 

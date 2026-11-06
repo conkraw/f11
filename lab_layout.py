@@ -59,7 +59,7 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
             value = short + ': ' + row['value'] + ' [' + short_date(row['date']) + ']'
             text(6,6+8*(len(extras)-i-1),value,6.5)
     elif kind == 'bmp':
-        extras = [rows['CALCIUM']] if 'CALCIUM' in rows else []
+        extras = [rows[key] for key in ('CALCIUM', 'MG', 'PHOS') if key in rows]
         height = 100 + len(extras)*8
         offset = len(extras)*8
         for key,x,y in (('NA',22,66),('K',22,28),('CL',65,66),('CO2',65,28),('BUN',108,66),('CREATININE',108,28),('GLUCOSE',158,48)):
@@ -68,8 +68,10 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
         for x in (44,87):
             line(x,17+offset,x,77+offset)
         line(130,77+offset,140,48+offset);line(140,48+offset,130,17+offset)
-        if extras:
-            row=extras[0];text(6,6,'Ca: '+row['value']+' ['+short_date(row['date'])+']',6.5)
+        for index, row in enumerate(extras):
+            from labs import canonical
+            label = {'CALCIUM': 'Ca', 'MG': 'Mg', 'PHOS': 'Phos'}[canonical(row['component'])]
+            text(6, 6+8*(len(extras)-index-1), label+': '+row['value']+' ['+short_date(row['date'])+']', 6.5)
     else:
         # Labelled branches for hepatic, coagulation, gases and other results.
         lines = []
@@ -95,7 +97,7 @@ def tree_text_fits(card: dict, width: float) -> bool:
     """Reject a vector tree if any text would spill outside its allotted cell."""
     scale = width / 180
     keys = ('WBC','HGB','HCT','PLT') if card['kind']=='cbc' else ('NA','K','CL','CO2','BUN','CREATININE','GLUCOSE')
-    extras = ('MCV','NEUTROABS','LYMPHSABS') if card['kind']=='cbc' else ('CALCIUM',)
+    extras = ('MCV','NEUTROABS','LYMPHSABS') if card['kind']=='cbc' else ('CALCIUM', 'MG', 'PHOS')
     for key in keys:
         row = card['rows'].get(key)
         if row and (stringWidth(ascii_text(row['value']), 'Times-Roman', 7.2) > 40*scale
@@ -163,12 +165,12 @@ def horizontal_card_markup(card: dict) -> str:
     return '<b>' + title + ':</b> ' + ' | '.join(values)
 
 
-def laboratory_flowables(data: dict, width: float, font_size: float = 7.2) -> list:
+def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, include_id_panels: bool = False) -> list:
     style = ParagraphStyle('labline', fontName='Times-Roman', fontSize=font_size,
                            leading=font_size + 1, splitLongWords=True,
                            allowWidows=1, allowOrphans=1)
     note_style = ParagraphStyle('labnote', parent=style, fontSize=6.1, leading=7)
-    cards = result_cards(data)
+    cards = result_cards(data, include_id_panels=include_id_panels)
     out = [Paragraph(escape(NOTE), note_style)] if cards else []
     trees = [card for card in cards if card['kind'] in ('cbc', 'bmp')]
     for i in range(0, len(trees), 4):
@@ -187,8 +189,8 @@ def laboratory_flowables(data: dict, width: float, font_size: float = 7.2) -> li
     return out
 
 
-def laboratory_html(data: dict) -> str:
-    cards = result_cards(data)
+def laboratory_html(data: dict, include_id_panels: bool = False) -> str:
+    cards = result_cards(data, include_id_panels=include_id_panels)
     pieces = ['<div class="labnote">' + escape(NOTE) + '</div>'] if cards else []
     pieces.append('<div class="labcards">')
     for card in cards:

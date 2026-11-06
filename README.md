@@ -1,78 +1,82 @@
-# PICU Handoff 6.5: cultures and ADS medication fix
+# PICU Handoff 6.6: dosing weight, admission date and expanded labs
 
-Complete web-based SmartPhrase application, delivered as a ZIP. No direct repository changes are made during this update.
+Complete web-based Streamlit application, delivered as a ZIP. No direct GitHub changes were made.
 
-## Update your working app
+## Update the existing app
 
-Save open work. Extract PICU65.zip and open PICU_Handoff_v6_5_Cultures. Upload the CONTENTS to your existing application code repository, replacing matching files. Keep app.py at the repository root. Include the new cultures.py file and all the supplied Python files.
+Save open work. Extract PICU66.zip and open PICU_Handoff_v6_6_Demographics_Labs. Upload the folder CONTENTS into the existing application code repository, replacing matching files. Keep app.py at the repository root. Include the new demographics.py and all supplied Python files. No new packages are required.
 
-Keep your current Streamlit Secrets, password hash, encryption key, token, medication mappings and private data repository. Do not run create_secrets.py or Generate_Secrets.ipynb again. No new dependencies are needed. Existing archives migrate to schema 8 in memory, adding an empty culture snapshot without changing previous values. The next successful save uses schema 8. Do not downgrade only some application files after saving.
+Keep the existing Streamlit Secrets, password hash, encryption key, token, medication mappings and private data repository. Do not run create_secrets.py or Generate_Secrets.ipynb for this update. The helpers are for first-time deployment only.
 
-The sidebar should read: Version 6.5 | Cultures and ADS medication fix
+Restart the deployment. The sidebar reads:
 
-Re-paste a previously rejected SmartPhrase. To add cultures alone, paste only the complete F block. Installation does not re-parse already saved handoff text.
+    Version 6.6 | Dosing weight, admission and expanded labs
 
-## Medication fix
+Use Load demographics / labs example, then Create / update handoff in a test room. The example is synthetic, including its anti-Xa result. Re-paste the full SmartPhrase or only complete I, N and G sections to add the new information. Installation does not reconstruct fields that were never saved.
 
-The section parser previously stripped whitespace from both ends of a completed block. That removed meaningful empty TAB cells at the end of the final medication row. A final ADS Override Pull entry, with its expected blank cells, then appeared to have too few columns and stopped the complete import.
+## Measured weight, dosing weight and admission
 
-The section parser now trims only empty framing lines. It preserves trailing TAB cells on a real row. The medication parser also accepts an explicitly labelled name-only ADS Override Pull entry when its empty trailing cells were already removed by the clipboard. This exception applies only when every later cell is blank and the name ends in ADS Override Pull.
+The I / NUTRITION block keeps measured weight and dosing weight separate. It recognizes the repeated Dosing Weight / Dosing headings, an explicit weight on the following line, and the relative age of the entry. Relative text such as 8 days ago is not displayed or converted into a date. Dose units, pump rates and medication '(Dosing Weight)' qualifiers never supply a dosing-weight value.
 
-Each supplied row remains separate, even when the same entry repeats. Product strengths in a name are not promoted into doses. Blank dose, route, frequency and rate fields remain blank. Extra nonblank fragments or an ordinary incomplete order still fail rather than being guessed. Entries are not hidden automatically. Existing Hide from handoff / Restore controls and exact formulation rules remain available.
+Below Diagnoses, the order is:
 
-The reproduced medication pattern imports all 12 source rows, including eight separate ADS entries. Provider and Last Admin cells are still omitted from parsed handoff records.
+    ----
+    Weight: 73.1 kg
+    Dosing weight: 66.8 kg
+    Z-score: [only when supplied for the measured weight]
 
-## Culture import
+No dosing weight is inferred from measured weight. A dosing-only source does not create a measured weight. Percentiles, growth-chart notes and measurement dates are omitted from this compact demographic output, as in the previous release.
 
-Paste the F section using the existing paired f dividers:
+The new N block uses either an inline or separate-line admission date:
 
-```text
-ffffffffffffffff
-CULTURES:
-Susceptibility data from last 90 days.
-Collected    Specimen Info    Organism
-01/06/26    Blood, Venous    No growth (Preliminary)
-ffffffffffffffff
-```
+    nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+    Date of Admission: 10/11/2026
+    nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
 
-Copy the original Epic table so TAB boundaries remain intact. The aligned example above illustrates the columns. Ordinary single spaces are not a reliable delimiter inside specimen and organism names.
+Admission prints near the top of the Patient column. The recorded date is kept separately from nutrition and imported notes. Invalid or conflicting dates stop that import rather than being guessed. No date is calculated from a hospital-day count, dosing-weight age or other section.
 
-Only collection date, specimen location and organism/result are retained. Antibiotic column headers, sensitivity values and the susceptibility heading are not stored in the culture snapshot or printed. A continuation with blank date and specimen cells belongs to the immediately preceding dated specimen. All recorded organisms in that continuation are retained together.
+Labs / Vitals now has a Demographics / Weight editor for the measured weight, Z-score, dosing weight and admission date. Dosing weight and admission can be cleared individually. Inclusion of measured weight/Z-score remains independent of dosing weight.
 
-Temperature remains first in the ID column. A six-dash separator precedes Cultures. ID notes and medications follow another separator. The same order is used by PDF, HTML, plain text and Print all.
+An included I block replaces measured weight, Z-score and dosing weight together. If the new I block has no dosing weight, the old imported dosing weight clears. An empty N block clears the old imported admission date. Omitted sections remain unchanged. Reimporting G or ordinary E vitals never erases demographic fields.
 
-## How the latest two are selected
+## Lab selection and placement
 
-The compact handoff shows two newest collection-date/specimen display groups per category. Blood sites share the Blood category. Explicit sputum, tracheal and bronchial samples share Respiratory. Urine, CSF, stool and wound categories are separate. Other named sites each have their own category, so a pericardial specimen is not lost among newer blood results. An unspecified Aspirate stays under its own site and is not assumed to be respiratory.
+| Source label | Output |
+| --- | --- |
+| GLUCOSE, GLU or GLUC | Glucose node in latest and preceding BMP trees |
+| MG or MAGNESIUM | Dated Mg line below each BMP tree |
+| PHOS, PHOSPHORUS or PHOSPHATE | Dated Phos line below each BMP tree |
+| ALBUMIN or ALB | Latest albumin in the horizontal hepatic panel |
+| HEPLMW | Latest Anti-Xa (HEPLMW) with the coagulation group |
+| CRP, PROCAL / PROCALCITONIN | Latest results in ID |
+| PT, INR, PTT, FIB and anti-Xa | Latest coagulation results in ID |
 
-Repeated rows with the same collection date/time and specimen label combine for display only. Their distinct organisms and statuses remain visible. Identical repeated status text is shown once. These display groups are not asserted to be individual cultures: the pasted table does not supply accession numbers. All original dated rows remain individually retained in the culture editor. Same-date ties without times use Epic source order. No time or final status is invented.
+Names are matched case-insensitively. HEPLMW and generic ANTI-XA stay distinct, with no conversion of assay units, dosing, targets or reference ranges. There was no HEPLMW result in the supplied sample, so no value is fabricated. The demonstration includes a clearly synthetic result to exercise this field.
 
-This prevents repeated No growth (In process) / No growth (Preliminary) rows for the same date and site from using both display slots. For example, a repeated central-line group on January 6 and an older blood group on January 5 are both eligible for display. Different blood sites on the same date remain different groups and can occupy the two slots.
+The request said to put 'CRP and coags' in Infectious Disease. This release follows that literally: both the coagulation group, including HEPLMW, and inflammatory markers print in ID. PROCAL from the sample is included there as well. They are not duplicated in the bottom lab band.
 
-The Cultures tab shows the compact output and all retained rows. Edit the collection date, sample location or organism lines, or exclude a row from selection. Exclusion does not delete the row. An older group becomes visible when newer groups are excluded. Sensitivity columns cannot be recovered from this snapshot because they were deliberately not retained.
+ID order is temperature first, then a separator, inflammatory/coagulation results, then the existing separated Cultures block, followed by notes and mapped medications. Lactic acid remains in Cardiovascular.
 
-An included empty F section or a valid No results found F section clears previous imported culture output. Omitting F leaves it unchanged. Reimporting F replaces only the culture snapshot. Manual notes, medication assignments, vital signs, labs and respiratory settings are independent. Ambiguous culture rows stop the import rather than attaching an organism to an uncertain specimen.
+Latest/preceding means per component, not a confirmed common specimen. Dates and flags stay attached to the original results. Same-date results without collection times retain Epic's order. The latest supplied CRP can be older than the latest PROCAL. Matching dates may be shared in a group heading, but mixed dates are displayed separately. Missing values remain missing. No patient-level laboratory interpretation is performed.
 
-## First test
-
-Use a blank test room. Click Load cultures / ADS example, then Create / update handoff. The synthetic sample contains 12 medication rows, including eight ADS entries, plus cultures with multiple organisms, duplicate status rows and an older positive specimen from another site. Open Cultures, then Preview / print. The supplied examples/cultures_preview.pdf contains two synthetic room sheets.
+Existing saved laboratory rows also use these display rules on export, including Mg/Phos that were previously saved under Other labs. Raw source values are not altered. All retained rows remain editable or excludable in Labs / Vitals.
 
 ## Existing features retained
 
-Room-based handoffs and a free-text Other room option. App sign-in. Immediate reusable medication-to-system assignments and Admin editing without an open handoff. Unmapped orders go to Other Medications. Exact-name reversible hiding. Medication taper, held/future-order and linked PN parsing.
+Room selection and Other room. App sign-in. Encrypted private GitHub archive. Medication recognition, remembered system mappings, Admin editing without an open handoff, reversible hiding, held/future orders, taper connectors, linked PN orders, and repeated ADS entries with intentionally blank fields.
 
-Respiratory support from C/D, including the existing qualified pressure/flow display rules, standard nasal cannula, separate set and observed tidal volumes, and source-specific FiO2. E-block vitals stay above support and medications. SpO2 Avg/Min/Max summaries display only the recorded range. Lactic acid stays in Cardiac. K/L/M neurologic observations stay at the top of Neuro. I-block weight and Z-score print below diagnoses, without percentiles or footnotes.
+C/D respiratory support and qualified pressure/flow display rules. Observed tidal volume. E vitals and SpO2 range. F cultures with the latest two date/specimen display groups per category, continuation organisms and no sensitivities. K/L/M neurologic observations. CBC/BMP fishbones and horizontal other labs. Compact landscape output and Print all with a new page for each room. Very long handoffs continue onto extra pages instead of being cut off. H and J remain manual.
 
-CBC and BMP show two dated per-component fishbones. Other lab groups are horizontal with one latest result per component. Gas types remain separate. Same-date results without times retain source order. Missing results are not calculated. Compact landscape PDF printing attempts one page within its existing font-size limits, then uses continuation pages rather than clipping. Each room starts on a new page in Print all.
+## Saved data and privacy
 
-H and J remain manual. No new interpretation of intake/output or wounds is added.
+Schema 9 adds only dosing_weight and admission_date fields to each handoff. Schemas 1-8 migrate in memory. Missing new fields start blank. Existing room IDs, measured weights, cultures, notes, lab values, hidden orders, mappings, passwords, key and archive path are preserved. The next successful save writes schema 9. Do not roll back only some app files after that save.
 
-## Storage and privacy
-
-The archive path, authentication code, encryption code and GitHub storage client are unchanged. Culture snapshots are inside the same encrypted archive. The host processes pasted text before storage encryption. The app does not save the original full SmartPhrase to the archive. Exports are unencrypted and Git history retains earlier encrypted saves. No live handoff repository or deployment Secrets were accessed to prepare this ZIP. Use only the hosting and storage arrangements approved by your institution.
-
-The secrets-generation helpers are included for first-time deployment only. For an existing deployment, keep the original encryption key and private data repository. An app-password change is not a reason to generate a new encryption key.
+The source SmartPhrase is not archived as a raw block. The host still receives and processes pasted text before encryption. Saved clinical fields are in the existing encrypted archive. Downloads are not encrypted. Earlier encrypted versions can remain in Git history. Continue using institution-approved hosting and storage. No live private archive or deployment Secrets were accessed in preparing this update.
 
 ## Validation
 
-See TEST_REPORT.md. The full suite has 653 passing tests, including 65 new cases for ADS rows, cultures, import atomicity, editing, migration, encryption and export. The preview was rendered and visually checked. The hosted Streamlit browser and live private storage connection were not tested. UI checks use widget stubs. No claim of independent clinical validation or universal support for arbitrary future Epic layouts is made.
+715 automated tests passed. The original 6.5 package passed all 653 inherited tests before changes. New tests cover the exact supplied weight pattern, inline N heading, partial/empty section updates, date validation, glucose/Mg/phosphorus/albumin, HEPLMW, source-specific result dates, ID routing, callbacks, independent rooms, encryption and migration. An encrypted schema-8 archive generated by the unmodified 6.5 code was opened with the same key and every prior field was compared for equality.
+
+The one-page synthetic landscape preview was rendered and visually inspected. Streamlit is not installed in the build environment. UI checks use widget stubs, not a live browser. The hosted app and authenticated private storage were not tested. See TEST_REPORT.md.
+
+Implementation reference: Streamlit Session State documentation describes callbacks running before the next script rendering, with widget state accessed using keys. Official documentation: https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state

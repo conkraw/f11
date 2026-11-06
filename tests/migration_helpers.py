@@ -4,6 +4,8 @@ def strip_v6_fields(vault):
         sheet.pop('neuro_vitals', None)
         sheet.pop('nutrition', None)
         sheet.pop('cultures', None)
+        sheet.pop('dosing_weight', None)
+        sheet.pop('admission_date', None)
         sheet.pop('labs', None)
         sheet.pop('vitals', None)
         for row in sheet.get('medications', []):

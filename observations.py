@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 import re
 from vitals import validate_vitals
+from demographics import separate_dosing_weight
 
 NEURO_SECTIONS = {'k': 'Target Arousal Level', 'l': 'WAT Score', 'm': 'ICP Trends'}
 MISSING = {'', '-', '--', '---', 'n/a', 'na', 'none', 'not documented', 'not recorded',
@@ -135,12 +136,20 @@ def format_nutrition(data: dict | None) -> str:
 @dataclass
 class NutritionResult:
     data: dict | None = None
+    dosing_weight: str = ""
     issues: list[str] = field(default_factory=list)
     error: str = ''
 
 
 def parse_nutrition(block: str) -> NutritionResult:
     out = NutritionResult()
+    split = separate_dosing_weight(block)
+    if split.error:
+        out.error = split.error
+        return out
+    block = split.measured_block
+    out.dosing_weight = split.dosing_weight
+    out.issues.extend(split.issues)
     candidates = []
     for raw in block.replace('\r\n', '\n').replace('\r', '\n').splitlines():
         text = raw.replace('\u00a0', ' ').strip()

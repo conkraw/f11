@@ -12,9 +12,9 @@ import re
 import uuid
 
 CBC = ('WBC', 'HGB', 'HCT', 'PLT', 'MCV', 'NEUTROABS', 'LYMPHSABS')
-BMP = ('NA', 'K', 'CL', 'CO2', 'BUN', 'CREATININE', 'GLUCOSE', 'CALCIUM')
+BMP = ('NA', 'K', 'CL', 'CO2', 'BUN', 'CREATININE', 'GLUCOSE', 'CALCIUM', 'MG', 'PHOS')
 HEPATIC = ('AST', 'ALT', 'ALKPHOS', 'BILITOT', 'BILIDIR', 'ALBUMIN', 'PROTEIN')
-COAG = ('PT', 'INR', 'PTT', 'FIB')
+COAG = ('PT', 'INR', 'PTT', 'FIB', 'HEPLMW', 'ANTI-XA')
 ARTERIAL = ('PHA', 'PCO2A', 'PO2ART', 'HCO3A', 'BEART', 'O2SATA')
 VENOUS = ('PHV', 'PCO2V', 'PO2VEN', 'HCO3V', 'BEV', 'O2SATV')
 CAPILLARY = ('PHC', 'PCO2C', 'PO2CAP', 'HCO3C', 'BEC')
@@ -36,6 +36,9 @@ ALIASES = {
     'SODIUM': 'NA', 'POTASSIUM': 'K', 'CHLORIDE': 'CL', 'BICARBONATE': 'CO2',
     'CARBON DIOXIDE': 'CO2', 'CREAT': 'CREATININE', 'CR': 'CREATININE',
     'GLU': 'GLUCOSE', 'GLUC': 'GLUCOSE', 'CA': 'CALCIUM',
+    'MAGNESIUM': 'MG', 'PHOSPHORUS': 'PHOS', 'PHOSPHATE': 'PHOS',
+    'ANTI XA': 'ANTI-XA', 'ANTI_XA': 'ANTI-XA',
+    'C-REACTIVE PROTEIN': 'CRP', 'C REACTIVE PROTEIN': 'CRP',
     'ALB': 'ALBUMIN', 'TOTAL PROTEIN': 'PROTEIN', 'TP': 'PROTEIN',
     'ALK PHOS': 'ALKPHOS', 'ALKALINE PHOSPHATASE': 'ALKPHOS',
     'TBILI': 'BILITOT', 'TOTAL BILIRUBIN': 'BILITOT',
@@ -200,7 +203,7 @@ def ordered_components(data: dict) -> dict[str, list[dict]]:
     return result
 
 
-def result_cards(data: dict) -> list[dict]:
+def result_cards(data: dict, include_id_panels: bool = True) -> list[dict]:
     """Structured lab cards shared by PDF, HTML and plain-text exports."""
     groups = ordered_components(data)
     cards, consumed = [], set()
@@ -217,7 +220,7 @@ def result_cards(data: dict) -> list[dict]:
         if name in ('CBC', 'BMP'):
             continue
         rows = {k: groups[k][0] for k in components if k in groups}
-        if rows:
+        if rows and (include_id_panels or name not in ('Coagulation', 'Inflammatory')):
             cards.append({'title': name + ' | latest', 'kind': 'branch', 'rows': rows})
         consumed.update(components)
     # Unknown analytes stay visible, without assigning guessed units or a panel.
@@ -239,9 +242,9 @@ def lactate_text(data: dict) -> str:
     return '\n'.join(lines)
 
 
-def labs_text(data: dict) -> str:
+def labs_text(data: dict, include_id_panels: bool = True) -> str:
     lines = []
-    for card in result_cards(data):
+    for card in result_cards(data, include_id_panels=include_id_panels):
         lines.append(card['title'])
         for row in card['rows'].values():
             lines.append(row['component'] + ': ' + row['value'] + ' [' + row['date'] + ']')
@@ -250,3 +253,30 @@ def labs_text(data: dict) -> str:
     if data['notes']:
         lines.extend(['Source notes:'] + data['notes'])
     return '\n'.join(lines)
+
+
+def id_labs_text(data: dict) -> str:
+    """Latest inflammatory/coagulation results, explicitly routed to ID.
+
+    HEPLMW remains distinct from generic Anti-Xa. No units or ranges are added.
+    Matching dates can be shared in a group heading. Mixed dates stay attached
+    to their own results, including older CRP values supplied by Epic.
+    """
+    groups=ordered_components(data)
+    lines=[]
+    for title,components in (("Inflammatory markers",INFLAMMATORY),("Coagulation",COAG)):
+        rows=[groups[key][0] for key in components if key in groups]
+        if not rows:
+            continue
+        dates={short_date(row["date"]) for row in rows}
+        same=len(dates)==1
+        heading=title+(" ["+next(iter(dates))+"]" if same else "")
+        values=[]
+        for row in rows:
+            label="Anti-Xa (HEPLMW)" if canonical(row["component"])=="HEPLMW" else row["component"]
+            text=label+": "+row["value"]
+            if not same:
+                text+=" ["+short_date(row["date"])+"]"
+            values.append(text)
+        lines.append(heading+": "+" | ".join(values))
+    return "\n".join(lines)

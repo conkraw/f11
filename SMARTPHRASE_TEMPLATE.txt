@@ -41,6 +41,9 @@ hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
 iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 NUTRITION:
 [Insert your existing Epic nutrition/weight SmartLink here]
+
+Dosing Weight:
+[Insert your existing Epic dosing-weight SmartLink here]
 iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 
 jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
@@ -62,3 +65,7 @@ mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 ICP Trends:
 [Insert your existing Epic SmartLink here. Blank values are omitted.]
 mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+Date of Admission: [Insert the recorded admission date]
+nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn

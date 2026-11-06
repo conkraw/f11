@@ -1,23 +1,20 @@
-PICU Handoff 6.5 - complete application
+PICU Handoff 6.6 - complete application
 
-1. Save open work. Extract PICU65.zip.
-2. Open PICU_Handoff_v6_5_Cultures.
-3. Upload the folder CONTENTS to your existing application code repository.
-   Replace matching files and keep app.py at the root. Include cultures.py.
-4. Keep existing Streamlit Secrets, password, encryption key, token, mapping
-   rules and private data repository. Do not rerun the secrets generator.
+1. Save open work. Extract PICU66.zip.
+2. Open PICU_Handoff_v6_6_Demographics_Labs.
+3. Upload the folder CONTENTS to the existing application code repository.
+   Replace matching files and keep app.py at the root. Include demographics.py.
+4. Keep existing Streamlit Secrets, password, encryption key, token, medication
+   mappings and private data repository. Do not rerun the secrets generator.
 5. Restart the deployment. Look for:
-   Version 6.5 | Cultures and ADS medication fix
-6. Use Load cultures / ADS example and Create / update handoff in a test room.
-   Then re-paste a previously failed SmartPhrase or just the complete F block.
+   Version 6.6 | Dosing weight, admission and expanded labs
+6. Load demographics / labs example, then Create / update handoff in a test room.
+7. Re-paste the full SmartPhrase or the complete I, N and G blocks.
 
-This is a full update, not a patch. No direct repository changes were made.
-No new Python dependencies are required.
+Full package, not a patch. No direct repository changes were made.
+No new Python dependencies. New handoff fields require schema 9.
+Schemas 1-8 migrate using the same encryption key. Do not partially downgrade.
 
-Runtime changes: parser.py, medications.py, cultures.py (new), importing.py,
-models.py, batching.py, and app.py. Guides, synthetic examples and tests are
-also included. Existing compact exports use the shared formatted ID content.
-
-Storage schema advances from 7 to 8 for cultures. Schemas 1-7 migrate without
-changing the encryption key or losing existing fields. Do not downgrade only
-some files after the new archive is saved.
+Changed runtime files: demographics.py (new), observations.py, parser.py,
+importing.py, models.py, labs.py, lab_layout.py, batching.py and app.py.
+All other source files are included to avoid mixing incompatible versions.

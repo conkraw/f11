@@ -1,4 +1,4 @@
-"""One-click A/B/C/D/E/F/G/I/K/L/M import with all-or-nothing updates for malformed input."""
+"""One-click A/B/C/D/E/F/G/I/K/L/M/N import with all-or-nothing updates for malformed input."""
 from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -10,8 +10,9 @@ from labs import parse_labs
 from vitals import parse_vitals
 from observations import parse_neuro, parse_nutrition
 from cultures import parse_cultures
+from demographics import parse_admission
 
-SUPPORTED_SECTIONS = "abcdefgiklm"
+SUPPORTED_SECTIONS = "abcdefgiklmn"
 
 
 @dataclass
@@ -33,7 +34,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
     parsed = parse_smartphrase(text)
     relevant = set(SUPPORTED_SECTIONS) & (set(parsed.blocks) | parsed.invalid)
     if not relevant:
-        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L or M dividers.")
+        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M or N dividers.")
         return out
     out.notices.extend(parsed.issues)
     candidate = deepcopy(sheet)
@@ -99,8 +100,16 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                     out.errors.append(nutrition.error)
                     continue
                 candidate["nutrition"] = nutrition.data
+                candidate["dosing_weight"] = nutrition.dosing_weight
                 out.notices.extend(nutrition.issues)
-                out.imported.append("weight / Z-score" if nutrition.data else "weight display cleared")
+                out.imported.append("weight / dosing weight / Z-score" if nutrition.data or nutrition.dosing_weight else "weight display cleared")
+            elif letter == "n":
+                admission = parse_admission(parsed.blocks[letter])
+                if admission.error:
+                    out.errors.append(admission.error)
+                    continue
+                candidate["admission_date"] = admission.date
+                out.imported.append("admission date" if admission.date else "admission date cleared")
             elif letter in "klm":
                 observations = parse_neuro(parsed.blocks[letter], letter)
                 if observations.error:
