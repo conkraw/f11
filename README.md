@@ -1,6 +1,20 @@
-# PICU Handoff, Version 6.1
+# PICU Handoff, Version 6.2
 
 Dated lab trees, routed vital signs, and reversible medication hiding. This is the complete web-based application. It retains the Version 5 respiratory-support handling, remembered system mappings, encrypted GitHub storage, editable landscape handoffs and Print all.
+
+## New in 6.2: neurologic observations, weight and observed tidal volume
+
+K (Target Arousal Level), L (WAT Score) and M (ICP Trends) import as independent neurologic vital-sign groups. Their nonblank values appear at the top of NEURO, in K/L/M order, before manual notes and medications. Original labels and values are retained, including WAT-1 zero, SBS -1, pressure units and source ranges. CPP stays beside ICP. Blank labels and numerical ranges in headings do not become scores. No clinical value is calculated.
+
+The I (NUTRITION) block imports only the recorded weight and Z-score. These print below Diagnoses in the PATIENT column, after ----. For example: Weight: 15.3 kg and Z-score: 0.41. Dates, percentiles, asterisks and growth-chart footnotes are excluded from the new nutrition record and output. A missing Z-score stays blank. Multiple dated weights use the newest date, retaining source order for equal-date readings with a notice. Without complete dates, the first source row is used with a notice.
+
+The C-block parser now reads Vt (observed, mL). It prints immediately after Vt (Set, mL). Neither the set nor target volume is substituted for a missing observed volume. The existing invasive-mode display rule remains unchanged.
+
+Use Labs / Vitals to edit or exclude neurologic observations and weight/Z-score. Use the existing respiratory editor to edit observed Vt. Include controls change the output without deleting retained values. No new approval or confirmation steps are required.
+
+Only included sections are replaced. A present empty K, L, M or I clears that section's previous automatic values. An omitted section stays unchanged. Updating E alone does not clear K/L/M. Updating A alone does not clear weight. Manual notes stay separate. Start blank for new patient clears all these values with the rest of the draft.
+
+Load neuro / weight example demonstrates WAT-1 zero, ICP/CPP and weight. Load observed-Vt example demonstrates SBS -1 and separate set/observed volumes. Bundled examples are synthetic. No new runtime dependencies are required.
 
 ## Medication taper fix
 
@@ -16,17 +30,17 @@ Standalone connectors, tab-indented connectors, a connector in an extra final ta
 
 Use `Load medication-taper example`, then `Create / update handoff`, for a synthetic test. The example includes three separate steroid steps, an infusion, blank respiratory blocks, vitals and laboratory results. An empty C/D section is valid: it supplies no respiratory device. The blue respiratory and lab notices are informational, not medication-import failures.
 
-The archive stays at schema 6. No password reset, key replacement, settings reset or new runtime dependency is needed. Existing lab trees, vital routing, hidden medications, respiratory support and Print all remain included.
+Version 6.1 retained schema 6. Version 6.2 migrates to schema 7 for the new independent observations. No password reset, key replacement, settings reset or new runtime dependency is needed. Existing lab trees, vital routing, hidden medications, respiratory support and Print all remain included.
 
 ## Update a working deployment
 
-Save open handoffs. Extract the complete ZIP and copy the contents of the PICU_Handoff_v6_1_Taper_Fix folder into your existing application code repository, replacing matching files. Keep app.py at the repository root. Include the new labs.py, vitals.py and lab_layout.py files and all other supplied Python files. Restart the deployment after the upload.
+Save open handoffs. Extract the complete ZIP and copy the contents of the PICU_Handoff_v6_2_Neuro_Weight folder into your existing application code repository, replacing matching files. Keep app.py at the repository root. Include observations.py and every supplied application module. Do not replace only app.py. Restart the deployment after the upload.
 
 Keep your current Streamlit Secrets, app password, encryption key, GitHub token and private data repository unchanged. Do not run create_secrets.py or Generate_Secrets.ipynb again for an update. No new runtime dependencies are needed beyond the existing ReportLab/Streamlit requirements. The notebook and secrets helper are only for a first-time deployment.
 
-The sidebar should say: Version 6.1 | Medication taper parsing fix.
+The sidebar should say: Version 6.2 | Neuro observations, weight and observed Vt.
 
-This package does not upload or change your repository for you. It does not reset stored medication assignments or saved handoffs. Schema 1-5 archives migrate in memory to schema 6, and the next successful save writes schema 6 with the same key. Update all application files together. Do not downgrade after saving with the new schema.
+This package does not upload or change your repository for you. It does not reset stored medication assignments or saved handoffs. Schema 1-6 archives migrate in memory to schema 7, and the next successful save writes schema 7 with the same key. Version 6.1 used schema 6. Existing rooms, notes, labs, vitals, hidden-medication rules and mapping rules are preserved. Update all application files together. Do not downgrade after saving with the new schema.
 
 ## Everyday use
 
@@ -68,9 +82,9 @@ Include order, inside an order's detail editor, remains a one-handoff inclusion 
 
 ## Sections currently imported
 
-A: Diagnoses. B: Medications. C/D: respiratory support. E: VITALS. G: LABS.
+A: Diagnoses. B: Medications. C/D: respiratory support. E: VITALS. G: LABS. I: weight and Z-score. K: target arousal. L: WAT-1. M: ICP/CPP.
 
-F cultures, H intake/output, I nutrition, J wound review, K target arousal level, L WAT score and M ICP trends have recognized boundaries but are not automatically imported in this update. No SBS, WAT, ICP, nutrition, culture or intake/output result is inferred. The existing manual fields remain available.
+F cultures, H intake/output and J wound review have recognized boundaries but are not automatically imported. Nutrition content beyond weight/Z-score is not imported. Manual fields remain available. No clinical value is inferred from an empty field.
 
 ## Storage and deployment
 
@@ -80,7 +94,7 @@ Exports are unencrypted. Earlier encrypted saves remain in Git history. Removing
 
 ## Validation
 
-See TEST_REPORT.md. Tests use synthetic fixtures, in-memory encrypted archives, mocked storage requests and Streamlit widget stubs. A separate compatibility check opened an archive generated by the unmodified Version 5 package with the new code and the same key. The build environment could not install Streamlit, so a real Streamlit browser session and your hosted private storage connection remain untested.
+See TEST_REPORT.md. Tests use synthetic fixtures, in-memory encrypted archives, mocked storage requests and Streamlit widget stubs. A separate compatibility check opened a synthetic archive generated by the unmodified Version 6.1 package with the new code and the same key. Every original saved field and Admin setting matched. Streamlit was not installed in the build environment, so a real Streamlit browser session and your hosted private storage connection remain untested.
 
 ## Technical references
 

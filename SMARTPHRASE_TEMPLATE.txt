@@ -50,15 +50,15 @@ jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
 
 kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
 Target Arousal Level:
-[Optional source section. Recognized, not imported in Version 6.]
+[Insert your existing Epic SmartLink here. Blank values are omitted.]
 kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
 
 llllllllllllllllllllllllllllllll
 WAT Score:
-[Optional source section. Recognized, not imported in Version 6.]
+[Insert your existing Epic SmartLink here. Blank values are omitted.]
 llllllllllllllllllllllllllllllll
 
 mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 ICP Trends:
-[Optional source section. Recognized, not imported in Version 6.]
+[Insert your existing Epic SmartLink here. Blank values are omitted.]
 mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

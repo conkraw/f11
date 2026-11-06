@@ -17,6 +17,9 @@ from ventilation import validate_ventilation, format_ventilation
 from noninvasive import validate_noninvasive, format_noninvasive
 from labs import empty_labs, validate_labs, labs_text, lactate_text
 from vitals import validate_vitals, text_by_system
+from observations import empty_neuro, validate_neuro, neuro_rows, validate_nutrition, format_nutrition
+
+SCHEMA_VERSION = 7
 
 # Interpretation of the user's ranges: even P4102..P4116, then the listed 4200 rooms.
 DEFAULT_ROOMS = [f"P{n}" for n in range(4102, 4117, 2)] + ["4201", "4203", "4209"] + [str(n) for n in range(4211, 4224, 2)]
@@ -46,15 +49,15 @@ def normalize_room(value: str) -> str:
 
 def new_sheet(room: str) -> dict:
     return {"id": uuid.uuid4().hex, "room": normalize_room(room), "created_at": utc_now(),
-            "updated_at": None, "fields": {s: "" for s in SYSTEMS}, "medications": [], "ventilation": None, "noninvasive": [], "vitals": [], "labs": empty_labs()}
+            "updated_at": None, "fields": {s: "" for s in SYSTEMS}, "medications": [], "ventilation": None, "noninvasive": [], "vitals": [], "labs": empty_labs(), "neuro_vitals": empty_neuro(), "nutrition": None}
 
 
 def new_vault() -> dict:
-    return {"schema": 6, "settings": {"diagnoses_destination": "Diagnoses", "rooms": list(DEFAULT_ROOMS), "medication_mappings": [], "medication_visibility": []}, "rooms": {}}
+    return {"schema": SCHEMA_VERSION, "settings": {"diagnoses_destination": "Diagnoses", "rooms": list(DEFAULT_ROOMS), "medication_mappings": [], "medication_visibility": []}, "rooms": {}}
 
 
 def validate_sheet(sheet: dict) -> None:
-    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs"}:
+    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition"}:
         raise ValidationError("The handoff structure is invalid.")
     if not isinstance(sheet["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", sheet["id"]):
         raise ValidationError("The handoff identifier is invalid.")
@@ -75,6 +78,8 @@ def validate_sheet(sheet: dict) -> None:
         validate_noninvasive(sheet["noninvasive"])
         validate_vitals(sheet["vitals"])
         validate_labs(sheet["labs"])
+        validate_neuro(sheet["neuro_vitals"])
+        validate_nutrition(sheet["nutrition"])
     except ValueError as exc:
         raise ValidationError(str(exc)) from None
     ids = set()
@@ -89,7 +94,7 @@ def validate_sheet(sheet: dict) -> None:
 
 
 def validate_vault(vault: dict) -> None:
-    if not isinstance(vault, dict) or set(vault) != {"schema", "settings", "rooms"} or vault["schema"] != 6:
+    if not isinstance(vault, dict) or set(vault) != {"schema", "settings", "rooms"} or vault["schema"] != SCHEMA_VERSION:
         raise ValidationError("The encrypted archive has an unsupported structure. It was not overwritten.")
     settings = vault["settings"]
     if not isinstance(settings, dict) or set(settings) != {"diagnoses_destination", "rooms", "medication_mappings", "medication_visibility"}:
@@ -137,23 +142,26 @@ def apply_diagnoses(sheet: dict, diagnosis_text: str, destination: str, append: 
 
 
 def upgrade_vault(vault: dict) -> dict:
-    """Migrate schemas 1-5 without replacing keys, notes or saved mappings."""
+    """Migrate schemas 1-6 without replacing keys, notes or saved mappings."""
     if not isinstance(vault, dict) or set(vault) != {"schema", "settings", "rooms"}:
         raise ValidationError("The encrypted archive has an invalid structure.")
     version = vault.get("schema")
-    if version == 6:
+    if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
-    if version not in (1, 2, 3, 4, 5):
+    if version not in (1, 2, 3, 4, 5, 6):
         raise ValidationError("The encrypted archive has an unsupported structure. It was not overwritten.")
     candidate = deepcopy(vault)
     settings = candidate["settings"]
     expected_settings = {"diagnoses_destination", "rooms"} | ({"medication_mappings"} if version >= 2 else set())
+    if version >= 6:
+        expected_settings.add("medication_visibility")
     if not isinstance(settings, dict) or set(settings) != expected_settings or not isinstance(candidate["rooms"], dict):
         raise ValidationError("The previous archive structure is invalid. Nothing was discarded.")
     if version == 1:
         settings["medication_mappings"] = []
-    settings["medication_visibility"] = []
+    if version < 6:
+        settings["medication_visibility"] = []
     for sheet in candidate["rooms"].values():
         expected = {"id", "room", "created_at", "updated_at", "fields"}
         if version >= 2:
@@ -162,6 +170,8 @@ def upgrade_vault(vault: dict) -> dict:
             expected.add("ventilation")
         if version >= 4:
             expected.add("noninvasive")
+        if version >= 6:
+            expected.update({"vitals", "labs"})
         if not isinstance(sheet, dict) or set(sheet) != expected:
             raise ValidationError("A previous handoff structure is invalid. Nothing was discarded.")
         expected_fields = set(LEGACY_SYSTEMS if version == 1 else SYSTEMS)
@@ -184,13 +194,16 @@ def upgrade_vault(vault: dict) -> dict:
                         or device["device"] not in ("BiPAP", "CPAP", "HFNC")):
                     raise ValidationError("A previous respiratory entry is invalid. Nothing was discarded.")
                 device["pressure_inferred"] = False
-        sheet["vitals"] = []
-        sheet["labs"] = empty_labs()
-        for row in sheet["medications"]:
-            if "hidden" in row:
-                raise ValidationError("The previous medication structure is invalid.")
-            row["hidden"] = False
-    candidate["schema"] = 6
+        if version < 6:
+            sheet["vitals"] = []
+            sheet["labs"] = empty_labs()
+            for row in sheet["medications"]:
+                if "hidden" in row:
+                    raise ValidationError("The previous medication structure is invalid.")
+                row["hidden"] = False
+        sheet["neuro_vitals"] = empty_neuro()
+        sheet["nutrition"] = None
+    candidate["schema"] = SCHEMA_VERSION
     validate_vault(candidate)
     return candidate
 
@@ -222,8 +235,12 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
     lactate = lactate_text(sheet["labs"])
     if lactate:
         result["Cardiovascular"] = lactate + ("\n-----\n" + result["Cardiovascular"] if result["Cardiovascular"].strip() else "")
-    for section, text in text_by_system(sheet["vitals"]).items():
+    for section, text in automatic_vitals(sheet).items():
         result[section] = text + ("\n-----\n" + result[section] if result[section].strip() else "")
+    nutrition = format_nutrition(sheet["nutrition"])
+    if nutrition:
+        diagnosis = result["Diagnoses"].rstrip()
+        result["Diagnoses"] = (diagnosis + "\n----\n" if diagnosis else "") + nutrition
     if include_lab_text:
         laboratory = labs_text(sheet["labs"])
         if laboratory:
@@ -251,3 +268,8 @@ def apply_respiratory(sheet: dict, invasive: dict | None, devices: list[dict]) -
     result["noninvasive"] = deepcopy(devices)
     validate_sheet(result)
     return result
+
+
+def automatic_vitals(sheet: dict) -> dict[str, str]:
+    """Keep imported neurologic observations before notes and medications."""
+    return text_by_system(neuro_rows(sheet["neuro_vitals"]) + sheet["vitals"])

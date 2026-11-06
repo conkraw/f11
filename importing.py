@@ -1,4 +1,4 @@
-"""One-click A/B/C/D import with all-or-nothing updates for malformed input."""
+"""One-click A/B/C/D/E/G/I/K/L/M import with all-or-nothing updates for malformed input."""
 from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -8,6 +8,9 @@ from medications import parse_medications
 from noninvasive import parse_respiratory
 from labs import parse_labs
 from vitals import parse_vitals
+from observations import parse_neuro, parse_nutrition
+
+SUPPORTED_SECTIONS = "abcdegiklm"
 
 
 @dataclass
@@ -27,13 +30,13 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
         out.errors.append("The paste is too large. Use one room at a time.")
         return out
     parsed = parse_smartphrase(text)
-    relevant = set("abcdeg") & (set(parsed.blocks) | parsed.invalid)
+    relevant = set(SUPPORTED_SECTIONS) & (set(parsed.blocks) | parsed.invalid)
     if not relevant:
-        out.errors.append("No supported block was found. Use paired A, B, C, D, E or G dividers.")
+        out.errors.append("No supported block was found. Use paired A, B, C, D, E, G, I, K, L or M dividers.")
         return out
     out.notices.extend(parsed.issues)
     candidate = deepcopy(sheet)
-    for letter in "abcdeg":
+    for letter in SUPPORTED_SECTIONS:
         if letter in parsed.invalid:
             out.errors.append("Check the " + SECTION_NAMES[letter] + " dividers. Nothing was imported.")
             continue
@@ -81,6 +84,22 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 candidate["labs"] = labs.data
                 out.notices.extend(labs.issues)
                 out.imported.append("laboratory results")
+            elif letter == "i":
+                nutrition = parse_nutrition(parsed.blocks[letter])
+                if nutrition.error:
+                    out.errors.append(nutrition.error)
+                    continue
+                candidate["nutrition"] = nutrition.data
+                out.notices.extend(nutrition.issues)
+                out.imported.append("weight / Z-score" if nutrition.data else "weight display cleared")
+            elif letter in "klm":
+                observations = parse_neuro(parsed.blocks[letter], letter)
+                if observations.error:
+                    out.errors.append(observations.error)
+                    continue
+                candidate["neuro_vitals"][letter] = observations.rows
+                out.notices.extend(observations.issues)
+                out.imported.append(SECTION_NAMES[letter] if observations.rows else SECTION_NAMES[letter] + " display cleared")
         except (ValidationError, ValueError) as exc:
             out.errors.append(str(exc))
     if out.errors:

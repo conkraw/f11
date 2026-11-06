@@ -34,7 +34,8 @@ def patient_column(sheet: dict, fields: dict) -> str:
     if fields["Demographics / Weight"].strip():
         lines.append(fields["Demographics / Weight"].strip())
     if fields["Diagnoses"].strip():
-        lines.append("Diagnoses:\n" + fields["Diagnoses"].strip())
+        heading = "Diagnoses:\n" if sheet["fields"]["Diagnoses"].strip() else ""
+        lines.append(heading + fields["Diagnoses"].strip())
     return "\n\n".join(lines)
 
 

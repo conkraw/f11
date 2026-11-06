@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6: dated labs, routed vitals and reversible medication hiding."""
+"""PICU SmartPhrase v6.2: neurologic observations, weight/Z-score and observed Vt."""
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
@@ -10,18 +10,19 @@ from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, hando
 from github_store import GitHubConfig, GitHubVault, StorageError
 from models import (MAX_FIELD, SYSTEMS, ValidationError, new_sheet, new_vault,
                     normalize_room, save_sheet_in, validate_vault, validate_sheet,
-                    upgrade_vault, fields_with_medications, respiratory_text)
+                    upgrade_vault, fields_with_medications, respiratory_text, automatic_vitals, SCHEMA_VERSION)
 from medications import (DESTINATIONS, format_medication, suggested_key, upsert_rule,
                          remap, rule_for_inline_mapping, validate_medication, visible, hidden_for, set_visibility_rule)
 from ventilation import LABELS, format_ventilation, validate_ventilation
 from noninvasive import DEVICE_FIELDS, format_noninvasive, validate_noninvasive
-from importing import import_sections
+from importing import import_sections, SUPPORTED_SECTIONS
 from batching import available_handoffs
 from parser import MAX_PASTE, SECTION_NAMES
 from security import valid_password_hash, verify_password
 from labs import validate_labs, lactate_text
 from vitals import validate_vitals, text_by_system
 from lab_layout import laboratory_html
+from observations import NEURO_SECTIONS, validate_neuro, validate_nutrition, format_nutrition
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title="PICU Handoff", layout="wide", initial_sidebar_state="expanded")
@@ -68,7 +69,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_")):
             st.session_state.pop(key, None)
 
 
@@ -114,6 +115,88 @@ def room_changed() -> None:
 def update_field(room: str, section: str, key: str) -> None:
     if require_session():
         st.session_state["drafts"][room]["fields"][section] = st.session_state[key]
+
+
+def load_neuro_sample() -> None:
+    if require_session():
+        st.session_state["paste"] = (ROOT / "examples" / "synthetic_neuro_weight.txt").read_text(encoding="utf-8")
+        st.session_state.pop("import_result", None)
+
+
+def load_observed_sample() -> None:
+    if require_session():
+        st.session_state["paste"] = (ROOT / "examples" / "synthetic_observed_vt.txt").read_text(encoding="utf-8")
+        st.session_state.pop("import_result", None)
+
+
+def neuro_row_change(room: str, source: str, index: int, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    candidate = deepcopy(ss["drafts"][room]["neuro_vitals"])
+    if source not in candidate or not 0 <= index < len(candidate[source]) or field not in ("value", "include"):
+        return
+    old = candidate[source][index][field]
+    candidate[source][index][field] = ss[key]
+    try:
+        validate_neuro(candidate)
+        ss["drafts"][room]["neuro_vitals"] = candidate
+    except ValueError as exc:
+        ss[key] = old
+        note(str(exc), "error")
+
+
+def nutrition_change(room: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    current = ss["drafts"][room]["nutrition"]
+    if current is None or field not in ("weight", "z_score", "include"):
+        return
+    candidate = deepcopy(current)
+    candidate[field] = ss[key].strip() if isinstance(ss[key], str) else ss[key]
+    try:
+        validate_nutrition(candidate)
+        ss["drafts"][room]["nutrition"] = candidate
+    except ValueError as exc:
+        ss[key] = current[field]
+        note(str(exc), "error")
+
+
+def neuro_weight_editor(sheet: dict) -> None:
+    st.subheader("Neurologic observations")
+    st.caption("K: target arousal, L: WAT-1, M: ICP/CPP. Values print at the top of NEURO. Empty sections add nothing. A zero score is retained.")
+    present = False
+    for source, title in NEURO_SECTIONS.items():
+        for index, row in enumerate(sheet["neuro_vitals"][source]):
+            present = True
+            key = "neuro_" + sheet["id"] + "_" + source + "_" + str(index)
+            if key not in st.session_state:
+                st.session_state[key] = row["value"]
+            st.text_input(row["label"], key=key, max_chars=1500, on_change=neuro_row_change,
+                          args=(sheet["room"], source, index, "value", key))
+            ikey = key + "_include"
+            if ikey not in st.session_state:
+                st.session_state[ikey] = row["include"]
+            st.checkbox("Include " + row["label"], key=ikey, on_change=neuro_row_change,
+                        args=(sheet["room"], source, index, "include", ikey))
+    if not present:
+        st.caption("No recorded neurologic observations. Paste K, L and/or M to add them.")
+    st.subheader("Weight and Z-score")
+    st.caption("Only these values print below Diagnoses, after ----. Percentiles, dates and growth-chart footnotes are not included.")
+    data = sheet["nutrition"]
+    if data is None:
+        st.caption("Paste the I block to add the recorded weight and Z-score.")
+        return
+    for field, label in (("weight", "Recorded weight, with unit"), ("z_score", "Recorded Z-score"), ("include", "Include weight and Z-score")):
+        key = "weight_" + sheet["id"] + "_" + field
+        if key not in st.session_state:
+            st.session_state[key] = data[field]
+        kwargs = dict(key=key, on_change=nutrition_change, args=(sheet["room"], field, key))
+        if field == "include":
+            st.checkbox(label, **kwargs)
+        else:
+            st.text_input(label, max_chars=80 if field == "weight" else 40, **kwargs)
 
 
 def load_taper_sample() -> None:
@@ -205,6 +288,7 @@ def vital_row_change(room: str, index: int, field: str, key: str) -> None:
 
 def labs_vitals_editor(sheet: dict) -> None:
     import streamlit.components.v1 as components
+    neuro_weight_editor(sheet)
     st.subheader("Laboratory results")
     st.caption("CBC and BMP show the last two supplied results per component. Other tests show the latest result per component. Arterial and venous gases stay separate. Dates and source flags are preserved. No collection times or same-draw groupings are invented.")
     components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}</style>' + laboratory_html(sheet["labs"]), height=490, scrolling=True)
@@ -423,7 +507,7 @@ def clear_ventilation() -> None:
 def upgrade_existing_session() -> None:
     ss = st.session_state
     vault = ss.get("vault")
-    if not vault or vault.get("schema") == 6:
+    if not vault or vault.get("schema") == SCHEMA_VERSION:
         return
     old_schema, old_settings = vault["schema"], deepcopy(vault["settings"])
     converted = upgrade_vault(vault)
@@ -512,7 +596,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.1 | Medication taper parsing fix")
+        st.caption("Version 6.2 | Neuro observations, weight and observed Vt")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -681,8 +765,10 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
     paste_tab, meds_tab, labs_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Edit handoff", "Preview / print"])
     with paste_tab:
-        st.caption("Paste the full SmartPhrase or only the paired sections you are updating. A/B import diagnoses and medications, C/D respiratory support, E vital signs and G labs. Omitted sections and separate notes stay unchanged.")
+        st.caption("Paste the full SmartPhrase or only the paired sections you are updating. A/B import diagnoses and medications, C/D respiratory support, E vital signs, G labs, I weight/Z-score and K/L/M neurologic observations. Omitted sections and separate notes stay unchanged.")
         left, right = st.columns(2)
+        left.button("Load neuro / weight example", on_click=load_neuro_sample)
+        left.button("Load observed-Vt example", on_click=load_observed_sample)
         left.button("Load synthetic example", on_click=load_sample)
         left.button("Load labs / vitals example", on_click=load_labs_sample)
         left.button("Load medication-taper example", on_click=load_taper_sample)
@@ -721,8 +807,8 @@ def handoff_page(store: GitHubVault | None) -> None:
             if key not in ss:
                 ss[key] = sheet["fields"][section]
             with st.expander(section, expanded=section == "Diagnoses"):
-                if section in text_by_system(sheet["vitals"]):
-                    st.text(text_by_system(sheet["vitals"])[section] + "\n-----")
+                if section in automatic_vitals(sheet):
+                    st.text(automatic_vitals(sheet)[section] + "\n-----")
                 if section == "Cardiovascular" and lactate_text(sheet["labs"]):
                     st.text(lactate_text(sheet["labs"]) + "\n-----")
                 if section == "Respiratory" and respiratory_text(sheet):
@@ -733,6 +819,9 @@ def handoff_page(store: GitHubVault | None) -> None:
                 for row in sheet["medications"]:
                     if visible(row) and row["section"] == section:
                         st.text(format_medication(row))
+                if section == "Diagnoses" and format_nutrition(sheet["nutrition"]):
+                    st.text("----\n" + format_nutrition(sheet["nutrition"]))
+                    st.caption("Edit the imported weight and Z-score in Labs / Vitals.")
     with preview_tab:
         import streamlit.components.v1 as components
         st.caption("Landscape Letter. Vitals lead each system column, followed by support settings, notes and medications. Dated lab trees appear below the columns.")
@@ -882,7 +971,7 @@ def admin_page(store: GitHubVault | None) -> None:
         st.form_submit_button("Save settings", on_click=save_admin_settings, args=(store,))
     with st.expander("Section imports"):
         for key, heading in SECTION_NAMES.items():
-            st.text(key * 8 + " = " + heading + (" | automatic import" if key in "abcdeg" else " | not imported yet"))
+            st.text(key * 8 + " = " + heading + (" | automatic import" if key in SUPPORTED_SECTIONS else " | not imported yet"))
         st.caption("C/D rules control the display, not bedside device status. BiPAP needs both D-block pressures. CPAP needs EPAP or PEEP. Explicit HFNC or the documented mask-plus-flow convention can add HFNC. Inferred HFNC is labeled flow-based. No previous-paste values are reused.")
 
 

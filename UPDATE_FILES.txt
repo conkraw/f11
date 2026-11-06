@@ -1,23 +1,22 @@
-PICU Handoff Version 6.1: complete replacement package
+PICU Handoff 6.2 - complete application
 
-1. Save open handoffs, then extract the ZIP.
-2. Open PICU_Handoff_v6_1_Taper_Fix.
-3. Upload the CONTENTS to the existing application code repository.
-   Keep app.py at the repository root. Replace matching application files.
-4. Keep Streamlit Secrets, the encryption key, password, token and private data
-   repository unchanged. Do not run either secrets generator again.
-5. Restart the deployment and check this sidebar label:
-   Version 6.1 | Medication taper parsing fix
-6. Select a room, paste the full SmartPhrase again, and Create / update handoff.
-   To replace medications only, paste the paired B section.
+Save open handoffs, extract PICU62.zip, open PICU_Handoff_v6_2_Neuro_Weight.
+Upload its CONTENTS into the existing application code repository. Keep app.py
+at the root. Replace matching files and include observations.py. Then reboot.
 
-Changes from Version 6:
-  medications.py: preserve Followed by and START ON without corrupting columns
-  app.py: version label and synthetic taper example button
-  examples/synthetic_medication_taper.txt: synthetic practice input
-  examples/medication_taper_preview.pdf and .html: synthetic print example
-  tests/test_medication_tapers.py: parsing, mapping, storage, UI stub and print tests
-  README.md, START_HERE.html, TEST_REPORT.md and SHA256SUMS.txt: documentation/checks
+Keep all existing deployment Secrets, encryption key and data repository.
+Do not run create_secrets.py or Generate_Secrets.ipynb for this update.
+No new dependencies. No direct GitHub changes were made in creating this ZIP.
 
-All previous modules are included. There is no dependency or schema change.
-No GitHub repository has been modified by creating this ZIP.
+Sidebar: Version 6.2 | Neuro observations, weight and observed Vt
+
+New imports: I weight/Z-score; K target arousal; L WAT-1; M ICP/CPP.
+Observed Vt is added after set Vt. Blank fields add no assumed values.
+Included empty sections clear their old values. Omitted sections stay unchanged.
+
+Schemas 1-6 migrate to schema 7 with the same key. Saved notes, rules and
+handoffs are preserved. Update all files together. Do not downgrade after saving.
+
+New: observations.py and synthetic examples/tests.
+Changed: app.py, models.py, importing.py, vitals.py, ventilation.py, exports.py,
+batching.py and documentation. All existing application files are included.

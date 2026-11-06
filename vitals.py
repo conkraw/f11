@@ -5,6 +5,8 @@ import re
 
 def route(label: str) -> str:
     key = re.sub(r'\s+', ' ', label.strip().casefold().replace('₂', '2'))
+    if re.match(r'^(?:icp|cpp|intracranial pressure|cerebral perfusion pressure|wat(?:[- ]?1)?|target arousal level|sbs|rass)\b', key):
+        return 'Neurologic'
     if re.match(r'^(?:temp(?:erature)?|tmax|t min|t max)\b', key):
         return 'Infectious Disease'
     if re.match(r'^(?:resp(?:iratory)?(?: rate)?|respirations|rr|spo2|sao2|oxygen saturation|o2 sat(?:uration)?|fio2)\b', key):
@@ -20,7 +22,7 @@ def validate_vitals(rows: list[dict]) -> None:
     for row in rows:
         if not isinstance(row, dict) or set(row) != {'label', 'value', 'section', 'include'}:
             raise ValueError('A vital-sign row has an invalid structure.')
-        if row['section'] not in ('Respiratory', 'Cardiovascular', 'Infectious Disease', 'Other') or not isinstance(row['include'], bool):
+        if row['section'] not in ('Neurologic', 'Respiratory', 'Cardiovascular', 'Infectious Disease', 'Other') or not isinstance(row['include'], bool):
             raise ValueError('A vital-sign destination or inclusion setting is invalid.')
         for key in ('label', 'value'):
             if not isinstance(row[key], str) or not row[key].strip() or len(row[key]) > 1500 or '\n' in row[key] or '\r' in row[key]:

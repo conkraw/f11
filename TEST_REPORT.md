@@ -1,23 +1,53 @@
-# Version 6.1 validation
+# Version 6.2 validation
 
-## Tests actually run
+## Executed checks
 
-The unmodified Version 6 package passed all 377 existing tests in this environment before changes. A minimal reproduction of the supplied taper failed on medication rows 2 and 3 with the same column-separation error shown in the screenshot.
+The unmodified Version 6.1 package passed all 432 tests before changes.
+The updated suite passes 515 tests, including 83 new cases in
+tests/test_neuro_weight.py. No tests were skipped. The suite was also run
+from the extracted delivery ZIP. Command: PYTHONPATH=. pytest -q --disable-warnings
 
-After the fix, 432 automated tests passed using `PYTHONPATH=. pytest -q --disable-warnings`. This includes the original 377 checks and 55 additional taper-related cases. No tests were skipped. See tests/test_medication_tapers.py.
+Historical fixtures were adjusted to remove fields that did not exist in their
+old schemas. Current-schema assertions now expect 7. Existing medication,
+respiratory, laboratory, security and mocked-storage tests remain in the suite.
 
-New coverage includes tab-indented/standalone/bulleted Followed by connectors, a final tab-cell connector, missing trailing empty columns, blank topical doses, wrapped medication names, Windows/Mac/Unix line endings, explicitly tabular bulletless orders, preserved start dates and order sequence, date-independent drug mapping, unchanged unknown annotations, exact dated hide/restore rules, broad Admin visibility rules, malformed/orphan connector rejection, unchanged prior drafts on errors, repeated imports, encryption round trips without a schema change, inline mapping callbacks, synthetic-example loading, PDF/HTML/text date and frequency retention, and multi-room printing.
+New tests cover zero WAT-1, negative/zero SBS, blank headings and placeholders,
+ICP/CPP source values, ranges, conflict rejection, independent I/K/L/M imports,
+E-only imports preserving neuro values, weight/Z-score-only output, omitted
+percentiles and footnotes, missing Z-score, dated weight selection, observed
+versus set Vt, observed zero, missing observed Vt, field conflicts, new-patient
+clearing, same-room editing, reversible inclusion, HTML escaping, schema-6
+migration, encryption round trips, print-all selection, two-room landscape
+exports and long-content continuation without dropped or duplicated values.
 
-A separate local-only reproduction checked both supplied medication lists with provider and Last Admin values replaced by sentinels. The first retained all 12 orders, including the three distinct dexamethasone steps and their dates/frequencies. The second retained all 36 orders, including blank topical doses, enteral routes, elemental doses and continuous/PRN infusions. Names, doses, routes, frequencies and Last Rate values matched their source columns. C/D patterns were checked in the same import: blank respiratory blocks in the first and documented invasive ventilation in the second. These source-pattern reproductions are not bundled clinical records.
+UI page rendering and callbacks use the existing Streamlit widget stub. They
+do not implement a live browser lifecycle.
 
-The synthetic taper preview was generated from the same application export functions used by the app. Its landscape PDF was rendered and inspected. Start-date/sequence labels and medication frequencies were checked in PDF text as well as HTML/text exports.
+## Original-package compatibility
 
-## Storage compatibility
+A separate process running the unmodified Version 6.1 code generated a synthetic
+encrypted schema-6 archive with routing and visibility rules, four medications,
+46 lab rows, vital signs, respiratory settings and notes. The new code opened
+that ciphertext with the same generated test key. Every original room field and
+Admin setting matched. Only new empty fields and schema 7 were added. No real
+handoff archive, password or GitHub token was accessed.
 
-This fix retains schema 6 and does not alter security.py, github_store.py, models.py, the encrypted data filename, dependency requirements, or secrets configuration. A newly saved taper handoff opens with the same existing encryption mechanism. The previous migration, encryption/tamper and mocked GitHub conflict tests remain in the passing suite. No real handoff archive or account secret was read.
+## Export review
+
+The two-room preview was generated with the application export functions,
+rendered at 160 dpi and visually checked on both pages. It retains dated CBC
+and BMP trees. Weight/Z-score follow diagnoses, WAT/ICP/CPP lead NEURO on page
+one, SBS -1 leads NEURO on page two, and observed Vt follows set Vt in RESP.
+No clipped or overlapping text was observed in this preview.
 
 ## Limits
 
-Streamlit is not installed in this build environment. UI and callback checks use the existing test stubs, not a complete live Streamlit browser lifecycle. No deployment, real login, live GitHub save or private data-repository connection was tested. No GitHub repository was changed.
+Streamlit is not installed in this environment. A real browser session, hosted
+app deployment and authenticated private storage connection were not tested.
+No direct GitHub changes were made. Storage tests use mocked requests.
 
-The fix addresses the documented clipboard patterns, not every possible future Epic format. Unknown/malformed medication structure still fails without applying a partial import. The app displays source scheduling labels rather than determining current treatment, doses or taper timing. Test the supplied synthetic example after deployment, then compare any clinical handoff against its source.
+This is source-text extraction, not a clinical determination of treatment,
+current device use or bedside accuracy. No score, weight, Z-score, pressure or
+volume is calculated. Unfamiliar source formats may need additional handling.
+Use the synthetic examples after deployment, then compare clinical handoffs
+with their source. Tests do not establish privacy or regulatory compliance.
