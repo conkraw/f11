@@ -62,7 +62,15 @@ def parse_smartphrase(text: str) -> ParseResult:
                     result.invalid.add(key)
                     result.issues.append(f"More than one {SECTION_NAMES[key]} block was found. Paste one patient at a time.")
                 else:
-                    result.blocks[key] = "\n".join(buffer).strip()
+                    # Trim blank framing lines, not the final row's TAB cells.
+                    # ADS override rows may intentionally have no filled cells
+                    # after the name. Their empty columns are still meaningful.
+                    start, end = 0, len(buffer)
+                    while start < end and not buffer[start].strip():
+                        start += 1
+                    while end > start and not buffer[end - 1].strip():
+                        end -= 1
+                    result.blocks[key] = "\n".join(buffer[start:end])
                 active, buffer = None, []
             else:
                 if active:

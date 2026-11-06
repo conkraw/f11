@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.4: SpO2 ranges in respiratory vitals and compact handoffs."""
+"""PICU SmartPhrase v6.5: culture summaries and robust ADS override rows."""
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
@@ -23,6 +23,7 @@ from labs import validate_labs, lactate_text
 from vitals import validate_vitals, text_by_system
 from lab_layout import laboratory_html
 from observations import NEURO_SECTIONS, validate_neuro, validate_nutrition, format_nutrition
+from cultures import validate_cultures, cultures_text, compact_groups, category_for
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title="PICU Handoff", layout="wide", initial_sidebar_state="expanded")
@@ -69,7 +70,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_")):
             st.session_state.pop(key, None)
 
 
@@ -256,6 +257,65 @@ def visibility_admin(store: GitHubVault | None) -> None:
                 st.text(rule["name"] + " [" + rule["match"] + "]")
                 st.button("Hide again", key="rehide_rule_" + str(i), on_click=change_visibility_rule,
                           args=(rule["name"], True, rule["match"], store))
+
+
+
+def load_cultures_sample() -> None:
+    if require_session():
+        st.session_state["paste"] = (ROOT / "examples" / "synthetic_cultures_ads.txt").read_text(encoding="utf-8")
+        st.session_state.pop("import_result", None)
+
+
+def culture_row_change(room: str, row_id: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    snapshot = ss["drafts"][room]["cultures"]
+    candidate = deepcopy(snapshot)
+    row = next((r for r in candidate["rows"] if r["id"] == row_id), None)
+    if row is None or field not in ("date", "specimen", "organisms", "include"):
+        return
+    previous = row[field]
+    row[field] = ([x.strip() for x in ss[key].splitlines() if x.strip()]
+                  if field == "organisms" else ss[key])
+    try:
+        validate_cultures(candidate)
+        ss["drafts"][room]["cultures"] = candidate
+    except ValueError as exc:
+        ss[key] = "\n".join(previous) if field == "organisms" else previous
+        note(str(exc), "error")
+
+
+def cultures_editor(sheet: dict) -> None:
+    st.subheader("Cultures to Infectious Disease")
+    st.caption("Prints the two newest collection-date/specimen groups per category: blood, respiratory, urine, and other sites. Same date and site rows are combined for display only, with all their distinct organisms and statuses. No sensitivity columns are stored or printed.")
+    st.caption("Collection IDs are not supplied. A displayed group is not proof of one culture. Same-date ties keep source order. Unspecified aspirates stay under their own site rather than being assumed respiratory.")
+    data = sheet["cultures"]
+    text = cultures_text(data)
+    if text:
+        st.text(text)
+    else:
+        st.caption("No culture results selected. Paste an F block to import them.")
+    for message in data["notes"]:
+        st.caption(message)
+    selected = {key for group in compact_groups(data) for key in group["row_ids"]}
+    with st.expander("Edit retained culture rows (" + str(len(data["rows"])) + ")"):
+        for number, row in enumerate(data["rows"], 1):
+            status = "shown in compact output" if row["id"] in selected else "older / excluded from compact output"
+            st.text(str(number) + ". " + row["date"] + " | " + row["specimen"] + " | " + status)
+            st.caption("Category: " + category_for(row["specimen"]))
+            for field, label in (("date", "Collection date / optional time"), ("specimen", "Sample location"),
+                                 ("organisms", "Organisms / results, one per line"), ("include", "Include in newest-result selection")):
+                key = "culture_" + row["id"] + "_" + field
+                if key not in st.session_state:
+                    st.session_state[key] = "\n".join(row[field]) if field == "organisms" else row[field]
+                kwargs = dict(key=key, on_change=culture_row_change, args=(sheet["room"], row["id"], field, key))
+                if field == "include":
+                    st.checkbox(label, **kwargs)
+                elif field == "organisms":
+                    st.text_area(label, height=90, max_chars=20000, **kwargs)
+                else:
+                    st.text_input(label, max_chars=80 if field == "date" else 500, **kwargs)
 
 
 def lab_row_change(room: str, row_id: str, field: str, key: str) -> None:
@@ -602,7 +662,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.4 | SpO2 range in respiratory vitals")
+        st.caption("Version 6.5 | Cultures and ADS medication fix")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -769,10 +829,11 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.button("Start blank for new patient", on_click=start_new_patient)
         st.button("Load saved handoff", on_click=load_saved_into_editor)
         st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
-    paste_tab, meds_tab, labs_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Edit handoff", "Preview / print"])
+    paste_tab, meds_tab, labs_tab, cultures_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Edit handoff", "Preview / print"])
     with paste_tab:
-        st.caption("Paste the full SmartPhrase or only the paired sections you are updating. A/B import diagnoses and medications, C/D respiratory support, E vital signs, G labs, I weight/Z-score and K/L/M neurologic observations. Omitted sections and separate notes stay unchanged.")
+        st.caption("Paste the full SmartPhrase or only the paired sections you are updating. A/B import diagnoses and medications, C/D respiratory support, E vital signs, F cultures, G labs, I weight/Z-score and K/L/M neurologic observations. Omitted sections and separate notes stay unchanged.")
         left, right = st.columns(2)
+        left.button("Load cultures / ADS example", on_click=load_cultures_sample)
         left.button("Load compact / PN example", on_click=load_compact_sample)
         left.button("Load neuro / weight example", on_click=load_neuro_sample)
         left.button("Load observed-Vt example", on_click=load_observed_sample)
@@ -807,6 +868,8 @@ def handoff_page(store: GitHubVault | None) -> None:
             st.info("Paste a B block and create the handoff to add medications.")
     with labs_tab:
         labs_vitals_editor(sheet)
+    with cultures_tab:
+        cultures_editor(sheet)
     with edit_tab:
         st.caption("These are your separate notes. Re-pasting medications or ventilation does not erase them.")
         for section in SYSTEMS:
@@ -823,6 +886,9 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.caption("Vital signs print first, then support settings. Edit support under Paste / create.")
                 st.text_area("Notes: " + section, key=key, height=100, max_chars=MAX_FIELD,
                              on_change=update_field, args=(room, section, key))
+                if section == "Infectious Disease" and cultures_text(sheet["cultures"]):
+                    st.text("------\n" + cultures_text(sheet["cultures"]))
+                    st.caption("Edit imported specimens and results in Cultures. Temperature stays first in the printed ID column.")
                 for row in sheet["medications"]:
                     if visible(row) and row["section"] == section:
                         st.text(format_medication(row))

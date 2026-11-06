@@ -1,31 +1,23 @@
-PICU Handoff 6.4 - complete application
+PICU Handoff 6.5 - complete application
 
-Extract PICU64.zip. Open PICU_Handoff_v6_4_SpO2 and upload its CONTENTS to
-existing application code storage. Keep app.py at the root. Replace matching
-files. No direct repository changes were made while preparing this ZIP.
+1. Save open work. Extract PICU65.zip.
+2. Open PICU_Handoff_v6_5_Cultures.
+3. Upload the folder CONTENTS to your existing application code repository.
+   Replace matching files and keep app.py at the root. Include cultures.py.
+4. Keep existing Streamlit Secrets, password, encryption key, token, mapping
+   rules and private data repository. Do not rerun the secrets generator.
+5. Restart the deployment. Look for:
+   Version 6.5 | Cultures and ADS medication fix
+6. Use Load cultures / ADS example and Create / update handoff in a test room.
+   Then re-paste a previously failed SmartPhrase or just the complete F block.
 
-Keep existing Streamlit Secrets, password, encryption key, token, mappings and
-the private data repository. Do not run create_secrets.py or Generate_Secrets.ipynb.
-There are no new dependencies or storage-schema changes. Schema remains 7.
+This is a full update, not a patch. No direct repository changes were made.
+No new Python dependencies are required.
 
-Sidebar: Version 6.4 | SpO2 range in respiratory vitals
+Runtime changes: parser.py, medications.py, cultures.py (new), importing.py,
+models.py, batching.py, and app.py. Guides, synthetic examples and tests are
+also included. Existing compact exports use the shared formatted ID content.
 
-Changed runtime files: vitals.py and the version label in app.py.
-The ZIP contains all previous runtime files, guides, examples and regression tests.
-
-Keep the SpO2 summary line inside the E / VITALS block:
-SpO2  Avg: 99.2 %  Min: 93 %  Max: 100 %
-
-Expected RESP vital:
-SpO2: 93% to 100%
-
-The average is not displayed. Source min/max values are not recalculated.
-Existing SpO2 single values and bracketed ranges retain their previous behavior.
-
-Re-paste the full E block or SmartPhrase to update a saved handoff. E replaces
-all previous E vitals, so keep other desired vital lines in the E block.
-No medication, lab, support, neurologic observation or manual note is erased
-by an E-only import. Values remain editable/excludable in Labs / Vitals.
-
-Test examples/synthetic_spo2_vitals.txt in a blank test room. The compact print
-layout, prior medication fixes, hidden rules and Print all remain included.
+Storage schema advances from 7 to 8 for cultures. Schemas 1-7 migrate without
+changing the encryption key or losing existing fields. Do not downgrade only
+some files after the new archive is saved.

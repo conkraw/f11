@@ -281,6 +281,13 @@ def parse_medications(block: str, rules: list[dict] | None = None, visibility: l
         cols = [clean(c) for c in chunk.split('\t')]
         while len(cols) > 7 and not cols[-1]:
             cols.pop()
+        # A clearly labelled ADS Override Pull can legitimately be a name-only
+        # source row after clipboard trimming. Only pad when every later cell
+        # is blank and the marker ends the name. Never rescue an ordinary order
+        # or silently drop nonempty dose/route/frequency fragments.
+        if (cols and re.search(r"\bADS\s+Override\s+Pull\s*$", cols[0], re.I)
+                and not any(cols[1:])):
+            cols = [cols[0]] + [''] * 6
         # Allow omitted trailing empty cells, but never infer missing internal columns.
         if len(cols) < 4 or len(cols) > 7:
             result.issues.append(f"Medication row {index}: columns could not be separated safely. Copy directly from Epic with tabs between cells.")

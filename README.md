@@ -1,152 +1,78 @@
-# PICU Handoff 6.4: SpO2 ranges in respiratory vitals
+# PICU Handoff 6.5: cultures and ADS medication fix
 
-This is the complete application update delivered as a ZIP. No direct GitHub changes are made by this package.
+Complete web-based SmartPhrase application, delivered as a ZIP. No direct repository changes are made during this update.
 
-## New in 6.4
+## Update your working app
 
-Inside the E / VITALS block, this Epic summary:
+Save open work. Extract PICU65.zip and open PICU_Handoff_v6_5_Cultures. Upload the CONTENTS to your existing application code repository, replacing matching files. Keep app.py at the repository root. Include the new cultures.py file and all the supplied Python files.
+
+Keep your current Streamlit Secrets, password hash, encryption key, token, medication mappings and private data repository. Do not run create_secrets.py or Generate_Secrets.ipynb again. No new dependencies are needed. Existing archives migrate to schema 8 in memory, adding an empty culture snapshot without changing previous values. The next successful save uses schema 8. Do not downgrade only some application files after saving.
+
+The sidebar should read: Version 6.5 | Cultures and ADS medication fix
+
+Re-paste a previously rejected SmartPhrase. To add cultures alone, paste only the complete F block. Installation does not re-parse already saved handoff text.
+
+## Medication fix
+
+The section parser previously stripped whitespace from both ends of a completed block. That removed meaningful empty TAB cells at the end of the final medication row. A final ADS Override Pull entry, with its expected blank cells, then appeared to have too few columns and stopped the complete import.
+
+The section parser now trims only empty framing lines. It preserves trailing TAB cells on a real row. The medication parser also accepts an explicitly labelled name-only ADS Override Pull entry when its empty trailing cells were already removed by the clipboard. This exception applies only when every later cell is blank and the name ends in ADS Override Pull.
+
+Each supplied row remains separate, even when the same entry repeats. Product strengths in a name are not promoted into doses. Blank dose, route, frequency and rate fields remain blank. Extra nonblank fragments or an ordinary incomplete order still fail rather than being guessed. Entries are not hidden automatically. Existing Hide from handoff / Restore controls and exact formulation rules remain available.
+
+The reproduced medication pattern imports all 12 source rows, including eight separate ADS entries. Provider and Last Admin cells are still omitted from parsed handoff records.
+
+## Culture import
+
+Paste the F section using the existing paired f dividers:
 
 ```text
-SpO2  Avg: 99.2 %  Min: 93 %  Max: 100 %
+ffffffffffffffff
+CULTURES:
+Susceptibility data from last 90 days.
+Collected    Specimen Info    Organism
+01/06/26    Blood, Venous    No growth (Preliminary)
+ffffffffffffffff
 ```
 
-now becomes only:
+Copy the original Epic table so TAB boundaries remain intact. The aligned example above illustrates the columns. Ordinary single spaces are not a reliable delimiter inside specimen and organism names.
 
-```text
-SpO2: 93% to 100%
-```
+Only collection date, specimen location and organism/result are retained. Antibiotic column headers, sensitivity values and the susceptibility heading are not stored in the culture snapshot or printed. A continuation with blank date and specimen cells belongs to the immediately preceding dated specimen. All recorded organisms in that continuation are retained together.
 
-The recorded Min and Max are used directly. Avg is not included. This row appears with the other respiratory vitals above support settings, notes and medications in the editor, PDF, HTML, text export and Print all. Decimal endpoints keep their supplied precision. Normal SpO2 readings and other vital-sign formats are unchanged.
+Temperature remains first in the ID column. A six-dash separator precedes Cultures. ID notes and medications follow another separator. The same order is used by PDF, HTML, plain text and Print all.
 
-Keep the line inside your existing paired E dividers. To update a saved handoff, re-paste its full VITALS section or full SmartPhrase and click Create / update handoff. An E-only paste replaces ALL imported E vital signs, so keep the other desired vital-sign lines in that block. It does not replace medications, labs, device settings, or independent neurologic observations. Omitted E blocks leave prior vitals unchanged. A present empty E block clears them. No saved handoff is silently reinterpreted during installation.
+## How the latest two are selected
 
-The existing Labs / Vitals editor can edit or exclude the new range. A summary with a missing, contradictory or malformed limit produces an error without replacing the draft. Avg never supplies a missing endpoint. Use examples/synthetic_spo2_vitals.txt to test in a blank test room.
+The compact handoff shows two newest collection-date/specimen display groups per category. Blood sites share the Blood category. Explicit sputum, tracheal and bronchial samples share Respiratory. Urine, CSF, stool and wound categories are separate. Other named sites each have their own category, so a pericardial specimen is not lost among newer blood results. An unspecified Aspirate stays under its own site and is not assumed to be respiratory.
 
-The only runtime changes are vitals.py and the version label in app.py. No dependency, archive schema, authentication, encryption, mapping or storage changes are made.
+Repeated rows with the same collection date/time and specimen label combine for display only. Their distinct organisms and statuses remain visible. Identical repeated status text is shown once. These display groups are not asserted to be individual cultures: the pasted table does not supply accession numbers. All original dated rows remain individually retained in the culture editor. Same-date ties without times use Epic source order. No time or final status is invented.
 
-## Retained from 6.3
+This prevents repeated No growth (In process) / No growth (Preliminary) rows for the same date and site from using both display slots. For example, a repeated central-line group on January 6 and an older blood group on January 5 are both eligible for display. Different blood sites on the same date remain different groups and can occupy the two slots.
 
-Epic's standalone And connector between PN and lipid orders is now handled as a relationship, not an extra table column. Both orders keep their own name, dose, route, frequency and recorded rate. The next order retains an And: prefix in the editable handoff. That prefix does not prevent a saved medication mapping or hiding rule from matching. Existing Followed by taper support, held-order labels and future start dates are preserved. Arbitrary missing columns or incomplete connectors still stop the import rather than guessing or dropping an order.
+The Cultures tab shows the compact output and all retained rows. Edit the collection date, sample location or organism lines, or exclude a row from selection. Exclusion does not delete the row. An older group becomes visible when newer groups are excluded. Sensitivity columns cannot be recovered from this snapshot because they were deliberately not retained.
 
-CBC and BMP retain their latest/preceding per-component dated fishbones. Hepatic, coagulation, blood-gas, inflammatory and other groups now print as horizontal summaries, with one latest result per component. Arterial/venous/capillary groups stay separate. A shared date is shown once only when all the displayed dates in a group match. Otherwise each component keeps its own displayed date. No units, missing values or collection times are invented.
+An included empty F section or a valid No results found F section clears previous imported culture output. Omitting F leaves it unchanged. Reimporting F replaces only the culture snapshot. Manual notes, medication assignments, vital signs, labs and respiratory settings are independent. Ambiguous culture rows stop the import rather than attaching an organism to an uncertain specimen.
 
-The print body starts at 7.2 pt, with tighter margins, spacing and tree geometry. PDF layout measures the whole handoff and tries 7.2, 7.0, 6.8 and 6.5 pt to fit one landscape Letter page. When one page is still insufficient, it uses 7.2 pt and continues without clipping or omitting content. Each room still starts on a new page in Print all. HTML is also compact, but browser pagination can differ. Prefer the PDF for printing. Input/edit text is not made smaller.
+## First test
 
-The synthetic 18-order example, including both PN orders and all its lab groups, fits on one page. The same-page result is not a guarantee for arbitrary long handoffs or all possible mapping arrangements. The preview tab reports whether the current PDF fits one page and the chosen body size.
+Use a blank test room. Click Load cultures / ADS example, then Create / update handoff. The synthetic sample contains 12 medication rows, including eight ADS entries, plus cultures with multiple organisms, duplicate status rows and an older positive specimen from another site. Open Cultures, then Preview / print. The supplied examples/cultures_preview.pdf contains two synthetic room sheets.
 
-Use Load compact / PN example followed by Create / update handoff. The fixture has invented values and test-only labels. The PDF example includes demonstration mappings, not changes to your saved defaults.
+## Existing features retained
 
-## Updating
+Room-based handoffs and a free-text Other room option. App sign-in. Immediate reusable medication-to-system assignments and Admin editing without an open handoff. Unmapped orders go to Other Medications. Exact-name reversible hiding. Medication taper, held/future-order and linked PN parsing.
 
-Extract PICU64.zip and open PICU_Handoff_v6_4_SpO2. Upload the folder's contents to your existing application code repository, replacing matching files. Keep app.py at the root. Update all supplied files together.
+Respiratory support from C/D, including the existing qualified pressure/flow display rules, standard nasal cannula, separate set and observed tidal volumes, and source-specific FiO2. E-block vitals stay above support and medications. SpO2 Avg/Min/Max summaries display only the recorded range. Lactic acid stays in Cardiac. K/L/M neurologic observations stay at the top of Neuro. I-block weight and Z-score print below diagnoses, without percentiles or footnotes.
 
-Keep your existing Streamlit Secrets, password, encryption key, GitHub token, medication rules and private data repository. Do not run the secrets generator again. No new dependencies or storage-schema changes are needed. This release continues to use schema 7. The sidebar reads Version 6.4 | SpO2 range in respiratory vitals.
+CBC and BMP show two dated per-component fishbones. Other lab groups are horizontal with one latest result per component. Gas types remain separate. Same-date results without times retain source order. Missing results are not calculated. Compact landscape PDF printing attempts one page within its existing font-size limits, then uses continuation pages rather than clipping. Each room starts on a new page in Print all.
 
-Re-paste a previously rejected SmartPhrase. Previously saved content can be re-exported to use the new layout without changing its data. No patient records or secrets are included in this package.
+H and J remain manual. No new interpretation of intake/output or wounds is added.
 
-## Existing functionality
+## Storage and privacy
 
+The archive path, authentication code, encryption code and GitHub storage client are unchanged. Culture snapshots are inside the same encrypted archive. The host processes pasted text before storage encryption. The app does not save the original full SmartPhrase to the archive. Exports are unencrypted and Git history retains earlier encrypted saves. No live handoff repository or deployment Secrets were accessed to prepare this ZIP. Use only the hosting and storage arrangements approved by your institution.
 
-Dated lab trees, routed vital signs, and reversible medication hiding. This is the complete web-based application. It retains the Version 5 respiratory-support handling, remembered system mappings, encrypted GitHub storage, editable landscape handoffs and Print all.
-
-## New in 6.2: neurologic observations, weight and observed tidal volume
-
-K (Target Arousal Level), L (WAT Score) and M (ICP Trends) import as independent neurologic vital-sign groups. Their nonblank values appear at the top of NEURO, in K/L/M order, before manual notes and medications. Original labels and values are retained, including WAT-1 zero, SBS -1, pressure units and source ranges. CPP stays beside ICP. Blank labels and numerical ranges in headings do not become scores. No clinical value is calculated.
-
-The I (NUTRITION) block imports only the recorded weight and Z-score. These print below Diagnoses in the PATIENT column, after ----. For example: Weight: 15.3 kg and Z-score: 0.41. Dates, percentiles, asterisks and growth-chart footnotes are excluded from the new nutrition record and output. A missing Z-score stays blank. Multiple dated weights use the newest date, retaining source order for equal-date readings with a notice. Without complete dates, the first source row is used with a notice.
-
-The C-block parser now reads Vt (observed, mL). It prints immediately after Vt (Set, mL). Neither the set nor target volume is substituted for a missing observed volume. The existing invasive-mode display rule remains unchanged.
-
-Use Labs / Vitals to edit or exclude neurologic observations and weight/Z-score. Use the existing respiratory editor to edit observed Vt. Include controls change the output without deleting retained values. No new approval or confirmation steps are required.
-
-Only included sections are replaced. A present empty K, L, M or I clears that section's previous automatic values. An omitted section stays unchanged. Updating E alone does not clear K/L/M. Updating A alone does not clear weight. Manual notes stay separate. Start blank for new patient clears all these values with the rest of the draft.
-
-Load neuro / weight example demonstrates WAT-1 zero, ICP/CPP and weight. Load observed-Vt example demonstrates SBS -1 and separate set/observed volumes. Bundled examples are synthetic. No new runtime dependencies are required.
-
-## Medication taper fix
-
-Version 6.1 fixes the Epic `Followed by` rows that previously added an eighth column to the preceding medication and stopped the full import. The connector is now preserved as `Followed by:` on the next, separate medication entry. It is not interpreted as a new medication or attached to a discarded Provider/Last Admin cell.
-
-`[START ON ...]` annotations remain in the editable name, encrypted handoff and printed output exactly as supplied. Each taper step keeps its own dose, route and frequency. The app does not combine steps, calculate a schedule, infer an end date, or decide which step is current from the server date.
-
-Saved drug-to-system mappings now match scheduled orders without being blocked by start-date prefixes. Known hold/discontinued labels also remain visible. Mapping suggestions omit these annotations and the sequence marker. An unknown bracket annotation is not silently removed for drug-name matching.
-
-Hiding a dated step is specific to its complete name and start-date annotation. It does not hide another dated step with the same formulation. An explicit broad prefix rule in Admin can still cover a drug family. The saved rule ignores the `Followed by:` display prefix but keeps the start date for exact hiding.
-
-Standalone connectors, tab-indented connectors, a connector in an extra final tab cell, normal Windows line endings, and clearly tabular rows without bullets are supported. Ambiguous or incomplete sequences, missing medication columns and unrelated extra columns still stop the import without changing the existing draft. Arbitrary future Epic formats are not guaranteed to work.
-
-Use `Load medication-taper example`, then `Create / update handoff`, for a synthetic test. The example includes three separate steroid steps, an infusion, blank respiratory blocks, vitals and laboratory results. An empty C/D section is valid: it supplies no respiratory device. The blue respiratory and lab notices are informational, not medication-import failures.
-
-Version 6.1 retained schema 6. Version 6.2 migrates to schema 7 for the new independent observations. No password reset, key replacement, settings reset or new runtime dependency is needed. Existing lab trees, vital routing, hidden medications, respiratory support and Print all remain included.
-
-## Update a working deployment
-
-Save open handoffs. Extract the complete ZIP and copy the contents of the PICU_Handoff_v6_4_SpO2 folder into your existing application code repository, replacing matching files. Keep app.py at the repository root. Include observations.py and every supplied application module. Do not replace only app.py. Restart the deployment after the upload.
-
-Keep your current Streamlit Secrets, app password, encryption key, GitHub token and private data repository unchanged. Do not run create_secrets.py or Generate_Secrets.ipynb again for an update. No new runtime dependencies are needed beyond the existing ReportLab/Streamlit requirements. The notebook and secrets helper are only for a first-time deployment.
-
-The sidebar should say: Version 6.4 | SpO2 range in respiratory vitals.
-
-This package does not upload or change your repository for you. It does not reset stored medication assignments or saved handoffs. Schema 1-6 archives migrate in memory to schema 7, and the next successful save writes schema 7 with the same key. Version 6.1 used schema 6. Existing rooms, notes, labs, vitals, hidden-medication rules and mapping rules are preserved. Update all application files together. Do not downgrade after saving with the new schema.
-
-## Everyday use
-
-Select a room, paste the SmartPhrase, and click Create / update handoff. You can paste the entire phrase or only the paired sections being updated. Imported snapshots replace their previous corresponding snapshot, not your separate manually entered system notes. An omitted section is left unchanged. Save handoff stores the editable draft. Print all includes saved sheets and the latest open drafts, with each room starting on a new landscape page.
-
-There are no added approval or confirmation steps. Malformed supported sections still stop an import rather than applying a partial, potentially misleading handoff.
-
-## Laboratory results: G block
-
-CBC and BMP each have two dated result trees: latest per component and preceding per component. The CBC tree positions are WBC, hemoglobin, hematocrit and platelets. MCV and absolute neutrophil/lymphocyte counts remain underneath when supplied. BMP positions are sodium, potassium, chloride, CO2, BUN, creatinine and glucose, with calcium below when supplied. A missing result is shown as --, never zero or a calculated value.
-
-The source provides individual component rows, not verified panel/specimen identifiers. Therefore these trees are not claimed to be results from one blood draw. Every value has its own source date. Dates are sorted newest first. When multiple rows have the same date and no collection times, their source order is retained, assuming the Epic table is newest-first within that date. When every result for a component on a date includes a time, those times are used. Mixed timed/untimed rows on one date keep source order because their exact relative timing cannot be determined. Identical rows are retained because the paste does not establish whether they are duplicates or separate observations.
-
-Hepatic, coagulation, inflammatory and other components show one latest result each in horizontal summaries. Arterial, venous and capillary blood gases remain separate. No bicarbonate, reference range, unit, calcium, glucose or missing lab is calculated. Original flags such as (H), (L), (LL) and inequalities are preserved.
-
-Recognized lactate/lactic-acid components go to Cardiovascular, below its vitals and before notes/medications. Lactate is not repeated in the lab-tree band. If no lactate is in the paste, none is added. Distinct source-specimen labels remain distinct.
-
-All imported lab rows remain available under Labs / Vitals > Edit retained laboratory rows. You can correct a value or its source date and include/exclude a result. Display selection is recalculated. Older rows not selected for the compact output are not deleted from the current snapshot. Re-pasting G replaces the snapshot, using only that paste. A valid empty G block clears it. Source 'No results found' statements are retained as source notes, not normal results.
-
-Trees print in Lab Results / Trends below the main system columns. Longer sheets continue onto landscape pages without truncation. HTML includes the same SVG diagrams, but PDF is preferred for predictable pagination. All supplied preview data is synthetic.
-
-## Vital signs: E block
-
-Resp/respiratory rate, SpO2 and FiO2 go to Respiratory. Heart rate, blood pressure, arterial pressure, mean arterial pressure and central venous pressure go to Cardiovascular. Temperature goes to Infectious Disease. Unrecognized labels remain in Other with a notice instead of being silently discarded.
-
-Vital signs always come first within their system, above respiratory support, lactate, notes and medications. The displayed ranges, most recent recorded values and supplied units are kept as text. No mean pressure, unit or range is calculated. Vital-sign FiO2 remains a vital-sign line and does not overwrite device-specific FiO2.
-
-Use Labs / Vitals to edit or exclude a vital-sign line. Re-pasting E replaces the previous automatic vitals, preserving separate notes and support settings.
-
-## Hide medications without deleting them
-
-Use Hide from handoff next to a medication. It moves to the Hidden medications list and is omitted from PDF, HTML, text and Print all exports. Its complete current order remains retained and editable. Use Restore to handoff to bring it back. Admin also has Hidden medication rules, usable without an open handoff.
-
-Hiding is remembered as an exact formulation/name rule, separately from the system mapping. This prevents hiding an ADS Override Pull entry from accidentally hiding an active albuterol order. Different formulations or product amounts are not silently hidden by a broad drug-name guess. A future import of the same exact formulation stays hidden. Changing its mapped system does not unhide it. Restore saves the reversed rule and updates matching open drafts. Already saved closed room sheets are not silently rewritten. Open/reimport and save those handoffs when their saved content needs changing.
-
-An explicit ADS Override Pull row with blank dose, route and frequency is now retained with a review note instead of blocking the entire medication import. Its missing order fields are not filled or inferred, and it is not hidden unless you choose to hide it. Other malformed medication rows still block an import.
-
-Include order, inside an order's detail editor, remains a one-handoff inclusion setting. Hide/Restore is the remembered rule. Hidden entries that disappear entirely from a later source medication list are not revived as current orders by a new import. Their visibility rule remains available in Admin.
-
-## Sections currently imported
-
-A: Diagnoses. B: Medications. C/D: respiratory support. E: VITALS. G: LABS. I: weight and Z-score. K: target arousal. L: WAT-1. M: ICP/CPP.
-
-F cultures, H intake/output and J wound review have recognized boundaries but are not automatically imported. Nutrition content beyond weight/Z-score is not imported. Manual fields remain available. No clinical value is inferred from an empty field.
-
-## Storage and deployment
-
-The app password gate and encrypted private GitHub archive are unchanged. Structured labs, vitals, medication details and visibility rules are inside the encrypted archive. The full raw SmartPhrase is not stored there. Source text still enters the app host and browser memory before encryption. Omitting names or MRNs does not establish de-identification or clinical hosting approval. Use institution-approved hosting, storage and access controls for clinical use. Start with synthetic data.
-
-Exports are unencrypted. Earlier encrypted saves remain in Git history. Removing a current sheet is not a purge of previous history. A room is not a substitute for patient identification in Epic. The app has not been validated as a medical device or as a source of clinical decisions.
+The secrets-generation helpers are included for first-time deployment only. For an existing deployment, keep the original encryption key and private data repository. An app-password change is not a reason to generate a new encryption key.
 
 ## Validation
 
-See TEST_REPORT.md. The 588 tests use synthetic fixtures, in-memory encrypted archives, mocked storage requests and Streamlit widget stubs. All 552 unmodified Version 6.3 tests passed before the change. The new test coverage includes exact and variant SpO2 summaries, preservation of other vitals, malformed endpoints, placement and all export formats. The hosted Streamlit browser session and private storage connection were not tested.
-
-## Technical references
-
-Streamlit session state and callbacks: https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state
-
-ReportLab graphics: https://www.reportlab.com/chartgallery/
-
-Fernet encryption: https://cryptography.io/en/latest/fernet/
+See TEST_REPORT.md. The full suite has 653 passing tests, including 65 new cases for ADS rows, cultures, import atomicity, editing, migration, encryption and export. The preview was rendered and visually checked. The hosted Streamlit browser and live private storage connection were not tested. UI checks use widget stubs. No claim of independent clinical validation or universal support for arbitrary future Epic layouts is made.

@@ -1,4 +1,4 @@
-"""One-click A/B/C/D/E/G/I/K/L/M import with all-or-nothing updates for malformed input."""
+"""One-click A/B/C/D/E/F/G/I/K/L/M import with all-or-nothing updates for malformed input."""
 from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -9,8 +9,9 @@ from noninvasive import parse_respiratory
 from labs import parse_labs
 from vitals import parse_vitals
 from observations import parse_neuro, parse_nutrition
+from cultures import parse_cultures
 
-SUPPORTED_SECTIONS = "abcdegiklm"
+SUPPORTED_SECTIONS = "abcdefgiklm"
 
 
 @dataclass
@@ -32,7 +33,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
     parsed = parse_smartphrase(text)
     relevant = set(SUPPORTED_SECTIONS) & (set(parsed.blocks) | parsed.invalid)
     if not relevant:
-        out.errors.append("No supported block was found. Use paired A, B, C, D, E, G, I, K, L or M dividers.")
+        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L or M dividers.")
         return out
     out.notices.extend(parsed.issues)
     candidate = deepcopy(sheet)
@@ -76,6 +77,14 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 candidate["vitals"] = vitals.rows
                 out.notices.extend(vitals.issues)
                 out.imported.append("vital signs")
+            elif letter == "f":
+                cultures = parse_cultures(parsed.blocks[letter])
+                if cultures.error:
+                    out.errors.append(cultures.error)
+                    continue
+                candidate["cultures"] = cultures.data
+                out.notices.extend(cultures.issues)
+                out.imported.append("cultures" if cultures.data["rows"] else "culture display cleared")
             elif letter == "g":
                 labs = parse_labs(parsed.blocks[letter])
                 if labs.error:
