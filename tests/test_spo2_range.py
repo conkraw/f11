@@ -156,7 +156,7 @@ def test_pdf_html_text_batch_and_encrypted_save():
         assert len(pdf) == 2
         assert all('SpO2: 93% to 100%' in page.get_text() for page in pdf)
     vault = save_sheet_in(new_vault(), sheet)
-    assert vault['schema'] == SCHEMA_VERSION == 9
+    assert vault['schema'] == SCHEMA_VERSION == 10
     key = generate_key()
     assert open_vault(seal_vault(vault, key), key) == vault
 

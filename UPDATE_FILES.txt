@@ -1,20 +1,18 @@
-PICU Handoff 6.6 - complete application
+PICU Handoff 6.9 - complete application, not a patch
 
-1. Save open work. Extract PICU66.zip.
-2. Open PICU_Handoff_v6_6_Demographics_Labs.
-3. Upload the folder CONTENTS to the existing application code repository.
-   Replace matching files and keep app.py at the root. Include demographics.py.
-4. Keep existing Streamlit Secrets, password, encryption key, token, medication
-   mappings and private data repository. Do not rerun the secrets generator.
-5. Restart the deployment. Look for:
-   Version 6.6 | Dosing weight, admission and expanded labs
-6. Load demographics / labs example, then Create / update handoff in a test room.
-7. Re-paste the full SmartPhrase or the complete I, N and G blocks.
+1. Save open work and extract PICU69.zip.
+2. Open PICU_Handoff_v6_9_Lab_Placement and upload its contents to the existing
+   application code repository. Replace matching files and keep app.py at the root.
+3. Keep all Streamlit Secrets, the password, encryption key, token and private
+   data repository unchanged. Do not rerun create_secrets.py or the notebook.
+4. Restart the deployment.
+5. Sidebar: Version 6.9 | Coags below hepatic, CRP/procalcitonin in ID
 
-Full package, not a patch. No direct repository changes were made.
-No new Python dependencies. New handoff fields require schema 9.
-Schemas 1-8 migrate using the same encryption key. Do not partially downgrade.
+Runtime changes: labs.py, lab_layout.py and the version/help text in app.py.
+No new runtime modules, dependencies or storage schema changes. All other
+runtime modules match Version 6.8.
 
-Changed runtime files: demographics.py (new), observations.py, parser.py,
-importing.py, models.py, labs.py, lab_layout.py, batching.py and app.py.
-All other source files are included to avoid mixing incompatible versions.
+Existing imported results move to their corrected display locations on export
+without re-pasting. Manual clinical notes are not altered. Coagulation, including
+Anti-Xa (HEPLMW), appears directly below Hepatic in the bottom lab band. CRP and
+procalcitonin stay in ID, below temperature.

@@ -4,6 +4,7 @@ import re
 from models import validate_sheet
 from medications import visible
 from observations import neuro_rows, format_nutrition
+from viral import viral_text
 
 
 def room_order(room: str):
@@ -17,6 +18,6 @@ def available_handoffs(vault: dict, drafts: dict) -> dict:
     ready = {}
     for room, sheet in rooms.items():
         validate_sheet(sheet)
-        if any(v.strip() for v in sheet["fields"].values()) or any(visible(r) for r in sheet["medications"]) or sheet["ventilation"] or sheet["noninvasive"] or any(r["include"] for r in sheet["vitals"]) or any(r["include"] for r in sheet["labs"]["rows"]) or sheet["labs"]["notes"] or any(r["include"] for r in neuro_rows(sheet["neuro_vitals"])) or format_nutrition(sheet["nutrition"]) or sheet["dosing_weight"] or sheet["admission_date"] or any(r["include"] for r in sheet["cultures"]["rows"]):
+        if any(v.strip() for v in sheet["fields"].values()) or any(visible(r) for r in sheet["medications"]) or sheet["ventilation"] or sheet["noninvasive"] or any(r["include"] for r in sheet["vitals"]) or any(r["include"] for r in sheet["labs"]["rows"]) or sheet["labs"]["notes"] or any(r["include"] for r in neuro_rows(sheet["neuro_vitals"])) or format_nutrition(sheet["nutrition"]) or sheet["dosing_weight"] or sheet["admission_date"] or viral_text(sheet["viral_panel"]) or any(r["include"] for r in sheet["cultures"]["rows"]):
             ready[room] = sheet
     return {room: ready[room] for room in sorted(ready, key=room_order)}

@@ -1,25 +1,55 @@
-# Version 6.6 validation
+# Version 6.9 validation
 
-## Executed
+## Executed checks
 
-The unmodified PICU65.zip passed 653 automated tests. The updated application passes 715 tests with `python -m pytest -q --disable-warnings`.
+The original PICU68.zip passed all 841 tests before editing. The updated suite
+passes 863 tests with `python -m pytest -q --disable-warnings`. No tests were
+skipped. The 22 new cases are in tests/test_lab_routing_placement.py.
 
-62 added cases cover dosing-weight parsing separate from measured weight, repeated Epic headings, missing values, no measured/dosing substitution, dated dosing weights, conflict rejection, valid/invalid admission dates, the inline N divider heading, independent I/N replacement, omitted sections, Z-score preservation, glucose, magnesium/phosphorus under both BMP trees, albumin in Hepatic, HEPLMW distinct from generic anti-Xa, latest dated CRP/PROCAL/coagulation in ID, excluded rows, old Other-lab rows, HTML/PDF/text and Print all, per-room callbacks, invalid saved fields, session upgrades and encryption.
+New coverage includes coagulation immediately after Hepatic in the laboratory
+band, coagulation without a hepatic result, inflammatory aliases routed to ID,
+source-specific dates and flags, latest-value selection, exclusion/restoration,
+Anti-Xa (HEPLMW) display, no duplicated automatic results, shared editor preview,
+PDF/HTML/text exports, multi-room Print all, unchanged stored snapshots, encrypted
+round trips, and PDF coordinates for horizontal coags below the hepatic line.
 
-Historical migration test fixtures were updated to remove fields that did not exist in their historical schema. Current-schema assertions were updated from 8 to 9. The compact-lab layout test now expects three bottom horizontal groups because coagulation and inflammation moved into ID. Existing data-validation restrictions were not relaxed.
+Existing tests are retained. Assertions in test_compact_pn.py and
+ test_demographics_expanded_labs.py were updated only for the requested new
+placement. The existing tests for parsing, preservation, migration, encryption,
+field conflicts and save protection remain active.
 
-The latest complete test run and another run from the freshly extracted delivery ZIP both passed all 715 tests.
+## Runtime and storage scope
 
-## Cross-version check
+Runtime changes are limited to labs.py, lab_layout.py and version/help wording
+in app.py. The shared lab-card selector now keeps coagulation in the laboratory
+band. The ID formatter retains inflammatory markers but not coags. HEPLMW is
+still displayed as Anti-Xa (HEPLMW), now in the coagulation line. No units or
+clinical interpretations are added.
 
-A separate process using the original unmodified Version 6.5 files generated an encrypted schema-8 synthetic archive with medication mappings, notes, laboratory rows, culture rows and other fields. The new code decrypted the original ciphertext with the SAME key. Every prior field and setting matched. Only schema version 9 and the new blank admission_date/dosing_weight fields changed. These temporary test keys and archives are not included in the ZIP.
+Storage schema remains 10. models.py, security.py, github_store.py, all source
+parsers other than the display helpers in labs.py, configuration and dependency
+files are unchanged. No saved handoff content, credentials, medication mapping
+or repository was altered. Existing structured lab snapshots get the new
+placement when exported, without requiring a reimport. Manual notes are not
+rewritten.
 
-## Layout
+## Print and package verification
 
-The new synthetic example was rendered at 144 dpi and visually inspected. It is one landscape US Letter page at 7.2 pt body font. Admission appears at the top of Patient. Measured weight and dosing weight are separate below Diagnoses. Two glucose values appear in the BMP trees, and Mg/Phos appear beneath each tree with dates. Albumin is in the horizontal hepatic group. Temperature precedes the ID lab groups and cultures. The synthetic HEPLMW result retains its label and is not duplicated below. Text bounding boxes were checked against page boundaries.
+The synthetic demographics/labs example was exported using the actual application
+export functions. The resulting preview has one landscape Letter page, using
+7.2-point main text. The page was rendered with pdftoppm and visually inspected.
+It shows Hepatic, Coagulation and Arterial gas in that order in the lower lab
+band, and CRP/PROCAL under temperature in ID, with no clipped content.
 
-## Not verified
+The full application ZIP is checked for archive integrity, required files and
+exact member bytes. SHA256SUMS.txt is regenerated from the delivered files.
+The full 863-test suite is rerun from a fresh extraction of the delivery ZIP.
+No generated credentials, interpreter caches or patient source files are added.
+Old bundled previews are retained as historical references. The current preview
+is examples/lab_placement_preview.pdf.
 
-Streamlit is not installed here. Callback and page-render checks use a widget stub, not the full Streamlit browser lifecycle. No live hosted deployment, private GitHub store or deployment secrets were accessed or tested. No direct GitHub changes were made.
+## Limits
 
-The new code organizes recorded data. It does not establish current bedside support, specimen identity, de-identification, clinical accuracy or hosting approval. Per-component lab slots do not establish one shared blood draw. Unknown or conflicting inputs are not silently replaced with calculated values.
+Callback and screen-render tests use a Streamlit widget stub. The live hosted
+Streamlit browser and authenticated private handoff repository were not tested.
+No regulatory, clinical-validity or universal formatting guarantee is made.

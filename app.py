@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.6: dosing weight, admission date and expanded lab routing."""
+"""PICU SmartPhrase v6.9: coagulation below hepatic labs, inflammatory markers in ID."""
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
@@ -25,6 +25,7 @@ from lab_layout import laboratory_html
 from observations import NEURO_SECTIONS, validate_neuro, validate_nutrition, format_nutrition
 from demographics import validate_dosing_weight, validate_admission_date, demographic_weight_text
 from cultures import validate_cultures, cultures_text, compact_groups, category_for
+from viral import validate_viral_panel, viral_text
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title="PICU Handoff", layout="wide", initial_sidebar_state="expanded")
@@ -71,7 +72,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_")):
             st.session_state.pop(key, None)
 
 
@@ -194,6 +195,57 @@ def load_demographics_sample() -> None:
         st.session_state.pop("import_result", None)
 
 
+
+def load_viral_sample() -> None:
+    if require_session():
+        st.session_state["paste"] = (ROOT / "examples" / "synthetic_viral_positive.txt").read_text(encoding="utf-8")
+        st.session_state.pop("import_result", None)
+
+
+def viral_row_change(room: str, row_id: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    if field not in ("name", "result", "date", "include"):
+        return
+    ss = st.session_state
+    candidate = deepcopy(ss["drafts"][room]["viral_panel"])
+    row = next((r for r in candidate["rows"] if r["id"] == row_id), None)
+    if row is None:
+        return
+    old = row[field]
+    value = ss[key]
+    row[field] = value.strip() if isinstance(value, str) else value
+    try:
+        validate_viral_panel(candidate)
+        ss["drafts"][room]["viral_panel"] = candidate
+    except ValueError as exc:
+        ss[key] = old
+        note(str(exc), "error")
+
+
+def viral_editor(sheet: dict) -> None:
+    st.subheader("Respiratory viral panel")
+    data = sheet["viral_panel"]
+    summary = viral_text(data)
+    st.text(summary or "No positive viral results selected for the handoff.")
+    st.caption("Only explicit Detected / Positive results print below a separator in the patient column. Source dates stay here, not on the compact summary. A newer negative or unresolved result does not reuse an older positive.")
+    if not data["rows"]:
+        st.caption("Paste a paired O block headed Respiratory Viral Panel to add results.")
+        return
+    with st.expander("Edit viral results and display names (" + str(len(data["rows"])) + ")"):
+        st.caption("The code-to-name aliases are editable labels. HUMRHINENRNA is displayed as Rhinovirus/enterovirus, without splitting the combined target. Unfamiliar codes remain unchanged.")
+        for row in data["rows"]:
+            st.text(row["component"] + " | " + row["result"] + " | " + row["date"])
+            for field, label in (("name", "Display name"), ("result", "Source result"), ("date", "Source date / optional time"), ("include", "Include if positive")):
+                key = "viral_" + row["id"] + "_" + field
+                if key not in st.session_state:
+                    st.session_state[key] = row[field]
+                kwargs = dict(key=key, on_change=viral_row_change, args=(sheet["room"], row["id"], field, key))
+                if field == "include":
+                    st.checkbox(label, **kwargs)
+                else:
+                    st.text_input(label, max_chars={"name": 200, "result": 500, "date": 80}[field], **kwargs)
+
 def neuro_weight_editor(sheet: dict) -> None:
     st.subheader("Neurologic observations")
     st.caption("K: target arousal, L: WAT-1, M: ICP/CPP. Values print at the top of NEURO. Empty sections add nothing. A zero score is retained.")
@@ -214,26 +266,32 @@ def neuro_weight_editor(sheet: dict) -> None:
     if not present:
         st.caption("No recorded neurologic observations. Paste K, L and/or M to add them.")
     st.subheader("Demographics / Weight")
-    st.caption("Admission is shown in the patient column. Below Diagnoses: weight, dosing weight, then Z-score. Only explicitly recorded values are used. Clear dosing weight or admission to omit it.")
-    for field, label in (("admission_date", "Date of admission"), ("dosing_weight", "Dosing weight, with unit")):
-        key = "demo_" + sheet["id"] + "_" + field
-        if key not in st.session_state:
-            st.session_state[key] = sheet[field]
-        st.text_input(label, key=key, max_chars=80 if field == "dosing_weight" else 32,
-                      on_change=demographic_change, args=(sheet["room"], field, key))
+    st.caption("Admission is shown in the patient column. Below Diagnoses: weight, Z-score when supplied, then dosing weight. A blank dosing-weight field prints Dosing weight: none. Clearing admission omits that date.")
+    field = "admission_date"
+    key = "demo_" + sheet["id"] + "_" + field
+    if key not in st.session_state:
+        st.session_state[key] = sheet[field]
+    st.text_input("Date of admission", key=key, max_chars=32,
+                  on_change=demographic_change, args=(sheet["room"], field, key))
     data = sheet["nutrition"]
     if data is None:
         st.caption("Paste the I block to add a measured weight. Dosing weight is kept separately.")
-        return
-    for field, label in (("weight", "Recorded measured weight, with unit"), ("z_score", "Recorded Z-score"), ("include", "Include measured weight and Z-score")):
-        key = "weight_" + sheet["id"] + "_" + field
-        if key not in st.session_state:
-            st.session_state[key] = data[field]
-        kwargs = dict(key=key, on_change=nutrition_change, args=(sheet["room"], field, key))
-        if field == "include":
-            st.checkbox(label, **kwargs)
-        else:
-            st.text_input(label, max_chars=80 if field == "weight" else 40, **kwargs)
+    else:
+        for field, label in (("weight", "Recorded measured weight, with unit"), ("z_score", "Recorded Z-score"), ("include", "Include measured weight and Z-score")):
+            key = "weight_" + sheet["id"] + "_" + field
+            if key not in st.session_state:
+                st.session_state[key] = data[field]
+            kwargs = dict(key=key, on_change=nutrition_change, args=(sheet["room"], field, key))
+            if field == "include":
+                st.checkbox(label, **kwargs)
+            else:
+                st.text_input(label, max_chars=80 if field == "weight" else 40, **kwargs)
+    field = "dosing_weight"
+    key = "demo_" + sheet["id"] + "_" + field
+    if key not in st.session_state:
+        st.session_state[key] = sheet[field]
+    st.text_input("Dosing weight, with unit (blank prints none)", key=key, max_chars=80,
+                  on_change=demographic_change, args=(sheet["room"], field, key))
 
 
 def load_taper_sample() -> None:
@@ -385,6 +443,7 @@ def vital_row_change(room: str, index: int, field: str, key: str) -> None:
 def labs_vitals_editor(sheet: dict) -> None:
     import streamlit.components.v1 as components
     neuro_weight_editor(sheet)
+    viral_editor(sheet)
     st.subheader("Laboratory results")
     st.caption("CBC and BMP show the last two supplied results per component. Other tests show the latest result per component. Arterial and venous gases stay separate. Dates and source flags are preserved. No collection times or same-draw groupings are invented.")
     components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}.lab-summary{font:14px/1.3 sans-serif;overflow-wrap:anywhere;margin:3px 0}.lab-full{grid-column:1/-1}</style>' + laboratory_html(sheet["labs"]), height=490, scrolling=True)
@@ -392,7 +451,7 @@ def labs_vitals_editor(sheet: dict) -> None:
         st.text("Cardiovascular: " + lactate_text(sheet["labs"]))
     if id_labs_text(sheet["labs"]):
         st.text("Infectious Disease:\n" + id_labs_text(sheet["labs"]))
-    st.caption("Glucose is in the BMP tree. Mg and phosphorus are below it. Albumin stays in Hepatic. CRP/PROCAL and coagulation, including HEPLMW, print in ID below temperature.")
+    st.caption("Glucose is in the BMP tree. Mg and phosphorus are below it. Albumin stays in Hepatic. Coagulation, including Anti-Xa (HEPLMW), is immediately below Hepatic in the lab results. CRP and procalcitonin (PROCAL) remain in ID below temperature.")
     with st.expander("Edit retained laboratory rows (" + str(len(sheet["labs"]["rows"])) + ")"):
         for row in sheet["labs"]["rows"]:
             st.text(row["component"] + " | " + row["value"] + " | " + row["date"])
@@ -695,7 +754,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.6 | Dosing weight, admission and expanded labs")
+        st.caption("Version 6.9 | Coags below hepatic, CRP/procalcitonin in ID")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -864,7 +923,7 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
     paste_tab, meds_tab, labs_tab, cultures_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Edit handoff", "Preview / print"])
     with paste_tab:
-        st.caption("Paste the full SmartPhrase or only the paired sections you are updating. A/B import diagnoses and medications, C/D respiratory support, E vital signs, F cultures, G labs, I measured/dosing weight and Z-score, K/L/M neurologic observations and N admission date. Omitted sections and separate notes stay unchanged.")
+        st.caption("Paste the full SmartPhrase or only the paired sections you are updating. A/B import diagnoses and medications, C/D respiratory support, E vital signs, F cultures, G labs, I measured/dosing weight and Z-score, K/L/M neurologic observations N admission date and O positive respiratory viral results. Omitted sections and separate notes stay unchanged.")
         left, right = st.columns(2)
         left.button("Load cultures / ADS example", on_click=load_cultures_sample)
         left.button("Load compact / PN example", on_click=load_compact_sample)
@@ -872,6 +931,7 @@ def handoff_page(store: GitHubVault | None) -> None:
         left.button("Load observed-Vt example", on_click=load_observed_sample)
         left.button("Load synthetic example", on_click=load_sample)
         st.button("Load demographics / labs example", on_click=load_demographics_sample)
+        st.button("Load viral-positive example", on_click=load_viral_sample)
         left.button("Load labs / vitals example", on_click=load_labs_sample)
         left.button("Load medication-taper example", on_click=load_taper_sample)
         left.button("Load nasal-cannula example", on_click=load_niv_sample)
@@ -922,6 +982,9 @@ def handoff_page(store: GitHubVault | None) -> None:
                 if section == "Respiratory" and respiratory_text(sheet):
                     st.text(respiratory_text(sheet) + "\n-----")
                     st.caption("Vital signs print first, then support settings. Edit support under Paste / create.")
+                if section == "Diagnoses" and viral_text(sheet["viral_panel"]):
+                    st.text("----\n" + viral_text(sheet["viral_panel"]))
+                    st.caption("Positive O-block results print below the demographics / weight information. Edit under Labs / Vitals.")
                 st.text_area("Notes: " + section, key=key, height=100, max_chars=MAX_FIELD,
                              on_change=update_field, args=(room, section, key))
                 if section == "Infectious Disease" and cultures_text(sheet["cultures"]):
@@ -932,7 +995,7 @@ def handoff_page(store: GitHubVault | None) -> None:
                         st.text(format_medication(row))
                 if section == "Diagnoses" and demographic_weight_text(sheet["nutrition"], sheet["dosing_weight"]):
                     st.text("----\n" + demographic_weight_text(sheet["nutrition"], sheet["dosing_weight"]))
-                    st.caption("Edit measured weight, dosing weight, Z-score and admission date in Labs / Vitals.")
+                    st.caption("Edit measured weight, Z-score, dosing weight and admission date in Labs / Vitals.")
     with preview_tab:
         import streamlit.components.v1 as components
         st.caption("Compact landscape Letter. CBC/BMP keep their dated trees. Other lab groups print horizontally. The PDF fits one page when space permits, without cutting off content.")

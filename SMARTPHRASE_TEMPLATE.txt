@@ -69,3 +69,9 @@ mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
 Date of Admission: [Insert the recorded admission date]
 nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+
+
+oooooooooooooooooooooooooooooooo
+Respiratory Viral Panel:
+[Insert your Epic respiratory viral panel result table here]
+oooooooooooooooooooooooooooooooo

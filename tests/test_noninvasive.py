@@ -257,7 +257,7 @@ def test_schema_three_migration_preserves_invasive_notes_mappings_and_ids():
     strip_v6_fields(vault)
     vault['rooms']['P4102'].pop('noninvasive')
     migrated=upgrade_vault(vault)
-    assert migrated['schema']==9 and vault['schema']==3
+    assert migrated['schema']==10 and vault['schema']==3
     assert migrated['rooms']['P4102']['noninvasive']==[]
     assert migrated['rooms']['P4102']['ventilation']==s['ventilation']
     assert migrated['rooms']['P4102']['id']==s['id']
@@ -275,7 +275,7 @@ def test_encrypted_niv_roundtrip_and_schema3_ciphertext_upgrade():
     strip_v6_fields(vault)
     vault['rooms']['P4102'].pop('noninvasive')
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(vault).encode())
-    assert open_vault(oldtoken,key)['schema']==9
+    assert open_vault(oldtoken,key)['schema']==10
 
 
 def test_niv_only_rooms_print_all_and_both_exports():
@@ -355,12 +355,12 @@ def test_session_schema3_migration_preserves_unsaved_support_notes(app):
         obj.pop('nutrition', None)
         obj.pop('cultures', None)
         obj.pop('dosing_weight', None)
-        obj.pop('admission_date', None)
+        obj.pop('viral_panel', None);obj.pop('admission_date', None)
         obj.pop('labs', None)
         obj.pop('vitals', None)
         for row in obj.get('medications', []): row.pop('hidden', None)
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==9
+    assert ss['vault']['schema']==10
     assert ss['drafts']['P4102']['fields']['Respiratory']=='Unsaved note'
     assert ss['drafts']['P4102']['noninvasive']==[]
 

@@ -204,7 +204,11 @@ def ordered_components(data: dict) -> dict[str, list[dict]]:
 
 
 def result_cards(data: dict, include_id_panels: bool = True) -> list[dict]:
-    """Structured lab cards shared by PDF, HTML and plain-text exports."""
+    """Structured lab cards shared by PDF, HTML and plain-text exports.
+
+    Coagulation stays immediately below Hepatic in the laboratory area.
+    Only inflammatory markers are routed to ID when include_id_panels is False.
+    """
     groups = ordered_components(data)
     cards, consumed = [], set()
     for name, components, count, kind in (('CBC', CBC, 2, 'cbc'), ('BMP', BMP, 2, 'bmp')):
@@ -220,7 +224,7 @@ def result_cards(data: dict, include_id_panels: bool = True) -> list[dict]:
         if name in ('CBC', 'BMP'):
             continue
         rows = {k: groups[k][0] for k in components if k in groups}
-        if rows and (include_id_panels or name not in ('Coagulation', 'Inflammatory')):
+        if rows and (include_id_panels or name != 'Inflammatory'):
             cards.append({'title': name + ' | latest', 'kind': 'branch', 'rows': rows})
         consumed.update(components)
     # Unknown analytes stay visible, without assigning guessed units or a panel.
@@ -242,12 +246,17 @@ def lactate_text(data: dict) -> str:
     return '\n'.join(lines)
 
 
+def display_component(component: str) -> str:
+    """Clarify the documented anti-Xa code without changing its stored value."""
+    return 'Anti-Xa (HEPLMW)' if canonical(component) == 'HEPLMW' else component
+
+
 def labs_text(data: dict, include_id_panels: bool = True) -> str:
     lines = []
     for card in result_cards(data, include_id_panels=include_id_panels):
         lines.append(card['title'])
         for row in card['rows'].values():
-            lines.append(row['component'] + ': ' + row['value'] + ' [' + row['date'] + ']')
+            lines.append(display_component(row['component']) + ': ' + row['value'] + ' [' + row['date'] + ']')
     if lines:
         lines.append('Per-component results, not confirmed same-draw panels. Same-date ties follow source order when collection times are absent.')
     if data['notes']:
@@ -256,15 +265,15 @@ def labs_text(data: dict, include_id_panels: bool = True) -> str:
 
 
 def id_labs_text(data: dict) -> str:
-    """Latest inflammatory/coagulation results, explicitly routed to ID.
+    """Latest inflammatory results, including CRP and procalcitonin, for ID.
 
-    HEPLMW remains distinct from generic Anti-Xa. No units or ranges are added.
+    Coagulation and anti-Xa stay in the bottom lab area below the hepatic panel.
     Matching dates can be shared in a group heading. Mixed dates stay attached
-    to their own results, including older CRP values supplied by Epic.
+    to their own results. No units, ranges, or collection dates are inferred.
     """
     groups=ordered_components(data)
     lines=[]
-    for title,components in (("Inflammatory markers",INFLAMMATORY),("Coagulation",COAG)):
+    for title,components in (("Inflammatory markers", INFLAMMATORY),):
         rows=[groups[key][0] for key in components if key in groups]
         if not rows:
             continue
@@ -273,7 +282,7 @@ def id_labs_text(data: dict) -> str:
         heading=title+(" ["+next(iter(dates))+"]" if same else "")
         values=[]
         for row in rows:
-            label="Anti-Xa (HEPLMW)" if canonical(row["component"])=="HEPLMW" else row["component"]
+            label=display_component(row["component"])
             text=label+": "+row["value"]
             if not same:
                 text+=" ["+short_date(row["date"])+"]"

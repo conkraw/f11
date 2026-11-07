@@ -13,7 +13,7 @@ from parser import parse_smartphrase, SECTION_NAMES
 from models import (new_sheet,new_vault,validate_sheet,upgrade_vault,save_sheet_in,
     fields_with_medications,SCHEMA_VERSION,ValidationError)
 from importing import import_sections
-from labs import parse_labs,result_cards,id_labs_text,canonical,panel_for
+from labs import parse_labs,result_cards,id_labs_text,canonical,panel_for,labs_text
 from lab_layout import card_plan,laboratory_html,laboratory_flowables
 from exports import handoff_text,handoff_html,handoff_pdf,handoffs_pdf
 from security import seal_vault,open_vault,generate_key
@@ -122,7 +122,7 @@ def test_latest_dated_dosing_not_largest():
 
 def test_z_score_stays_with_measured_weight_and_dosing_is_between():
     r=parse_nutrition('11/03/26 15.3 kg (66%, Z= 0.41)*\nDosing Weight: 14 kg')
-    assert demographic_weight_text(r.data,r.dosing_weight)=='Weight: 15.3 kg\nDosing weight: 14 kg\nZ-score: 0.41'
+    assert demographic_weight_text(r.data,r.dosing_weight)=='Weight: 15.3 kg\nZ-score: 0.41\nDosing weight: 14 kg'
     r.data['include']=False
     assert demographic_weight_text(r.data,r.dosing_weight)=='Dosing weight: 14 kg'
 
@@ -204,16 +204,20 @@ def test_albumin_latest_in_hepatic_not_generic_other():
     assert sum('ALBUMIN' in c['rows'] for c in cards)==1
 
 
-def test_coag_and_inflammation_latest_in_id_with_original_dates():
+def test_coag_below_hepatic_and_inflammation_in_id_with_original_dates():
     s=imp(block('g',G)+'\n'+block('e','Temp: 36.9 C'))
     s['fields']['Infectious Disease']='Manual ID note'
     f=fields_with_medications(s)
     text=f['Infectious Disease']
     assert text.startswith('Temp: 36.9 C')
-    for part in ['CRP: 2.76 (H) [10/11/26]','PROCAL: 0.18 (H) [11/05/26]','Coagulation [11/06/26]','PT: 13.9','INR: 1.1','PTT: 33']:
+    for part in ['CRP: 2.76 (H) [10/11/26]','PROCAL: 0.18 (H) [11/05/26]']:
         assert part in text
     assert text.index('Inflammatory markers')<text.index('Manual ID note')
-    assert 'Coagulation' not in f['Lab Results / Trends']
+    assert 'Coagulation' not in text
+    lab=f['Lab Results / Trends']
+    assert lab.index('Hepatic') < lab.index('Coagulation')
+    for part in ['PT: 13.9 [11/06/2026]', 'INR: 1.1 [11/06/2026]', 'PTT: 33 [11/06/2026]']:
+        assert part in lab
     assert 'Inflammatory' not in f['Lab Results / Trends']
     assert '2.7 (H)' not in text and '0.50 (H)' not in text
     assert 'Anti-Xa' not in text  # the user supplied no actual HEPLMW result
@@ -221,7 +225,8 @@ def test_coag_and_inflammation_latest_in_id_with_original_dates():
 
 def test_synthetic_heplmw_keeps_result_label_and_date_no_units_inferred():
     data=parse_labs(G+'\nheplmw\t0.46\t11/06/2026\nHEPLMW\t0.38\t11/05/2026').data
-    t=id_labs_text(data)
+    t=labs_text(data,include_id_panels=False)
+    assert 'HEPLMW' not in id_labs_text(data)
     assert 'Anti-Xa (HEPLMW): 0.46' in t and '0.38' not in t
     assert 'IU' not in t and 'therapeutic' not in t
     assert panel_for('ANTI-XA')=='Coagulation'
@@ -232,7 +237,7 @@ def test_excluding_lab_affects_id_or_bmp_without_deletion():
     s=example()
     for r in s['labs']['rows']:
         if canonical(r['component']) in ('CRP','HEPLMW','MG'):r['include']=False
-    assert 'CRP:' not in id_labs_text(s['labs']) and 'HEPLMW' not in id_labs_text(s['labs'])
+    assert 'CRP:' not in id_labs_text(s['labs']) and 'HEPLMW' not in labs_text(s['labs'],include_id_panels=False)
     assert all('MG' not in c['rows'] for c in result_cards(s['labs']) if c['kind']=='bmp')
     assert any(r['component']=='CRP' for r in s['labs']['rows'])
 
@@ -269,13 +274,13 @@ def test_two_room_print_and_privacy_boundaries():
 def legacy_v8():
     v=save_sheet_in(new_vault(),example());v['schema']=8
     for s in v['rooms'].values():
-        s.pop('admission_date');s.pop('dosing_weight')
+        s.pop('viral_panel', None);s.pop('admission_date');s.pop('dosing_weight')
     return v
 
 
 def test_schema8_migration_preserves_all_fields_rules_and_cultures():
     old=legacy_v8();before=deepcopy(old);new=upgrade_vault(old)
-    assert new['schema']==9 and old==before and new['settings']==before['settings']
+    assert new['schema']==10 and old==before and new['settings']==before['settings']
     for k,val in before['rooms']['P4102'].items():assert new['rooms']['P4102'][k]==val
     assert new['rooms']['P4102']['admission_date']=='' and new['rooms']['P4102']['dosing_weight']==''
     key=generate_key();encrypted=Fernet(key.encode()).encrypt(json.dumps(old).encode())

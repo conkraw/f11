@@ -21,8 +21,9 @@ from observations import empty_neuro, validate_neuro, neuro_rows, validate_nutri
 
 from cultures import empty_cultures, validate_cultures, cultures_text
 from demographics import validate_dosing_weight, validate_admission_date, demographic_weight_text
+from viral import empty_viral_panel, validate_viral_panel, viral_text
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 # Interpretation of the user's ranges: even P4102..P4116, then the listed 4200 rooms.
 DEFAULT_ROOMS = [f"P{n}" for n in range(4102, 4117, 2)] + ["4201", "4203", "4209"] + [str(n) for n in range(4211, 4224, 2)]
@@ -52,7 +53,7 @@ def normalize_room(value: str) -> str:
 
 def new_sheet(room: str) -> dict:
     return {"id": uuid.uuid4().hex, "room": normalize_room(room), "created_at": utc_now(),
-            "updated_at": None, "fields": {s: "" for s in SYSTEMS}, "medications": [], "ventilation": None, "noninvasive": [], "vitals": [], "labs": empty_labs(), "neuro_vitals": empty_neuro(), "nutrition": None, "cultures": empty_cultures(), "dosing_weight": "", "admission_date": ""}
+            "updated_at": None, "fields": {s: "" for s in SYSTEMS}, "medications": [], "ventilation": None, "noninvasive": [], "vitals": [], "labs": empty_labs(), "neuro_vitals": empty_neuro(), "nutrition": None, "cultures": empty_cultures(), "dosing_weight": "", "admission_date": "", "viral_panel": empty_viral_panel()}
 
 
 def new_vault() -> dict:
@@ -60,7 +61,7 @@ def new_vault() -> dict:
 
 
 def validate_sheet(sheet: dict) -> None:
-    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date"}:
+    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel"}:
         raise ValidationError("The handoff structure is invalid.")
     if not isinstance(sheet["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", sheet["id"]):
         raise ValidationError("The handoff identifier is invalid.")
@@ -86,6 +87,7 @@ def validate_sheet(sheet: dict) -> None:
         validate_cultures(sheet["cultures"])
         validate_dosing_weight(sheet["dosing_weight"])
         validate_admission_date(sheet["admission_date"])
+        validate_viral_panel(sheet["viral_panel"])
     except ValueError as exc:
         raise ValidationError(str(exc)) from None
     ids = set()
@@ -148,14 +150,14 @@ def apply_diagnoses(sheet: dict, diagnosis_text: str, destination: str, append: 
 
 
 def upgrade_vault(vault: dict) -> dict:
-    """Migrate schemas 1-8 without replacing keys, notes or saved mappings."""
+    """Migrate schemas 1-9 without replacing keys, notes or saved mappings."""
     if not isinstance(vault, dict) or set(vault) != {"schema", "settings", "rooms"}:
         raise ValidationError("The encrypted archive has an invalid structure.")
     version = vault.get("schema")
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
-    if version not in (1, 2, 3, 4, 5, 6, 7, 8):
+    if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9):
         raise ValidationError("The encrypted archive has an unsupported structure. It was not overwritten.")
     candidate = deepcopy(vault)
     settings = candidate["settings"]
@@ -182,6 +184,8 @@ def upgrade_vault(vault: dict) -> dict:
             expected.update({"neuro_vitals", "nutrition"})
         if version >= 8:
             expected.add("cultures")
+        if version >= 9:
+            expected.update({"dosing_weight", "admission_date"})
         if not isinstance(sheet, dict) or set(sheet) != expected:
             raise ValidationError("A previous handoff structure is invalid. Nothing was discarded.")
         expected_fields = set(LEGACY_SYSTEMS if version == 1 else SYSTEMS)
@@ -216,8 +220,10 @@ def upgrade_vault(vault: dict) -> dict:
             sheet["nutrition"] = None
         if version < 8:
             sheet["cultures"] = empty_cultures()
-        sheet["dosing_weight"] = ""
-        sheet["admission_date"] = ""
+        if version < 9:
+            sheet["dosing_weight"] = ""
+            sheet["admission_date"] = ""
+        sheet["viral_panel"] = empty_viral_panel()
     candidate["schema"] = SCHEMA_VERSION
     validate_vault(candidate)
     return candidate
@@ -267,6 +273,9 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
     if nutrition:
         diagnosis = result["Diagnoses"].rstrip()
         result["Diagnoses"] = (diagnosis + "\n----\n" if diagnosis else "") + nutrition
+    positive = viral_text(sheet["viral_panel"])
+    if positive:
+        result["Diagnoses"] = result["Diagnoses"].rstrip() + ("\n" if result["Diagnoses"].strip() else "") + "----\n" + positive
     if include_lab_text:
         laboratory = labs_text(sheet["labs"], include_id_panels=False)
         if laboratory:

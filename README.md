@@ -1,18 +1,128 @@
-# PICU Handoff 6.6: dosing weight, admission date and expanded labs
+# PICU Handoff 6.9: coagulation below Hepatic, CRP and procalcitonin in ID
 
-Complete web-based Streamlit application, delivered as a ZIP. No direct GitHub changes were made.
+This is the complete web application, delivered as a ZIP. No direct repository
+changes are made by distributing this package.
+
+## Corrected lab placement
+
+The lower Lab Results / Trends band shows CBC/BMP trees, then the horizontal
+Hepatic summary, then the horizontal Coagulation summary, followed by blood gases
+and other lab groups. Coagulation includes the latest supplied PT, INR, PTT, FIB
+and anti-Xa results. HEPLMW remains labelled Anti-Xa (HEPLMW), separate from a
+generic ANTI-XA component. Missing tests are not invented.
+
+CRP and procalcitonin (PROCAL) stay in Infectious Disease. Temperature stays first,
+then inflammatory results, the separate Cultures block, and ID notes/medications.
+Other previously supported inflammatory markers retain their existing routing.
+Coagulation no longer appears in the automatic ID block. Inflammatory markers
+are not duplicated in the lower laboratory band.
+
+Source values, dates, abnormal flags, per-component latest-result selection,
+exclusions, and all retained rows are unchanged. Where a group contains different
+dates, each value keeps its own date. No units or clinical interpretation are added.
+
+## Existing saved handoffs
+
+Reopen/print an existing saved sheet to use the corrected layout. No re-paste is
+needed for results already in its structured laboratory snapshot. Text you typed
+manually into notes is not removed or rewritten.
+
+This is display-only. Storage schema remains 10 and existing data, passwords,
+keys, medication mappings and hidden-medication rules are preserved. Weight,
+Z-score, dosing weight (or none), admission date, viral results, vitals, cultures,
+respiratory support and compact Print all behavior are unchanged.
 
 ## Update the existing app
 
-Save open work. Extract PICU66.zip and open PICU_Handoff_v6_6_Demographics_Labs. Upload the folder CONTENTS into the existing application code repository, replacing matching files. Keep app.py at the repository root. Include the new demographics.py and all supplied Python files. No new packages are required.
+1. Save any open work. Extract PICU69.zip.
+2. Open PICU_Handoff_v6_9_Lab_Placement and upload its contents to the existing
+   application code repository, replacing matching files. Keep app.py at the root.
+3. Keep Streamlit Secrets, password, encryption key, token and private data
+   repository unchanged. Do not rerun the secrets generator.
+4. Restart the deployment. The sidebar should show:
 
-Keep the existing Streamlit Secrets, password hash, encryption key, token, medication mappings and private data repository. Do not run create_secrets.py or Generate_Secrets.ipynb for this update. The helpers are for first-time deployment only.
+    Version 6.9 | Coags below hepatic, CRP/procalcitonin in ID
 
-Restart the deployment. The sidebar reads:
+No new dependencies or storage-format changes are required. Use Load demographics /
+labs example for a synthetic check. The current preview is
+examples/lab_placement_preview.pdf. Other bundled previews are historical references.
 
-    Version 6.6 | Dosing weight, admission and expanded labs
+See TEST_REPORT.md for executed tests and deployment limitations.
 
-Use Load demographics / labs example, then Create / update handoff in a test room. The example is synthetic, including its anti-Xa result. Re-paste the full SmartPhrase or only complete I, N and G sections to add the new information. Installation does not reconstruct fields that were never saved.
+---
+
+The following feature reference describes the earlier additions. For installation
+and lab routing, follow the Version 6.9 instructions above.
+
+## Earlier feature reference (Version 6.7)
+
+# PICU Handoff 6.7: positive respiratory viral results
+
+Complete web-based Streamlit application, delivered as a ZIP. No direct GitHub changes were made.
+
+## Update your existing app
+
+Save open work. Extract PICU67.zip and open PICU_Handoff_v6_7_Viral_Positives. Upload the folder contents to your existing application code repository, replacing matching files. Keep app.py at the repository root and include the new viral.py. Keep every supplied Python module together.
+
+Keep your existing Streamlit Secrets, password hash, encryption key, token, medication mappings and private data repository unchanged. Do not run create_secrets.py or Generate_Secrets.ipynb for this update. Those helpers are for first-time setup only. No new Python packages are required.
+
+Restart the deployment. The sidebar should read:
+
+    Version 6.7 | Positive respiratory viral panel
+
+Choose a test room, click Load viral-positive example, then Create / update handoff. The included example is synthetic. Use your full SmartPhrase or just one complete O block to import the new results. Existing records are not reinterpreted without a new paste.
+
+## O section and positive-only demographics
+
+    oooooooooooooooooooooooooooooooo
+    Respiratory Viral Panel:
+    Lab Results
+    Component    Value           Date
+    HUMRHINENRNA Detected (A)    01/01/2026
+    ADENOVIRDNA  Not Detected    01/01/2026
+    oooooooooooooooooooooooooooooooo
+
+Copy directly from Epic with tabs between columns. The parser also supports double-spaced columns and simple one-token component rows with collapsed spacing. Each divider needs at least eight copies of the same letter on a separate line.
+
+The Patient/demographics column gains a block below Diagnoses and the weight/dosing-weight/Z-score lines:
+
+    ----
+    Positive: Rhinovirus/enterovirus
+
+Only explicit Detected or Positive results, optionally followed by a recognized flag such as (A), qualify. Not Detected, Negative, pending, inconclusive and indeterminate values do not print as positive. The summary prints names only, without negative results, dates, abnormal flags or the whole panel. Multiple positives are comma-separated and duplicate names print once.
+
+An included O block replaces the previous O snapshot. A negative-only, empty or no-results O block removes the prior automatic positive display. Omitting O leaves it unchanged. Reimport does not accumulate duplicate positives. No values are inferred from the diagnoses, cultures, medications or other source sections.
+
+## Display names and review
+
+The raw component, result and date are retained in the encrypted handoff snapshot for review in Labs / Vitals > Respiratory viral panel. The original pasted text is not added to the archive. Display names are editable for that handoff, and inclusion can be switched off and back on without deleting the underlying row.
+
+HUMRHINENRNA is assigned the combined display label Rhinovirus/enterovirus. This is an explicit application alias based on the supplied code, not an independently verified local Epic test dictionary. It does not report separate rhinovirus and enterovirus infections or claim rhinovirus alone. Review the original component and change the display name if your local laboratory label differs. Common respiratory panel catalogs use a combined human rhinovirus/enterovirus target. Other known labels from the supplied format have literal aliases. Unfamiliar components remain visible under their original code rather than being silently discarded or assigned a guessed species. SARSRNA remains a source code unless you edit its display name.
+
+If multiple dates are supplied for the same component, only the newest supplied result is eligible for the compact summary. A newer negative, pending or unresolved row does not reuse an older positive. When latest same-day positive/nonpositive results conflict without complete ordering information, the import stops and asks for verified times or corrected source text. No current date, collection time or active-infection status is inferred. All parsed source rows remain in the editor, but only qualifying current-snapshot positives print.
+
+## Storage compatibility
+
+Schema 10 adds viral_panel. Schemas 1-9 migrate in memory with the same encryption key, keeping every previous field and setting. Admission date, dosing weight, medication mappings, hidden-medication rules, notes, cultures, lab rows, respiratory support and room references are preserved. The next successful save writes schema 10. Do not mix older source files into this package or partially downgrade after saving.
+
+The new block appears in PDF, HTML, plain text and Print all. It uses the existing compact landscape layout. Very long sheets still continue onto another page rather than clipping content. Existing behavior outside the O section is unchanged.
+
+## Validation and limits
+
+The 715-test unmodified Version 6.6 suite passed before editing. The updated suite has 815 passing automated cases, including 100 new O-block cases. Tests cover status negation, combined labels, unknown codes, current/older dates, duplicates, conflicts, incremental imports, edits, clearing, migration, encryption, callbacks, page-render stubs and PDF/HTML/text/Print all. The complete delivery ZIP is checked for integrity and the suite is rerun from an extracted copy. See TEST_REPORT.md for exact runs and limitations.
+
+This build environment does not have Streamlit installed. Callback/page-render tests use a widget stub, not a real Streamlit browser lifecycle. No live deployment, private GitHub store or deployment Secrets were accessed. A PDF preview is rendered and visually checked using synthetic information. This feature organizes supplied results and does not diagnose current infection or certify clinical/privacy suitability.
+
+## Primary technical references
+
+- Streamlit session state and callback lifecycle: https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state
+- Mayo Clinic Laboratories respiratory panel catalog, including the combined human rhinovirus/enterovirus target: https://www.mayocliniclabs.com/test-catalog/overview/609409
+
+The catalog does not establish the meaning of a local Epic abbreviation. Display aliases remain visible and editable as described above.
+
+## Existing functions retained
+
+The following is the prior release's workflow reference. Its fields and routing remain supported.
 
 ## Measured weight, dosing weight and admission
 
@@ -22,8 +132,8 @@ Below Diagnoses, the order is:
 
     ----
     Weight: 73.1 kg
-    Dosing weight: 66.8 kg
     Z-score: [only when supplied for the measured weight]
+    Dosing weight: 66.8 kg [none when no dosing weight is supplied]
 
 No dosing weight is inferred from measured weight. A dosing-only source does not create a measured weight. Percentiles, growth-chart notes and measurement dates are omitted from this compact demographic output, as in the previous release.
 
@@ -49,13 +159,13 @@ An included I block replaces measured weight, Z-score and dosing weight together
 | ALBUMIN or ALB | Latest albumin in the horizontal hepatic panel |
 | HEPLMW | Latest Anti-Xa (HEPLMW) with the coagulation group |
 | CRP, PROCAL / PROCALCITONIN | Latest results in ID |
-| PT, INR, PTT, FIB and anti-Xa | Latest coagulation results in ID |
+| PT, INR, PTT, FIB and anti-Xa | Latest coagulation results below Hepatic in the laboratory band |
 
 Names are matched case-insensitively. HEPLMW and generic ANTI-XA stay distinct, with no conversion of assay units, dosing, targets or reference ranges. There was no HEPLMW result in the supplied sample, so no value is fabricated. The demonstration includes a clearly synthetic result to exercise this field.
 
-The request said to put 'CRP and coags' in Infectious Disease. This release follows that literally: both the coagulation group, including HEPLMW, and inflammatory markers print in ID. PROCAL from the sample is included there as well. They are not duplicated in the bottom lab band.
+Version 6.9 changes the earlier routing: coagulation, including HEPLMW, prints below Hepatic in the laboratory band. Inflammatory markers, including CRP and PROCAL, stay in ID. Neither group is duplicated in another automatic section.
 
-ID order is temperature first, then a separator, inflammatory/coagulation results, then the existing separated Cultures block, followed by notes and mapped medications. Lactic acid remains in Cardiovascular.
+ID order is temperature first, then a separator, inflammatory results, then the existing separated Cultures block, followed by notes and mapped medications. Coagulation follows Hepatic in the laboratory band. Lactic acid remains in Cardiovascular.
 
 Latest/preceding means per component, not a confirmed common specimen. Dates and flags stay attached to the original results. Same-date results without collection times retain Epic's order. The latest supplied CRP can be older than the latest PROCAL. Matching dates may be shared in a group heading, but mixed dates are displayed separately. Missing values remain missing. No patient-level laboratory interpretation is performed.
 
@@ -69,14 +179,7 @@ C/D respiratory support and qualified pressure/flow display rules. Observed tida
 
 ## Saved data and privacy
 
-Schema 9 adds only dosing_weight and admission_date fields to each handoff. Schemas 1-8 migrate in memory. Missing new fields start blank. Existing room IDs, measured weights, cultures, notes, lab values, hidden orders, mappings, passwords, key and archive path are preserved. The next successful save writes schema 9. Do not roll back only some app files after that save.
+The earlier dosing_weight and admission_date fields are preserved. Schema 10 adds only viral_panel to the preceding schema-9 handoff. Schemas 1-9 migrate in memory, initializing only fields that did not exist in the old schema. Existing room IDs, measured weights, cultures, notes, lab values, hidden orders, mappings, passwords, key and archive path are preserved. The next successful save writes schema 10. Do not roll back only some app files after that save.
 
 The source SmartPhrase is not archived as a raw block. The host still receives and processes pasted text before encryption. Saved clinical fields are in the existing encrypted archive. Downloads are not encrypted. Earlier encrypted versions can remain in Git history. Continue using institution-approved hosting and storage. No live private archive or deployment Secrets were accessed in preparing this update.
 
-## Validation
-
-715 automated tests passed. The original 6.5 package passed all 653 inherited tests before changes. New tests cover the exact supplied weight pattern, inline N heading, partial/empty section updates, date validation, glucose/Mg/phosphorus/albumin, HEPLMW, source-specific result dates, ID routing, callbacks, independent rooms, encryption and migration. An encrypted schema-8 archive generated by the unmodified 6.5 code was opened with the same key and every prior field was compared for equality.
-
-The one-page synthetic landscape preview was rendered and visually inspected. Streamlit is not installed in the build environment. UI checks use widget stubs, not a live browser. The hosted app and authenticated private storage were not tested. See TEST_REPORT.md.
-
-Implementation reference: Streamlit Session State documentation describes callbacks running before the next script rendering, with widget state accessed using keys. Official documentation: https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state

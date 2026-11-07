@@ -9,7 +9,7 @@ from textwrap import wrap
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Flowable, Paragraph
 from reportlab.lib.styles import ParagraphStyle
-from labs import result_cards, short_date
+from labs import result_cards, short_date, display_component
 
 NOTE = ('Latest/preceding PER COMPONENT, not confirmed same-draw panels. Dates are shown beside each result. '
         'Same-date ties without collection times follow source order. -- = not supplied.')
@@ -76,7 +76,7 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
         # Labelled branches for hepatic, coagulation, gases and other results.
         lines = []
         for row in rows.values():
-            value = row['component'] + ': ' + row['value']
+            value = display_component(row['component']) + ': ' + row['value']
             chunks = wrap(ascii_text(value), max(18, int(width/4.2)), break_long_words=True, break_on_hyphens=False) or ['']
             lines.append((chunks, short_date(row['date'])))
         height = 28 + sum(9*len(chunks)+11 for chunks,_ in lines)
@@ -158,7 +158,7 @@ def horizontal_card_markup(card: dict) -> str:
         title += ' [' + escape(next(iter(dates))) + ']'
     values = []
     for row in rows:
-        value = escape(row['component']) + ': ' + escape(row['value'])
+        value = escape(display_component(row['component'])) + ': ' + escape(row['value'])
         if not same_date:
             value += ' [' + escape(short_date(row['date'])) + ']'
         values.append(value)

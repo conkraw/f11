@@ -8,10 +8,10 @@ SECTION_NAMES = {
     "a": "Diagnoses", "b": "Medications", "c": "Invasive Ventilation",
     "d": "Non-invasive Ventilation", "e": "VITALS", "f": "CULTURES",
     "g": "LABS", "h": "INTAKE/OUTPUT", "i": "NUTRITION", "j": "Wound Review",
-    "k": "Target Arousal Level", "l": "WAT Score", "m": "ICP Trends", "n": "Date of Admission",
+    "k": "Target Arousal Level", "l": "WAT Score", "m": "ICP Trends", "n": "Date of Admission", "o": "Respiratory Viral Panel",
 }
 MAX_PASTE = 150_000
-DIVIDER = re.compile(r"^([a-n])\1{7,}$", re.I)
+DIVIDER = re.compile(r"^([a-o])\1{7,}$", re.I)
 NUMBER_OR_BULLET = re.compile(r"^\s*(?:\d+[.)]\s+|[•\-]\s+)")
 
 
@@ -35,7 +35,7 @@ class ParseResult:
 
 
 def parse_smartphrase(text: str) -> ParseResult:
-    """Accept matching a..n divider lines of any length >= 8.
+    """Accept matching a..o divider lines of any length >= 8.
 
     Ambiguous/missing/duplicate boundaries fail closed for that section.
     Issues in a later section do not invalidate a complete, unambiguous a block.
@@ -81,7 +81,7 @@ def parse_smartphrase(text: str) -> ParseResult:
                 active, buffer = key, []
             continue
         # A likely divider with one or more wrong letters is NOT silently corrected.
-        if len(line) >= 8 and line.isalpha() and set(line.lower()) <= set("abcdefghijklmn"):
+        if len(line) >= 8 and line.isalpha() and set(line.lower()) <= set("abcdefghijklmno"):
             result.issues.append(f"Malformed divider on line {n}. Use only one repeated letter on that line.")
             if active:
                 result.invalid.add(active)

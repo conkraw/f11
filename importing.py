@@ -1,4 +1,4 @@
-"""One-click A/B/C/D/E/F/G/I/K/L/M/N import with all-or-nothing updates for malformed input."""
+"""One-click A/B/C/D/E/F/G/I/K/L/M/N/O import with all-or-nothing updates for malformed input."""
 from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -11,8 +11,9 @@ from vitals import parse_vitals
 from observations import parse_neuro, parse_nutrition
 from cultures import parse_cultures
 from demographics import parse_admission
+from viral import parse_viral_panel
 
-SUPPORTED_SECTIONS = "abcdefgiklmn"
+SUPPORTED_SECTIONS = "abcdefgiklmno"
 
 
 @dataclass
@@ -34,7 +35,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
     parsed = parse_smartphrase(text)
     relevant = set(SUPPORTED_SECTIONS) & (set(parsed.blocks) | parsed.invalid)
     if not relevant:
-        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M or N dividers.")
+        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N or O dividers.")
         return out
     out.notices.extend(parsed.issues)
     candidate = deepcopy(sheet)
@@ -110,6 +111,14 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                     continue
                 candidate["admission_date"] = admission.date
                 out.imported.append("admission date" if admission.date else "admission date cleared")
+            elif letter == "o":
+                viral = parse_viral_panel(parsed.blocks[letter])
+                if viral.error:
+                    out.errors.append(viral.error)
+                    continue
+                candidate["viral_panel"] = viral.data
+                out.notices.extend(viral.issues)
+                out.imported.append("respiratory viral panel")
             elif letter in "klm":
                 observations = parse_neuro(parsed.blocks[letter], letter)
                 if observations.error:
