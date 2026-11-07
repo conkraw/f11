@@ -43,7 +43,7 @@ def test_custom_names_are_not_rewritten_as_other_beds(room):
 
 
 def legacy_ten():
-    v=new_vault();v['schema']=10;v["settings"].pop("medication_gi_groups", None);v['settings'].pop('medication_infusions')
+    v=new_vault();v['schema']=10;v["settings"].pop("medication_groups", None);v["settings"].pop("medication_gi_groups", None);v['settings'].pop('medication_infusions')
     v['settings']['rooms']=['P4102','4201','4213','4307']
     s=new_sheet('P4201');s.pop("import_warnings", None);s.pop("intake_output", None);s.pop("recurring_orders", None);s.pop("cbc", None);s.pop('blood_gas');s['room']='4201';s['fields']['Diagnoses']='SYNTHETIC old record'
     s['medications']=[med()]
@@ -54,7 +54,7 @@ def legacy_ten():
 
 def test_preset_key_upgrade_preserves_entire_sheet_except_room_and_original_input():
     old=legacy_ten();before=deepcopy(old);new=upgrade_vault(old)
-    assert old==before and new['schema']==SCHEMA_VERSION==16
+    assert old==before and new['schema']==SCHEMA_VERSION==17
     assert new['settings']['rooms']==['P4102','P4201','P4213','4307']
     assert new['rooms']['P4201']==dict(old['rooms']['4201'],room='P4201',blood_gas=None,cbc=None,recurring_orders=None,intake_output=None,import_warnings={})
     assert new['settings']['medication_mappings']==old['settings']['medication_mappings']
@@ -220,17 +220,17 @@ def test_infusion_group_below_neuro_vitals_above_notes_and_other_meds():
     s['fields']['Neurologic']='NOTE_SENTINEL'
     s['medications']=[med(name='BOLUS',frequency='q30 min PRN'),med(name='INFUSION_NAME')]
     text=fields_with_medications(s)['Neurologic']
-    assert text.index('SBS -1')<text.index('INFUSIONS')<text.index('INFUSION_NAME')<text.index('NOTE_SENTINEL')<text.index('OTHER MEDICATIONS')<text.index('BOLUS')
+    assert text.index('SBS -1')<text.index('Infusions')<text.index('INFUSION_NAME')<text.index('NOTE_SENTINEL')<text.index('Other Medications')<text.index('BOLUS')
     html=handoff_html(s)
     assert '<b>INFUSION_NAME</b>' in html and '<b><u>Dose: 1.2 mcg/kg/hr</u></b>' in html
     assert 'Recorded rate: 3.48 mL/hr' in html
-    assert 'INFUSIONS' in handoff_text(s)
+    assert 'Infusions' in handoff_text(s)
 
 
 def test_other_systems_not_grouped_and_hidden_infusions_not_printed():
     s=new_sheet('P4102');s['medications']=[med(name='HIDDEN_MARKER'),med(name='CARDIAC_MARKER',section='Cardiovascular')]
     s['medications'][0]['hidden']=True
-    assert 'HIDDEN_MARKER' not in handoff_html(s) and 'INFUSIONS' not in handoff_text(s)
+    assert 'HIDDEN_MARKER' not in handoff_html(s) and '\nInfusions\n' not in handoff_text(s) and 'CV Infusions' in handoff_text(s)
     assert 'CARDIAC_MARKER' in handoff_text(s)
 
 
@@ -354,5 +354,5 @@ def test_expired_remove_and_undo_callbacks_do_not_write(app):
 
 def test_empty_rule_set_still_allows_automatic_neuro_grouping_on_saved_sheet():
     s=new_sheet('P4102');s['medications']=[med()]
-    assert 'INFUSIONS' in fields_with_medications(s)['Neurologic']
+    assert 'Infusions' in fields_with_medications(s)['Neurologic']
     assert not new_vault()['settings']['medication_infusions']

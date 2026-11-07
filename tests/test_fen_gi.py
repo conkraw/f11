@@ -196,13 +196,13 @@ def test_gi_override_is_form_route_frequency_specific():
 
 
 def test_latest_archive_migration_preserves_original_fields_and_settings():
-    old=new_vault();old['schema']=14;old['settings'].pop('medication_gi_groups')
+    old=new_vault();old['schema']=14;old["settings"].pop("medication_groups", None);old['settings'].pop('medication_gi_groups')
     s=new_sheet('P4102');s.pop("import_warnings", None);s.pop('intake_output');s['fields']['FEN / GI']='Preserve this note'
     old['rooms'][s['room']]=s;original=deepcopy(old)
     new=upgrade_vault(old)
-    assert old==original and new['schema']==SCHEMA_VERSION==16
+    assert old==original and new['schema']==SCHEMA_VERSION==17
     assert new['rooms'][s['room']]==dict(s,intake_output=None,import_warnings={})
-    assert new['settings']==dict(old['settings'],medication_gi_groups=[])
+    assert new['settings']==dict(old['settings'],medication_gi_groups=[], medication_groups=[])
     key=Fernet.generate_key().decode()
     cipher=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     assert open_vault(cipher,key)==new

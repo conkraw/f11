@@ -11,14 +11,17 @@ import re
 from medications import match_name, normalized, visible, format_medication
 from output_text import medication_output
 from fluid_balance import balance_text
+from medication_groups import group_for as special_group, GROUP_SECTIONS
 
-MODES = ("auto", "prophylaxis", "bowel", "other")
-MODE_LABELS = {"auto": "Automatic", "prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "other": "No GI grouping"}
-GROUP_NAMES = {"prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen"}
+MODES = ("auto", "prophylaxis", "bowel", "diuretic", "other")
+MODE_LABELS = {"auto": "Automatic", "prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "other": "No GI grouping"}
+GROUP_NAMES = {"prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics"}
 
 
 def automatic_group(row: dict) -> str:
     name = match_name(row.get("name", ""))
+    if re.match(r"^(?:bumetanide|chlorothiazide|furosemide)\b", name):
+        return "diuretic"
     if re.match(r"^(?:famotidine|omeprazole|pantoprazole)\b", name):
         return "prophylaxis"
     if re.match(r"^(?:docusate|lactulose|polyethylene\s+glycol|sennosides)\b", name):
@@ -34,6 +37,9 @@ def group_for(row: dict) -> str:
 
 
 def effective_section(row: dict) -> str:
+    special = special_group(row)
+    if special:
+        return GROUP_SECTIONS[special]
     return "FEN / GI" if group_for(row) else row["section"]
 
 
@@ -51,7 +57,7 @@ def validate_gi_rules(rules: list[dict]) -> None:
         for key in ("name", "route", "frequency"):
             if not isinstance(rule[key], str) or len(rule[key]) > 4000 or any(c in rule[key] for c in "\n\r\t"):
                 raise ValueError("A FEN/GI display rule contains invalid text.")
-        if not rule["name"] or rule["mode"] not in ("prophylaxis", "bowel", "other"):
+        if not rule["name"] or rule["mode"] not in ("prophylaxis", "bowel", "diuretic", "other"):
             raise ValueError("A FEN/GI display rule has an invalid choice.")
         key = (rule["name"], rule["route"], rule["frequency"])
         if key in seen:

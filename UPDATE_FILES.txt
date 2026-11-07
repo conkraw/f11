@@ -1,7 +1,14 @@
-Version 6.15 complete ZIP. Replace all application files, not just the two new modules.
-New modules: fluid_balance.py, fen_gi.py.
-Updated: app.py, models.py, parser.py, importing.py, medications.py,
-infusions.py, exports.py, batching.py, release documentation and regression tests.
-No dependency changes. No patient samples or deployment secrets are included.
-CBC, blood-gas, laboratory, recurring-order and respiratory parsers are unchanged.
-Preserve your existing Secrets, encryption key, token and private data repository.
+PICU Handoff Version 6.17: full-package update
+
+Upload all supplied contents together. Keep app.py at the repository root.
+New runtime file: medication_groups.py
+Updated runtime files: app.py, models.py, medications.py, infusions.py,
+fen_gi.py, exports.py, importing.py and error_store.py.
+Documentation, synthetic examples and regression tests are also updated.
+
+Keep all existing deployment Secrets and the original encryption key.
+Do not run create_secrets.py or Generate_Secrets.ipynb for this update.
+No new dependencies are required. The first successful save uses schema 17.
+Do not mix old and new runtime files or downgrade after saving schema 17.
+
+Sidebar: Version 6.17 | Medication groups, CV infusions and calcium

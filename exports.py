@@ -12,7 +12,9 @@ import time
 import re
 from import_review import review_summary
 from models import SYSTEMS, fields_with_medications, validate_sheet, automatic_vitals, section_label
-from infusions import neuro_body, is_infusion, infusion_entry
+from infusions import (neuro_body, cardiovascular_body, hematology_body, is_infusion, infusion_entry,
+                       system_body_blocks, render_body_blocks)
+from labs import lactate_text
 from medications import visible, format_medication
 from output_text import medication_output
 from fen_gi import effective_section, fen_gi_body
@@ -59,10 +61,12 @@ def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
     text = fields[section]
     if section == "FEN / GI":
         return fen_gi_body(sheet["fields"][section], sheet["medications"], sheet["intake_output"], True, esc)
-    if section == "Neurologic":
-        body = neuro_body(sheet["fields"][section], sheet["medications"], True, esc)
-        vitals = automatic_vitals(sheet).get(section, "")
-        return (esc(vitals) + ("\n-----\n" if body else "") if vitals else "") + body
+    if section in ("Neurologic", "Cardiovascular", "Hematology"):
+        body = render_body_blocks(system_body_blocks(section, sheet["fields"][section], sheet["medications"]), True, esc)
+        before = [automatic_vitals(sheet).get(section, "")]
+        if section == "Cardiovascular":
+            before.append(lactate_text(sheet["labs"]))
+        return "\n-----\n".join([esc(v) for v in before if v.strip()] + ([body] if body.strip() else []))
     if section == "Diagnoses":
         plain = viral_text(sheet["viral_panel"])
         if plain and text.endswith(plain):
@@ -189,35 +193,39 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
 
     columns = [paragraphs(patient_markup(sheet, fields, _clinical_markup) if section is None else field_markup(sheet, fields, section, _clinical_markup), rich=True)
                for _, section in COLUMNS]
-    # Keep a compact infusion entry together so its name cannot be separated
-    # from the ordered dose at a page boundary. Extremely long custom entries
-    # still split instead of getting stuck or being clipped.
-    neuro_meds = [r for r in sheet["medications"] if visible(r) and effective_section(r) == "Neurologic"]
-    infusions = [r for r in neuro_meds if is_infusion(r)]
-    if infusions:
-        class InfusionParagraph(Paragraph):
-            def split(self, availWidth, availHeight):
-                if self.height <= 200:
-                    return []
-                return super().split(availWidth, availHeight)
+    # Use the same grouping model as HTML/text. Keep each infusion's name and
+    # ordered dose together, including the heading with the first infusion.
+    class InfusionParagraph(Paragraph):
+        def split(self, availWidth, availHeight):
+            if self.height <= 200:
+                return []
+            return super().split(availWidth, availHeight)
+    for column_index, (_, section) in enumerate(COLUMNS):
+        if section not in ("Neurologic", "Cardiovascular", "Hematology"):
+            continue
+        blocks = system_body_blocks(section, sheet["fields"][section], sheet["medications"])
         q = []
-        vitals = automatic_vitals(sheet).get("Neurologic", "")
-        if vitals:
-            q.extend(paragraphs(vitals + "\n-----"))
-        for index, row in enumerate(infusions):
-            if index:
-                q.append(Spacer(1, 2))
-            markup = ("<b>INFUSIONS</b>\n" if index == 0 else "") + infusion_entry(row, True, _clinical_markup, handoff_only=True)
-            q.append(InfusionParagraph(markup.replace("\n", "<br/>"), style))
-        notes = sheet["fields"]["Neurologic"]
-        if notes.strip():
-            q.extend(paragraphs("-----\n" + notes.rstrip()))
-        others = [r for r in neuro_meds if not is_infusion(r)]
-        if others:
-            q.extend(paragraphs("-----\n<b>OTHER MEDICATIONS</b>", rich=True))
-            for row in others:
-                q.extend(paragraphs(medication_output(format_medication(row))))
-        columns[1] = q
+        before = [automatic_vitals(sheet).get(section, "")]
+        if section == "Cardiovascular":
+            before.append(lactate_text(sheet["labs"]))
+        before = [v for v in before if v.strip()]
+        if before:
+            q.extend(paragraphs("\n-----\n".join(before) + ("\n-----" if blocks else "")))
+        index = 0
+        while index < len(blocks):
+            kind, item = blocks[index]
+            prefix = ""
+            if kind == "heading" and index + 1 < len(blocks) and blocks[index + 1][0] == "infusion":
+                prefix = "<b>" + _clinical_markup(item) + "</b>\n"
+                index += 1
+                kind, item = blocks[index]
+            if kind == "infusion":
+                markup = prefix + infusion_entry(item, True, _clinical_markup, handoff_only=True)
+                q.append(InfusionParagraph(markup.replace("\n", "<br/>"), style))
+            else:
+                q.extend(paragraphs(render_body_blocks([(kind, item)], True, _clinical_markup), rich=True))
+            index += 1
+        columns[column_index] = q
     band_items = [(name, fields[name]) for name in BOTTOM]
     extra = '\n'.join(name + ': ' + fields[name] for name in ('Skin / Wounds', 'Tasks', 'Other')
                       if fields[name].strip())

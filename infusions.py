@@ -12,6 +12,7 @@ import re
 from medications import normalized, match_name, visible, format_medication
 from output_text import medication_output
 from fen_gi import effective_section
+from medication_groups import group_for as special_group, GROUP_NAMES
 
 MODES = ("auto", "infusion", "other")
 MODE_LABELS = {"auto": "Automatic", "infusion": "Infusion", "other": "Other medication"}
@@ -115,23 +116,61 @@ def infusion_entry(row: dict, rich: bool = False, esc=escape, handoff_only: bool
     return '\n'.join(lines)
 
 
-def neuro_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
-    """Infusions first, then separate notes and remaining neuro medications."""
-    meds = [r for r in rows if visible(r) and effective_section(r) == 'Neurologic']
-    drips = [r for r in meds if is_infusion(r)]
-    other = [r for r in meds if not is_infusion(r)]
-    encode = esc if rich else lambda v: v
-    if not drips:
-        return '\n'.join([encode(notes.rstrip())] * bool(notes.strip()) +
-                         [encode(medication_output(format_medication(r))) for r in other])
-    parts = ['<b>INFUSIONS</b>' if rich else 'INFUSIONS']
-    for index, row in enumerate(drips):
-        if index:
-            parts.append("")
-        parts.append(infusion_entry(row, rich, esc, handoff_only=True))
+def system_body_blocks(section: str, notes: str, rows: list[dict]) -> list[tuple[str, object]]:
+    """One shared block model for plain text, HTML and PDF. No duplicate orders."""
+    meds = [r for r in rows if visible(r) and effective_section(r) == section]
+    groups = []
+    assigned = set()
+    if section in ("Neurologic", "Cardiovascular"):
+        drips = [r for r in meds if not special_group(r) and is_infusion(r)]
+        if drips:
+            groups.append([("heading", "Infusions" if section == "Neurologic" else "CV Infusions")] +
+                          [("infusion", r) for r in drips])
+            assigned.update(r["id"] for r in drips)
+    modes = ("sedative_prn", "paralytic_prn", "fever") if section == "Neurologic" else ("dvt",) if section == "Hematology" else ()
+    for mode in modes:
+        group = [r for r in meds if special_group(r) == mode]
+        if group:
+            groups.append([("heading", GROUP_NAMES[mode])] + [("medication", r) for r in group])
+            assigned.update(r["id"] for r in group)
+    other = [r for r in meds if r["id"] not in assigned]
+    if not groups:
+        return ([("notes", notes.rstrip())] if notes.strip() else []) + [("medication", r) for r in other]
     if notes.strip():
-        parts.extend(['-----', encode(notes.rstrip())])
+        groups.append([("notes", notes.rstrip())])
     if other:
-        parts.extend(['-----', '<b>OTHER MEDICATIONS</b>' if rich else 'OTHER MEDICATIONS'])
-        parts.extend(encode(medication_output(format_medication(r))) for r in other)
-    return '\n'.join(parts)
+        groups.append([("heading", "Other Medications")] + [("medication", r) for r in other])
+    blocks = []
+    for group in groups:
+        if blocks:
+            blocks.append(("separator", "-----"))
+        blocks.extend(group)
+    return blocks
+
+
+def render_body_blocks(blocks: list[tuple[str, object]], rich: bool = False, esc=escape) -> str:
+    encode = esc if rich else lambda v: v
+    lines = []
+    for kind, item in blocks:
+        if kind == "infusion":
+            lines.append(infusion_entry(item, rich, esc, handoff_only=True))
+        elif kind == "heading":
+            lines.append("<b>" + encode(item) + "</b>" if rich else item)
+        elif kind == "medication":
+            lines.append(encode(medication_output(format_medication(item))))
+        else:
+            lines.append(encode(item))
+    return "\n".join(lines)
+
+
+def neuro_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
+    """Infusions, sedative PRNs, paralytic PRNs, fever control, notes and other meds."""
+    return render_body_blocks(system_body_blocks("Neurologic", notes, rows), rich, esc)
+
+
+def cardiovascular_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
+    return render_body_blocks(system_body_blocks("Cardiovascular", notes, rows), rich, esc)
+
+
+def hematology_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
+    return render_body_blocks(system_body_blocks("Hematology", notes, rows), rich, esc)

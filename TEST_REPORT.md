@@ -1,23 +1,78 @@
-# Version 6.15 validation report
+# Validation report: Version 6.17
 
-## Executed
+## Executed checks
 
-- The unmodified Version 6.14 package passed its 1,286-test baseline in this build environment.
-- The updated suite passed 1,363 tests using Python 3.13. This includes 77 new FEN/GI tests. Existing migration test fixtures were updated only to omit newly introduced fields when constructing a historical schema and to expect schema 15 after migration.
-- Coverage: S totals, missing/zero/negative values, exact unit/precision preservation, no Net calculation, conflicting totals, S-only and omitted/empty updates, H not counted twice, requested generic-name grouping, held and dated orders, topical glycerin exclusion, hidden/excluded rows, distinct schedules, exact-formulation overrides, escaping, rollback on failed saves, editing and pending-widget room autosave, existing rule preservation, encrypted round trips, session-only operation, PDF/HTML/text/batch export and one-page synthetic output.
-- Independently executed original Version 6.14 code to generate an encrypted synthetic archive. Version 6.15 opened it with the same key and preserved every old setting and every old saved field. New defaults are an empty GI-display-override list and null intake/output snapshots.
-- Privately checked the supplied complete SmartPhrase: all 24 medication rows imported, recorded S totals preserved, two separate sennosides orders retained. Previous parsed fields matched Version 6.14 after excluding generated IDs/timestamps. The supplied source file is not included in the ZIP.
-- CBC, blood-gas, laboratory, lab-tree, respiratory, recurring-order, culture, security, GitHub-storage and dependency files were byte-compared against the original baseline. Their parsers/logic are unchanged.
-- Rendered the synthetic landscape PDF at 160 dpi and visually inspected its one-page output. FEN/GI totals precede bold GI prophylaxis and Bowel Regimen headings without overlap or clipping.
+1,578 automated tests passed in the build environment. The original unmodified
+Version 6.16 package first passed all 1,431 of its tests. Version 6.17 adds 147
+cases covering the new grouping and calcium requirements. Existing assertions
+were updated only for intentionally changed headings, default grouping order,
+and the added schema-17 setting. Historical archive fixtures now omit the new
+setting when constructing older schema versions. No test was disabled or skipped.
 
-## Not established
+Command: python -m pytest -q --disable-warnings
 
-The automated interface checks use a Streamlit widget stub. They do not exercise a live browser lifecycle. Streamlit is not installed in this build environment. No hosted application or authenticated private handoff repository was accessed or tested. No direct GitHub changes were made. Tests do not establish clinical accuracy, source currency or institutional privacy compliance.
+The delivery ZIP is extracted into a clean directory and the complete suite is
+run again before delivery. The ZIP has a CRC check and a SHA-256 manifest for
+every packaged file apart from the manifest itself.
 
-## Reproduce
+## New coverage
 
-Install requirements-dev.txt in an isolated test environment and run:
+Tests cover all specified medications, mixed case and known held/start/sequence
+prefixes. Heparin tests distinguish an ordered Units/kg/hr dose from product
+concentration, Last Rate, flushes, irrigation/lock mixtures, mL/hr carriers,
+other units and missing doses. Enoxaparin and cangrelor are separately tested
+without applying the heparin unit restriction. PRN grouping requires the recorded
+frequency and is tested against scheduled, continuous, once-only and blank values.
 
-    python -m pytest -q --disable-warnings
+Tests check each requested diuretic, one output occurrence per order, preservation
+of all original fields, hidden/excluded orders, custom wording and escaping,
+source qualifiers, continuous-versus-PRN distinctions, and output-only removal
+of (Dosing Weight). Cardiovascular infusion names and ordered doses are checked
+for bold PDF/HTML formatting. Multi-room and long-CV-list tests verify complete
+continuation without truncation. Existing vitals and lactate remain above CV
+Infusions, and existing neurologic observations remain above neurologic groups.
 
-Begin deployment testing with examples/synthetic_fen_gi.txt before using clinical records. Preserve the original encryption key.
+Reusable group choices, Admin editing without an open room, room-change capture
+of pending choices, failed write/conflict rollback, manual system reassignment,
+re-import persistence and cross-group reset behavior are tested. Calcium tests
+confirm both latest and preceding CA results beneath BMP with Mg and Phos,
+including dates, abnormal flags and no source mutation.
+
+## Original-code migration check
+
+The original Version 6.16 ZIP was independently extracted and executed to create
+a synthetic encrypted schema-16 archive. Version 6.17 opened it with the same
+key. Every old room field compared equal, including import warnings, hidden
+orders and infusion overrides. Every prior Admin setting compared equal. The
+only added setting was medication_groups: []. A new encrypted round trip also
+passed. No actual user archive or deployment secret was accessed. Temporary
+synthetic keys and archive files are outside the delivered package.
+
+## Unchanged core components
+
+The following runtime files compare byte-for-byte with Version 6.16: cbc.py,
+blood_gases.py, labs.py, lab_layout.py, parser.py, noninvasive.py, ventilation.py,
+github_store.py, security.py and import_review.py. CA support already existed in
+the lab parser, and this release adds explicit regression verification rather
+than altering working lab/CBC/gas parsing. Medication source parsing is unchanged,
+with only validation of the new optional group choice added.
+
+## Visual inspection
+
+The synthetic PDF was rendered and visually checked. It is one landscape Letter
+page at the existing 7.2-point body size. The preview includes title-case Infusions,
+CV Infusions, PRN, Paralytic PRN, Fever Control, Diuretics, DVT Prophylaxis and
+calcium beside Mg and Phos. CV/neuro infusion names and doses are emphasized,
+with pump rates separate. Hidden values and (Dosing Weight) do not reappear in
+handoff output. No overlap or clipped content was observed in this preview.
+
+## Limitations
+
+Streamlit is not installed in this build environment. Interface tests use a
+widget/session stub, not a live Streamlit browser session. GitHub tests use
+mocked storage responses, not an authenticated private repository. No live
+Epic, hosted deployment, team-access flow, or actual clinical record was tested.
+The tests do not establish clinical validity, drug indications, dose correctness,
+privacy compliance or error-free handling of every possible paste. The DVT
+Prophylaxis label is a user-defined display heading, not an indication or dose
+assessment. Use the synthetic example first in the deployment.

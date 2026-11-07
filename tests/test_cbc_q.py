@@ -246,14 +246,14 @@ def test_schema12_upgrade_preserves_old_gases_rows_mappings_and_fields():
     sheet=new_sheet('P4102');sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop('recurring_orders');sheet.pop('cbc')
     sheet['blood_gas']=parse_gases('Lab\tUnits\t01/06/26 0900\nPH ART\t\t7.40').data
     sheet['fields']['Neurologic']='Preserved separate note'
-    old=new_vault();old['schema']=12;old["settings"].pop("medication_gi_groups", None);old['rooms']['P4102']=sheet
+    old=new_vault();old['schema']=12;old["settings"].pop("medication_groups", None);old["settings"].pop("medication_gi_groups", None);old['rooms']['P4102']=sheet
     before=deepcopy(old)
     key=Fernet.generate_key().decode()
     cipher=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     new=open_vault(cipher,key)
-    assert old==before and new['schema']==SCHEMA_VERSION==16
+    assert old==before and new['schema']==SCHEMA_VERSION==17
     assert new['rooms']['P4102']==dict(sheet,cbc=None,recurring_orders=None,intake_output=None,import_warnings={})
-    assert new['settings']==dict(old['settings'], medication_gi_groups=[])
+    assert new['settings']==dict(old['settings'], medication_gi_groups=[], medication_groups=[])
     assert open_vault(seal_vault(new,key),key)==new
 
 

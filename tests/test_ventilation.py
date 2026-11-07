@@ -127,14 +127,14 @@ def test_d_and_e_values_never_mix_into_c():
 def test_existing_schema_two_preserved_with_new_field():
     old=new_vault()
     old=save_sheet_in(old,new_sheet('P4102'))
-    old['schema']=2;old["settings"].pop("medication_gi_groups", None);old['settings'].pop('medication_infusions', None)
+    old['schema']=2;old["settings"].pop("medication_groups", None);old["settings"].pop("medication_gi_groups", None);old['settings'].pop('medication_infusions', None)
     strip_v6_fields(old)
     old['rooms']['P4102'].pop('ventilation')
     old['rooms']['P4102'].pop('noninvasive')
     old['rooms']['P4102']['fields']['Respiratory']='Old manual note'
     old['settings']['medication_mappings']=upsert_rule([],'acetaminophen','Neurologic')
     migrated=upgrade_vault(old)
-    assert migrated['schema']==16 and old['schema']==2
+    assert migrated['schema']==17 and old['schema']==2
     assert migrated['rooms']['P4102']['fields']['Respiratory']=='Old manual note'
     assert migrated['settings']['medication_mappings']==old['settings']['medication_mappings']
     assert migrated['rooms']['P4102']['ventilation'] is None

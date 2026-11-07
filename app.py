@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.16: section recovery and a shared encrypted error journal."""
+"""PICU SmartPhrase v6.17: medication subgroups, CV infusions and calcium."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -39,8 +39,12 @@ from fluid_balance import FIELDS as IO_FIELDS, META_FIELDS as IO_META_FIELDS, va
 from fen_gi import (MODES as GI_MODES, MODE_LABELS as GI_MODE_LABELS, GROUP_NAMES,
                     automatic_group, group_for, effective_section, fen_gi_body,
                     apply_gi_rules, set_gi_rule, gi_key, gi_mode_for)
-from infusions import (MODES, MODE_LABELS, is_infusion, infusion_entry, neuro_body,
+from infusions import (MODES, MODE_LABELS, is_infusion, infusion_entry, neuro_body, cardiovascular_body, hematology_body,
                        set_infusion_rule, apply_infusion_rules, infusion_key, infusion_mode_for)
+
+from medication_groups import (MODES as GROUP_MODES, MODE_LABELS as GROUP_MODE_LABELS,
+    GROUP_SECTIONS, group_for as special_group, automatic_group as automatic_special_group,
+    apply_group_rules, set_group_rule, group_key, group_mode_for)
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title="PICU Handoff", layout="wide", initial_sidebar_state="expanded")
@@ -116,19 +120,28 @@ def editor_snapshot(room: str) -> dict:
         old_signature = infusion_key(row)
         old_mode = row.get("infusion_mode", "auto")
         old_gi_mode = row.get("gi_mode", "auto")
+        old_group_mode = row.get("group_mode", "auto")
         old_effective = effective_section(row)
         prefix = "med_draft_" + row["id"] + "_"
-        for field in ("name", "dose", "route", "frequency", "last_rate", "rate_time", "section", "custom_text", "include", "infusion_mode", "gi_mode"):
+        for field in ("name", "dose", "route", "frequency", "last_rate", "rate_time", "section", "custom_text", "include", "infusion_mode", "gi_mode", "group_mode"):
             if prefix + field in ss:
                 if field == "section" and ss[prefix + field] == old_effective:
                     continue  # The automatic FEN/GI label is not a changed saved mapping.
                 row[field] = ss[prefix + field]
+        if row.get("gi_mode", "auto") != old_gi_mode and row.get("gi_mode", "auto") not in ("auto", "other"):
+            row["group_mode"] = "auto"
         if infusion_key(row) != old_signature and row.get("infusion_mode", "auto") == old_mode:
             row["infusion_mode"] = infusion_mode_for(row, ss["vault"]["settings"]["medication_infusions"])
         if infusion_key(row) != old_signature and row.get("gi_mode", "auto") == old_gi_mode:
             row["gi_mode"] = gi_mode_for(row, ss["vault"]["settings"]["medication_gi_groups"])
-        if row["section"] != "FEN / GI" and prefix + "section" in ss and ss[prefix + "section"] != old_effective:
-            row["gi_mode"] = "other"
+        if infusion_key(row) != old_signature and row.get("group_mode", "auto") == old_group_mode:
+            row["group_mode"] = group_mode_for(row, ss["vault"]["settings"]["medication_groups"])
+        if prefix + "section" in ss and ss[prefix + "section"] != old_effective:
+            if row["section"] != "FEN / GI":
+                row["gi_mode"] = "other"
+            group = special_group(row)
+            if group and row["section"] != GROUP_SECTIONS[group]:
+                row["group_mode"] = "other"
     if sheet["intake_output"] is not None:
         for field in IO_FIELDS + IO_META_FIELDS + ("include",):
             key = "io_" + sheet["id"] + "_" + field
@@ -244,6 +257,7 @@ def autosave_before_room_change(store: GitHubVault | None) -> bool:
         changed_rules = False
         infusion_rules = candidate["settings"]["medication_infusions"]
         gi_rules = candidate["settings"]["medication_gi_groups"]
+        group_rules = candidate["settings"]["medication_groups"]
         old_rows = {row["id"]: row for row in prior["medications"]}
         for row in draft["medications"]:
             old = old_rows.get(row["id"])
@@ -257,11 +271,15 @@ def autosave_before_room_change(store: GitHubVault | None) -> bool:
             if old is not None and old.get("gi_mode", "auto") != row.get("gi_mode", "auto"):
                 gi_rules = set_gi_rule(gi_rules, row, row.get("gi_mode", "auto"))
                 changed_rules = True
+            if old is not None and old.get("group_mode", "auto") != row.get("group_mode", "auto"):
+                group_rules = set_group_rule(group_rules, row, row.get("group_mode", "auto"))
+                changed_rules = True
         if changed_rules:
+            candidate["settings"]["medication_groups"] = group_rules
             candidate["settings"]["medication_gi_groups"] = gi_rules
             candidate["settings"]["medication_mappings"] = rules
             candidate["settings"]["medication_infusions"] = infusion_rules
-            draft["medications"] = apply_gi_rules(apply_infusion_rules(remap(draft["medications"], rules, candidate["settings"]["medication_visibility"]), infusion_rules), gi_rules)
+            draft["medications"] = apply_group_rules(apply_gi_rules(apply_infusion_rules(remap(draft["medications"], rules, candidate["settings"]["medication_visibility"]), infusion_rules), gi_rules), group_rules)
         candidate = save_sheet_in(candidate, draft)
         commit(candidate, store)
     except (StorageError, ValidationError, ValueError) as exc:
@@ -938,10 +956,10 @@ def reapply_open_mappings() -> None:
     ss = st.session_state
     rules = ss["vault"]["settings"]["medication_mappings"]
     for sheet in ss.get("drafts", {}).values():
-        sheet["medications"] = apply_gi_rules(apply_infusion_rules(remap(sheet["medications"], rules, ss["vault"]["settings"]["medication_visibility"]), ss["vault"]["settings"]["medication_infusions"]), ss["vault"]["settings"]["medication_gi_groups"])
+        sheet["medications"] = apply_group_rules(apply_gi_rules(apply_infusion_rules(remap(sheet["medications"], rules, ss["vault"]["settings"]["medication_visibility"]), ss["vault"]["settings"]["medication_infusions"]), ss["vault"]["settings"]["medication_gi_groups"]), ss["vault"]["settings"]["medication_groups"])
     # These callbacks run before the widgets are instantiated on the next run.
     for key in list(ss):
-        if (key.startswith("med_") and key.endswith(("_section", "_infusion_mode", "_gi_mode"))) or key.startswith(("infusion_rule_mode_", "gi_rule_mode_")):
+        if (key.startswith("med_") and key.endswith(("_section", "_infusion_mode", "_gi_mode", "_group_mode"))) or key.startswith(("infusion_rule_mode_", "gi_rule_mode_", "group_rule_mode_")):
             ss.pop(key, None)
 
 
@@ -955,15 +973,23 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
     original = next((r for r in rows if r["id"] == row_id), None)
     if original is None:
         return
-    old_value = original.get(field, "auto") if field in ("infusion_mode", "gi_mode") else original[field]
+    old_value = original.get(field, "auto") if field in ("infusion_mode", "gi_mode", "group_mode") else original[field]
     edited = deepcopy(original)
     edited[field] = ss[widget_key]
     if field == "section":
         old_value = effective_section(original)
     try:
         validate_medication(edited)
-        if field == "gi_mode":
+        if field == "group_mode":
             candidate = deepcopy(ss["vault"])
+            candidate["settings"]["medication_groups"] = set_group_rule(candidate["settings"]["medication_groups"], edited, edited["group_mode"])
+            commit(candidate, store)
+            reapply_open_mappings()
+            note("Medication display group remembered." + (" Saved to encrypted GitHub." if store else " Session-only test mode."), "success")
+        elif field == "gi_mode":
+            candidate = deepcopy(ss["vault"])
+            if edited["gi_mode"] not in ("auto", "other"):
+                candidate["settings"]["medication_groups"] = set_group_rule(candidate["settings"]["medication_groups"], edited, "auto")
             candidate["settings"]["medication_gi_groups"] = set_gi_rule(candidate["settings"]["medication_gi_groups"], edited, edited["gi_mode"])
             commit(candidate, store)
             reapply_open_mappings()
@@ -984,6 +1010,9 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
             candidate["settings"]["medication_mappings"] = new_rules
             if edited["section"] != "FEN / GI" and group_for(original):
                 candidate["settings"]["medication_gi_groups"] = set_gi_rule(candidate["settings"]["medication_gi_groups"], edited, "other")
+            group = special_group(original)
+            if group and edited["section"] != GROUP_SECTIONS[group]:
+                candidate["settings"]["medication_groups"] = set_group_rule(candidate["settings"]["medication_groups"], edited, "other")
             if candidate != ss["vault"]:
                 commit(candidate, store)  # Persist the rule, not any draft clinical text.
             reapply_open_mappings()
@@ -995,11 +1024,16 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
             if field in ("name", "route", "frequency"):
                 edited["infusion_mode"] = infusion_mode_for(edited, ss["vault"]["settings"]["medication_infusions"])
                 edited["gi_mode"] = gi_mode_for(edited, ss["vault"]["settings"]["medication_gi_groups"])
+                edited["group_mode"] = group_mode_for(edited, ss["vault"]["settings"]["medication_groups"])
+                ss.pop("med_draft_" + row_id + "_group_mode", None)
                 ss.pop("med_draft_" + row_id + "_gi_mode", None)
                 ss.pop("med_draft_" + row_id + "_section", None)
                 ss.pop("med_draft_" + row_id + "_infusion_mode", None)
             if field == "name":
                 edited["hidden"] = hidden_for(edited["name"], ss["vault"]["settings"]["medication_visibility"])
+            # Dose edits can change heparin grouping without changing its signature.
+            if field == "dose":
+                ss.pop("med_draft_" + row_id + "_section", None)
             original.update(edited)
     except (ValueError, ValidationError, StorageError) as exc:
         # Do not claim a remembered mapping or move orders after a rejected save.
@@ -1140,7 +1174,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.16 | Partial imports and shared error review")
+        st.caption("Version 6.17 | Medication groups, CV infusions and calcium")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin", "Import errors"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1169,9 +1203,9 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
         summary, destination = st.columns([3, 1])
         with summary:
             suffix = " [HIDDEN]" if row["hidden"] else "" if row["include"] else " [EXCLUDED]"
-            if row["section"] == "Neurologic" and is_infusion(row):
+            if effective_section(row) in ("Neurologic", "Cardiovascular") and not special_group(row) and is_infusion(row):
                 st.markdown('<div style="white-space:pre-wrap;border-left:3px solid #555;padding-left:8px">' +
-                            str(number) + '. <b>INFUSION</b>' + suffix + '\n' +
+                            str(number) + '. <b>Infusion</b>' + suffix + '\n' +
                             infusion_entry(row, True) + '</div>', unsafe_allow_html=True)
             else:
                 st.text(f"{number}. " + format_medication(row) + suffix)
@@ -1188,13 +1222,20 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
             st.selectbox("FEN/GI display for order " + str(number), GI_MODES, key=key,
                          format_func=lambda value: GI_MODE_LABELS[value], on_change=medication_row_change,
                          args=(room, row["id"], "gi_mode", key, store))
-        if effective_section(row) == "Neurologic":
+        if effective_section(row) in ("Neurologic", "Cardiovascular") and not special_group(row):
             key = prefix + "infusion_mode"
             if key not in st.session_state:
                 st.session_state[key] = row.get("infusion_mode", "auto")
-            st.selectbox("Neuro display for order " + str(number), MODES, key=key,
+            st.selectbox(("Neuro" if effective_section(row) == "Neurologic" else "CV") + " display for order " + str(number), MODES, key=key,
                          format_func=lambda value: MODE_LABELS[value], on_change=medication_row_change,
                          args=(room, row["id"], "infusion_mode", key, store))
+        if effective_section(row) in ("Neurologic", "Hematology") or automatic_special_group(row) or row.get("group_mode", "auto") != "auto":
+            key = prefix + "group_mode"
+            if key not in st.session_state:
+                st.session_state[key] = row.get("group_mode", "auto")
+            st.selectbox("Medication group for order " + str(number), GROUP_MODES, key=key,
+                         format_func=lambda value: GROUP_MODE_LABELS[value], on_change=medication_row_change,
+                         args=(room, row["id"], "group_mode", key, store))
         st.button("Restore to handoff" if row["hidden"] else "Hide from handoff", key="hide_med_" + row["id"], on_click=hide_medication, args=(room, row["id"], not row["hidden"], store))
         with st.expander("Edit details for order " + str(number), expanded=False):
             def widget(field: str, label: str, kind: str = "text"):
@@ -1411,9 +1452,10 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.caption("Edit imported specimens and results in Cultures. Temperature stays first in the printed ID column.")
                 if section == "FEN / GI":
                     st.markdown('<div style="white-space:pre-wrap">' + fen_gi_body("", sheet["medications"], None, True) + "</div>", unsafe_allow_html=True)
-                    st.caption("Printed order: Intake/Output/Net, GI prophylaxis, Bowel Regimen, then separate notes and remaining FEN/GI medications.")
-                elif section == "Neurologic":
-                    st.markdown('<div style="white-space:pre-wrap">' + neuro_body("", sheet["medications"], True) + '</div>', unsafe_allow_html=True)
+                    st.caption("Printed order: Intake/Output/Net, GI prophylaxis, Bowel Regimen, Diuretics, then separate notes and remaining FEN/GI medications.")
+                elif section in ("Neurologic", "Cardiovascular", "Hematology"):
+                    render_body = {"Neurologic": neuro_body, "Cardiovascular": cardiovascular_body, "Hematology": hematology_body}[section]
+                    st.markdown('<div style="white-space:pre-wrap">' + render_body("", sheet["medications"], True) + '</div>', unsafe_allow_html=True)
                 else:
                     for row in sheet["medications"]:
                         if visible(row) and effective_section(row) == section:
@@ -1682,7 +1724,7 @@ def edit_saved_infusion_rule(key: tuple[str, str, str], widget: str, store: GitH
 
 def infusion_admin(store: GitHubVault | None) -> None:
     with st.expander("Infusion display choices"):
-        st.caption("Automatic recognizes continuous parenteral orders, not PRN boluses. Overrides remember the exact formulation, route and frequency. No dose is copied to another order. Display grouping applies in Neurologic only.")
+        st.caption("Automatic recognizes continuous parenteral orders, not PRN boluses. Overrides remember the exact formulation, route and frequency. No dose is copied to another order. Display grouping applies in Neurologic and Cardiovascular. Named PRN and fever-control groups remain separate.")
         for index, rule in enumerate(st.session_state["vault"]["settings"]["medication_infusions"]):
             st.text(rule["name"] + " | " + rule["route"] + " | " + rule["frequency"] + " -> " + MODE_LABELS[rule["mode"]])
             key = "infusion_rule_mode_" + str(index)
@@ -1723,6 +1765,7 @@ def admin_page(store: GitHubVault | None) -> None:
     visibility_admin(store)
     infusion_admin(store)
     gi_admin(store)
+    group_admin(store)
     custom_room_admin(store)
     st.subheader("Room and diagnosis settings")
     if "admin_rooms" not in ss:
@@ -1859,6 +1902,8 @@ def update_gi_admin(rule_key: tuple, key: str, store: GitHubVault | None) -> Non
         candidate = deepcopy(ss["vault"])
         row = dict(zip(("name", "route", "frequency"), rule_key))
         candidate["settings"]["medication_gi_groups"] = set_gi_rule(candidate["settings"]["medication_gi_groups"], row, ss[key])
+        if ss[key] not in ("auto", "other"):
+            candidate["settings"]["medication_groups"] = set_group_rule(candidate["settings"]["medication_groups"], row, "auto")
         commit(candidate, store)
         reapply_open_mappings()
         note("FEN/GI display choice saved.", "success")
@@ -1869,7 +1914,7 @@ def update_gi_admin(rule_key: tuple, key: str, store: GitHubVault | None) -> Non
 
 def gi_admin(store: GitHubVault | None) -> None:
     with st.expander("FEN/GI display choices", expanded=False):
-        st.caption("Automatic GI prophylaxis: famotidine, omeprazole, pantoprazole. Automatic Bowel Regimen: docusate, lactulose, polyethylene glycol, glycerin suppositories, sennosides. These are display groups, not inferred indications.")
+        st.caption("Automatic GI prophylaxis: famotidine, omeprazole, pantoprazole. Automatic Bowel Regimen: docusate, lactulose, polyethylene glycol, glycerin suppositories, sennosides. Diuretics: bumetanide, chlorothiazide, furosemide. These are display groups, not inferred indications.")
         st.caption("To override a default, use a medication's FEN/GI display control. Choosing another system turns off its automatic GI grouping. The original order and hidden-medication choice stay intact.")
         rules = st.session_state["vault"]["settings"]["medication_gi_groups"]
         for index, rule in enumerate(rules):
@@ -1881,6 +1926,42 @@ def gi_admin(store: GitHubVault | None) -> None:
         if not rules:
             st.caption("No overrides saved. The automatic defaults apply.")
 
+
+
+def update_group_admin(rule_key: tuple, key: str, store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    old = next((r for r in ss["vault"]["settings"]["medication_groups"] if (r["name"], r["route"], r["frequency"]) == rule_key), None)
+    if old is None or key not in ss:
+        return
+    try:
+        candidate = deepcopy(ss["vault"])
+        row = dict(zip(("name", "route", "frequency"), rule_key))
+        candidate["settings"]["medication_groups"] = set_group_rule(candidate["settings"]["medication_groups"], row, ss[key])
+        commit(candidate, store)
+        reapply_open_mappings()
+        note("Medication display group saved.", "success")
+    except (ValueError, StorageError) as exc:
+        ss[key] = old["mode"]
+        note(str(exc), "error")
+
+
+def group_admin(store: GitHubVault | None) -> None:
+    with st.expander("Medication subgroup choices", expanded=False):
+        st.caption("DVT Prophylaxis: enoxaparin, cangrelor and heparin with an explicit Units/kg/hr Dose. Fever Control: acetaminophen and ibuprofen. PRN: the requested sedative PRNs. Paralytic PRN: rocuronium, cisatracurium and vecuronium PRNs.")
+        st.caption("These are user-defined display labels, not inferred indications or a determination that a dose is prophylactic. Original orders and hidden-medication choices are preserved. Overrides use the formulation, route and frequency.")
+        rules = st.session_state["vault"]["settings"]["medication_groups"]
+        for index, rule in enumerate(rules):
+            st.text(rule["name"] + " | " + rule["route"] + " | " + rule["frequency"])
+            key = "group_rule_mode_" + str(index)
+            if key not in st.session_state:
+                st.session_state[key] = rule["mode"]
+            st.selectbox("Medication group choice " + str(index + 1), GROUP_MODES, key=key,
+                         format_func=lambda value: GROUP_MODE_LABELS[value], on_change=update_group_admin,
+                         args=((rule["name"], rule["route"], rule["frequency"]), key, store))
+        if not rules:
+            st.caption("No overrides saved. The automatic defaults apply.")
 
 
 def acknowledge_import_warning(room: str, section: str) -> None:

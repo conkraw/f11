@@ -19,6 +19,7 @@ from cbc import parse_cbc
 from recurring_orders import parse_orders, selected_orders
 from fluid_balance import parse_balance
 from fen_gi import apply_gi_rules
+from medication_groups import apply_group_rules
 from import_review import diagnostic, diagnostic_text
 
 SUPPORTED_SECTIONS = "abcdefgiklmnopqrs"
@@ -94,7 +95,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 if meds.error:
                     out.errors.extend([meds.error] + meds.issues)
                     continue
-                candidate = apply_medications(candidate, apply_gi_rules(apply_infusion_rules(meds.rows, settings.get("medication_infusions", [])), settings.get("medication_gi_groups", [])))
+                candidate = apply_medications(candidate, apply_group_rules(apply_gi_rules(apply_infusion_rules(meds.rows, settings.get("medication_infusions", [])), settings.get("medication_gi_groups", [])), settings.get("medication_groups", [])))
                 out.imported.append(str(len(meds.rows)) + " medication orders")
             elif letter in "cd":
                 if letter == "d" and ("c" in parsed.blocks or "c" in parsed.invalid):

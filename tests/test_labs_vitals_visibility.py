@@ -312,11 +312,11 @@ def test_v6_encrypted_roundtrip_and_v5_migration():
     # Short strings such as WBC can occur by chance in base64 ciphertext.
     # Check structured plaintext markers instead, plus the exact decrypted vault.
     assert b'"component": "WBC"' not in token and b'12.80' not in token and open_vault(token,key)==v
-    old=strip_v6_fields(deepcopy(v));old['schema']=5;old["settings"].pop("medication_gi_groups", None);old['settings'].pop('medication_infusions', None)
+    old=strip_v6_fields(deepcopy(v));old['schema']=5;old["settings"].pop("medication_groups", None);old["settings"].pop("medication_gi_groups", None);old['settings'].pop('medication_infusions', None)
     baseline=deepcopy(old)
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     upgraded=open_vault(oldtoken,key)
-    assert upgraded['schema']==16 and old==baseline
+    assert upgraded['schema']==17 and old==baseline
     after=upgraded['rooms']['P4102'];before=old['rooms']['P4102']
     for k in ('fields','noninvasive','ventilation','id','updated_at'):
         assert after[k]==before[k]

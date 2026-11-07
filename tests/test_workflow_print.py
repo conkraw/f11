@@ -193,7 +193,7 @@ def test_capture_every_editor_family_before_switch(app):
     s=ss['drafts']['P4102']
     s['cultures']=clinical_sheet()['cultures']
     s['viral_panel']=clinical_sheet()['viral_panel']
-    s['medications']=parse_medications('Medications:\n• acetaminophen\t10 mg\tOral\tq6h').rows
+    s['medications']=parse_medications('Medications:\n• Synthetic medicine\t10 mg\tOral\tq6h').rows
     # Render populates actual keys. Make pending edits without running callbacks.
     ss[app.edit_key(s,'Respiratory')]='Pending respiratory note'
     row=s['medications'][0]
@@ -213,7 +213,7 @@ def test_capture_every_editor_family_before_switch(app):
     assert saved['fields']['Respiratory']=='Pending respiratory note'
     assert saved['medications'][0]['dose']=='12 mg'
     assert saved['medications'][0]['section']=='Neurologic'
-    assert destination_for('acetaminophen',ss['vault']['settings']['medication_mappings'])=='Neurologic'
+    assert destination_for('Synthetic medicine',ss['vault']['settings']['medication_mappings'])=='Neurologic'
     assert saved['dosing_weight']=='11 kg' and saved['nutrition']['z_score']=='0.5'
     assert saved['cultures']['rows'][1]['organisms']==['Candida species']
     assert saved['viral_panel']['rows'][0]['name']=='Combined viral target'
@@ -223,12 +223,12 @@ def test_pending_mapping_survives_failed_write_then_retry(app):
     open_room(app)
     ss=app.st.session_state
     s=ss['drafts']['P4102']
-    s['medications']=parse_medications('Medications:\n• acetaminophen\t10 mg\tOral\tq6h').rows
+    s['medications']=parse_medications('Medications:\n• Synthetic medicine\t10 mg\tOral\tq6h').rows
     row=s['medications'][0]
     ss['med_draft_'+row['id']+'_section']='Neurologic'
     change_room(app,Store(StorageError('Offline')))
     change_room(app,Store())
-    assert destination_for('acetaminophen',ss['vault']['settings']['medication_mappings'])=='Neurologic'
+    assert destination_for('Synthetic medicine',ss['vault']['settings']['medication_mappings'])=='Neurologic'
 
 
 def test_late_old_room_callbacks_do_not_mutate_saved_data(app):

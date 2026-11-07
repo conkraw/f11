@@ -63,7 +63,7 @@ def test_failed_inline_mapping_rolls_back_without_false_success(app):
     map_first(app,store=BrokenStore())
     assert ss['drafts']['P4102']==before
     assert ss['vault']['settings']['medication_mappings']==[]
-    assert ss['map_test']=='Other Medications'
+    assert ss['map_test']=='Neurologic'  # Return to the original effective Fever Control destination.
     assert ss['notice'][0]=='error'
 
 
