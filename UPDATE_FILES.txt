@@ -1,18 +1,17 @@
-Complete Version 6.20 package
+Complete Version 6.21 package
 
-Upload the entire contents of PICU_Handoff_v6_20_Resp_Heme_Infusions to the
-existing app-code repository. Keep app.py at the root. Replace matching files.
-Keep Secrets, password, encryption key and private data repository unchanged.
-Do not rerun create_secrets.py. No new dependencies or schema changes.
+Replace application repository files using the contents of
+PICU_Handoff_v6_21_DVT_Grouping. Keep app.py at the root.
+Keep existing Secrets, password, encryption key, token and private data
+repository unchanged. Do not rerun the secrets generator.
 
-Runtime changes:
-app.py
-infusions.py
-models.py (display composition only)
-exports.py
-error_store.py (version identification only)
+Runtime changes relative to 6.20:
+infusions.py: one DVT group with per-entry infusion emphasis
+app.py: version label only
+error_store.py: version identification only
 
-Also includes updated documentation, synthetic preview/examples and regression
-tests. Existing clinical parsers and save-status code are unchanged.
+No clinical parser, dose, mapping, schema, encryption, autosave, save-status,
+dependency or PDF layout engine changes. Tests, documentation, synthetic
+example and preview are included.
 
-Sidebar: Version 6.20 | Respiratory and Heme Infusions
+Sidebar: Version 6.21 | Unified DVT Prophylaxis group

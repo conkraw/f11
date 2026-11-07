@@ -1,56 +1,57 @@
-# Validation report: Version 6.20
+# Validation report: Version 6.21
 
 ## Executed checks
 
-The original unmodified Version 6.19 package passed 1,679 automated tests before
-editing. The updated package passes 1,756 tests, including 77 added regression
-cases. Two existing test assertions were updated for the intentional display
-order change: Respiratory Infusions now precede separate respiratory notes.
-No test was skipped or disabled.
+The unmodified supplied Version 6.20 archive passed 1,756 automated tests
+before editing. Version 6.21 passes 1,777 tests, including 21 new regression
+cases. The complete suite is also rerun from a separate extraction of the
+final ZIP. No tests were skipped or disabled.
 
 Command: PYTHONPATH=. python -m pytest -q --disable-warnings
 
-The delivery ZIP is validated with ZipFile.testzip and a SHA-256 file manifest.
-It is extracted into a separate directory and the full suite is rerun there.
+One existing version 6.20 test was revised for the requested change: DVT
+infusions and injections now share one top-level category instead of a
+separate infusion subgroup. Other existing assertions remain.
 
-## Added coverage
+## Coverage of the change
 
-Continuous respiratory parenteral, nebulized and inhaled orders, supported route
-aliases, excluded intermittent and PRN schedules, unmapped orders, manual display
-overrides, and preservation of Neuro/CV classification behavior are tested.
+Tests cover a single DVT heading, all six order permutations of heparin,
+cangrelor and enoxaparin, preservation of original order, no duplicate entries,
+bold infusion names and doses, compact injection wording, recorded pump rates,
+custom wording, HTML escaping, hidden and excluded orders, manual group choices,
+manual infusion-display overrides and unrelated hematology infusions.
 
-Heme tests cover DVT infusion subgroups, separate scheduled injections, other
-hematology infusions, no duplicate orders, hidden/excluded entries, custom text,
-held/start labels, blank doses, recorded zero rates and unchanged source values.
+PDF, HTML, text and Print all output are checked. PDF text/font inspection
+checks name/dose emphasis and one occurrence per medication. A 30-order
+synthetic DVT list continues onto additional pages without losing entries.
+The existing test suite covers the room editor, save conflicts, encrypted
+storage, diagnostics, parsers, mappings, autosave and save-status timestamps.
 
-Text/HTML/PDF share the same headings, contents and ordering. All 16 combinations
-of respiratory vitals, support, theophylline results and body content are checked
-for plain/rich consistency. PDF text extraction and font spans verify content and
-bold medication names. Long respiratory/heme lists paginate without dropping
-sentinel entries. Print all includes both rooms with separate starting pages.
+The single-page synthetic preview was generated with the application and
+rendered to PNG at 160 dpi. It was visually inspected. It shows one DVT
+Prophylaxis heading with emphasized heparin and cangrelor infusions followed
+by enoxaparin, with no extra Heme Infusions heading for these orders.
 
-Widget-stub tests verify new display controls, callback persistence, failed-save
-rollback, and Admin edits without an open handoff. GitHub writes are mocked.
-All pre-existing save-status, autosave, parser, privacy and encryption tests pass.
+## Compatibility and package checks
 
-A synthetic archive was generated with the original Version 6.19 modules, then
-opened with the updated modules using the same key. Every saved field, setting,
-room ID and timestamp remained identical before and after rendering and an
-encrypted round trip. Schema 17 and existing infusion-rule storage are unchanged.
+Compared against the supplied 6.20 archive, only three runtime modules change:
+infusions.py changes display block ordering, app.py changes only its version
+label/docstring, and error_store.py changes only the app-version identifier.
+Every other runtime Python module and dependency file is byte-for-byte
+unchanged. In particular, models.py, all clinical parsers, exports.py,
+github_store.py, security.py and save_status.py are unchanged. Schema 17,
+medication data, saved group/display choices and storage paths are unchanged.
 
-The single-page synthetic preview was generated with the updated PDF renderer
-and visually inspected after rasterization. It shows Neuro/CV emphasis alongside
-the matching Respiratory and Heme emphasis and a separate enoxaparin entry.
+Tests also seal/open a synthetic saved archive with the same key and verify
+that rendering does not alter any stored field, setting or save timestamp.
+The final ZIP is checked using ZipFile.testzip, a complete file comparison and
+a regenerated SHA-256 manifest. Only synthetic examples are added. No actual
+patient records, production credentials, caches or keys are included.
 
-## Scope and limitations
+## Limitations
 
-Runtime changes are limited to infusions.py, models.py display composition,
-exports.py grouped rendering, app.py display controls/version, and error_store.py
-version identification. Clinical parsers, laboratory tree rendering, save-status
-logic, storage implementation, encryption and dependency requirements are
-unchanged. No production patient records or Secrets are in the added examples.
-
-UI tests use a widget stub, not a full browser or Streamlit lifecycle. Streamlit
-is not installed in this environment. No live deployment or authenticated private
-GitHub archive was tested or modified. Tests do not establish clinical validity,
-current bedside treatment, or institutional approval. Verify the deployed output.
+Streamlit is not installed in this execution environment. Interface tests use
+widget stubs, not a browser session. Repository calls use mocked responses.
+The user's live deployment and authenticated private handoff repository have
+not been tested or modified. The grouping is a user-selected presentation
+category, not an assessment of prophylactic indication or dose suitability.

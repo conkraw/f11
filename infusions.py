@@ -145,26 +145,25 @@ def system_body_blocks(section: str, notes: str, rows: list[dict]) -> list[tuple
     meds = [r for r in rows if visible(r) and effective_section(r) == section]
     groups = []
     assigned = set()
+    if section == "Hematology":
+        # The requested category takes priority over the route of delivery.
+        # Keep all DVT orders together, using infusion emphasis within the group
+        # rather than moving its continuous orders into a separate group.
+        dvt = [r for r in meds if special_group(r) == "dvt"]
+        if dvt:
+            groups.append([("heading", GROUP_NAMES["dvt"])] + [
+                ("infusion" if supports_infusion_display(r) and is_infusion(r)
+                 else "medication", r) for r in dvt
+            ])
+            assigned.update(r["id"] for r in dvt)
     if section in INFUSION_SECTIONS:
-        drips = [r for r in meds if supports_infusion_display(r) and is_infusion(r)]
+        drips = [r for r in meds if r["id"] not in assigned
+                 and supports_infusion_display(r) and is_infusion(r)]
         if drips:
-            block = [("heading", INFUSION_HEADINGS[section])]
-            if section == "Hematology":
-                # Preserve the user's DVT display category without printing a
-                # heparin/cangrelor order a second time in the scheduled group.
-                dvt = [r for r in drips if special_group(r) == "dvt"]
-                remaining = [r for r in drips if special_group(r) != "dvt"]
-                if dvt:
-                    block += [("subheading", "DVT Prophylaxis")] + [("infusion", r) for r in dvt]
-                if remaining:
-                    if dvt:
-                        block.append(("subheading", "Other Infusions"))
-                    block += [("infusion", r) for r in remaining]
-            else:
-                block += [("infusion", r) for r in drips]
-            groups.append(block)
+            groups.append([("heading", INFUSION_HEADINGS[section])] +
+                          [("infusion", r) for r in drips])
             assigned.update(r["id"] for r in drips)
-    modes = ("sedative_prn", "paralytic_prn", "fever") if section == "Neurologic" else ("dvt",) if section == "Hematology" else ()
+    modes = ("sedative_prn", "paralytic_prn", "fever") if section == "Neurologic" else ()
     for mode in modes:
         group = [r for r in meds if r["id"] not in assigned and special_group(r) == mode]
         if group:

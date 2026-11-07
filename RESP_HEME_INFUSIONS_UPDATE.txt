@@ -1,3 +1,6 @@
+Historical version 6.20 note. The DVT split described below is superseded by
+DVT_GROUPING_UPDATE.txt in version 6.21.
+
 Version 6.20: Respiratory and Heme Infusions
 
 Full package, not a patch. Start from the existing Version 6.19 configuration.

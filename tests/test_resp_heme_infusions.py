@@ -102,10 +102,12 @@ def test_respiratory_order_vitals_support_theophylline_infusions_notes_other():
     assert s == before
 
 
-def test_dvt_infusions_emphasized_once_with_category_and_scheduled_injections_separate():
+def test_dvt_infusions_and_scheduled_injections_share_one_category():
     s = example(); before = deepcopy(s)
     blocks = system_body_blocks('Hematology', s['fields']['Hematology'], s['medications'])
-    assert blocks[:2] == [('heading','Heme Infusions'), ('subheading','DVT Prophylaxis')]
+    assert blocks[0] == ('heading','DVT Prophylaxis')
+    assert sum(kind == 'heading' and item == 'DVT Prophylaxis' for kind, item in blocks) == 1
+    assert next(i for i, (kind, item) in enumerate(blocks) if kind == 'heading' and item == 'Heme Infusions') > next(i for i, (kind, item) in enumerate(blocks) if kind == 'medication' and item['name'] == 'enoxaparin ENOX_INJ')
     drips = [r['name'] for kind, r in blocks if kind == 'infusion']
     assert drips == ['heparin HEP_DRIP', 'cangrelor CANG_DRIP', 'synthetic HEME_OTHER_DRIP']
     injections = [r['name'] for kind,r in blocks if kind == 'medication']

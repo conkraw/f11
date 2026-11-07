@@ -1,11 +1,11 @@
-# PICU Handoff 6.20: Respiratory and Heme Infusions
+# PICU Handoff 6.21: One DVT Prophylaxis group
 
 Complete ZIP update. No direct repository changes were made.
 
 ## Installation
 
-Save open work, extract PICU620.zip, and open
-PICU_Handoff_v6_20_Resp_Heme_Infusions. Copy all contents to the existing
+Save open work, extract PICU621.zip, and open
+PICU_Handoff_v6_21_DVT_Grouping. Copy all contents to the existing
 app-code repository, replacing matching files. Keep app.py at the root.
 Restart the deployment and refresh the browser.
 
@@ -14,9 +14,9 @@ data repository, mappings and hidden-medication rules. Do not run the secrets
 generator. No new dependencies or storage-format changes are required.
 Schema 17 remains unchanged.
 
-Sidebar: Version 6.20 | Respiratory and Heme Infusions
+Sidebar: Version 6.21 | Unified DVT Prophylaxis group
 
-## Respiratory and hematology infusion display
+## DVT medications stay together
 
 Respiratory Infusions and Heme Infusions use the same emphasis as neurologic
 Infusions and CV Infusions: bold heading, bold medication/formulation name,
@@ -30,12 +30,17 @@ and continuous nebulized/inhaled orders in that section enter Respiratory
 Infusions automatically. Scheduled and PRN nebulized treatments stay separate.
 This is a display grouping, not a change to the recorded route.
 
-Continuous hematology orders enter Heme Infusions. Qualifying heparin and
-cangrelor infusions retain the existing DVT Prophylaxis label as a subheading
-within that block. Scheduled enoxaparin stays in the separate non-infusion
-DVT Prophylaxis group. Other hematology infusions can be grouped without a
-DVT label. No order appears twice. Existing DVT eligibility rules are unchanged,
-and the heading does not establish a clinical indication or prophylactic dose.
+All medications assigned to DVT Prophylaxis now remain under one top-level
+DVT Prophylaxis heading. This includes qualifying heparin and cangrelor infusions,
+enoxaparin injections, and any other orders explicitly assigned to that category.
+The infusion name and ordered dose stay emphasized within this group, while
+non-infusion entries use the usual compact medication format. The source order
+within the group is retained. No extra Heme Infusions heading is printed for
+these DVT medications and no order is duplicated.
+
+Unrelated hematology infusions still use Heme Infusions only when such orders
+are present. Existing DVT eligibility and manual override rules are unchanged.
+The heading does not establish a clinical indication or prophylactic dose.
 
 Product names containing infusion or infusion syringe do not by themselves
 establish continuous delivery. The automatic rule requires a continuous
@@ -59,8 +64,8 @@ Plain text keeps the headings but cannot display font emphasis. Long content
 continues on another page instead of being clipped. The rest of the compact
 layout, save times, room-switch autosave and error-review workflow is retained.
 
-See RESP_HEME_INFUSIONS_UPDATE.txt and TEST_REPORT.md. The synthetic preview is
-examples/resp_heme_infusions_preview.pdf. No real patient example is bundled.
+See DVT_GROUPING_UPDATE.txt and TEST_REPORT.md. The current synthetic preview is
+examples/dvt_grouping_preview.pdf. No real patient example is bundled.
 
 ## Last saved date and time (retained)
 
@@ -93,7 +98,7 @@ and your open drafts remain in place. The timestamp does not identify a user.
 Previously saved timestamps are visible immediately after update. No re-paste
 or new save is needed to display a timestamp already in the archive. The
 printed handoff layout and its separate Print prepared timestamp are unchanged.
-The last-save controls and storage behavior are unchanged in 6.20.
+The last-save controls and storage behavior are unchanged in 6.21.
 Clinical parsers remain unchanged. Infusion display and export formatting changes
 are described above. See SAVE_STATUS_UPDATE.txt and TEST_REPORT.md.
 
@@ -157,9 +162,10 @@ PRN syringes are not inferred to be continuous infusions from the product name.
 FEN / GI: Intake/Output/Net remain first, followed by GI prophylaxis,
 Bowel Regimen, Diuretics, separate notes and remaining medications.
 
-HEME: Heme Infusions first, retaining a DVT Prophylaxis subheading for qualifying
-infusions, then the non-infusion DVT Prophylaxis group, separate notes and
-remaining hematology medications. No order is duplicated.
+HEME: one DVT Prophylaxis group contains both infusion and non-infusion members.
+Infusions are emphasized without leaving that group. Unrelated Heme Infusions,
+if any, follow it, then separate notes and remaining medications. No order is
+duplicated.
 
 RESP: vitals, support settings, Theophylline level when present, Respiratory
 Infusions, separate notes and remaining respiratory medications.
