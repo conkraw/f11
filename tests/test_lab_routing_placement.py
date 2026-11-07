@@ -112,13 +112,13 @@ def test_no_data_mutation_during_any_export():
     for fn in [handoff_html, handoff_pdf, handoff_text]:
         fn(s)
         assert s == before
-    assert SCHEMA_VERSION == 11
+    assert SCHEMA_VERSION == 12
 
 
 @pytest.mark.parametrize('exporter', [handoff_html, handoff_text])
 def test_exports_put_coag_after_hepatic_without_duplicates(exporter):
     text = exporter(sample())
-    assert text.index('Hepatic') < text.index('Coagulation') < text.index('Arterial gas')
+    assert text.index('Hepatic') < text.index('Coagulation') < text.index('Gas ART')
     for label in ['Coagulation', 'Anti-Xa (HEPLMW):', 'CRP:', 'PROCAL:']:
         assert text.count(label) == 1
 
@@ -170,7 +170,7 @@ def test_existing_saved_snapshot_reformats_without_reimport():
 def test_lab_preview_uses_same_placement_and_excludes_id_markers():
     data = sample()['labs']
     html = laboratory_html(data)
-    assert html.index('Hepatic') < html.index('Coagulation') < html.index('Arterial gas')
+    assert html.index('Hepatic') < html.index('Coagulation') < html.index('Gas ART')
     assert 'Anti-Xa (HEPLMW):' in html
     assert 'CRP:' not in html and 'PROCAL:' not in html
     assert laboratory_flowables(data, 720)

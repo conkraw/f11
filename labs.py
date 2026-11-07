@@ -203,7 +203,7 @@ def ordered_components(data: dict) -> dict[str, list[dict]]:
     return result
 
 
-def result_cards(data: dict, include_id_panels: bool = True) -> list[dict]:
+def result_cards(data: dict, include_id_panels: bool = True, blood_gas: dict | None = None) -> list[dict]:
     """Structured lab cards shared by PDF, HTML and plain-text exports.
 
     Coagulation stays immediately below Hepatic in the laboratory area.
@@ -223,10 +223,19 @@ def result_cards(data: dict, include_id_panels: bool = True) -> list[dict]:
     for name, components in PANELS.items():
         if name in ('CBC', 'BMP'):
             continue
+        if name in ('Arterial gas', 'Venous gas', 'Capillary gas'):
+            consumed.update(components)
+            continue
         rows = {k: groups[k][0] for k in components if k in groups}
         if rows and (include_id_panels or name != 'Inflammatory'):
             cards.append({'title': name + ' | latest', 'kind': 'branch', 'rows': rows})
         consumed.update(components)
+    from blood_gases import gas_card
+    gas = gas_card(data, blood_gas)
+    if gas:
+        # After hepatic/coagulation, before any other ancillary results.
+        insert_at = next((i for i, card in enumerate(cards) if card["title"].startswith("Inflammatory")), len(cards))
+        cards.insert(insert_at, gas)
     # Unknown analytes stay visible, without assigning guessed units or a panel.
     other = defaultdict(dict)
     for key, rows in groups.items():
@@ -251,9 +260,9 @@ def display_component(component: str) -> str:
     return 'Anti-Xa (HEPLMW)' if canonical(component) == 'HEPLMW' else component
 
 
-def labs_text(data: dict, include_id_panels: bool = True) -> str:
+def labs_text(data: dict, include_id_panels: bool = True, blood_gas: dict | None = None) -> str:
     lines = []
-    for card in result_cards(data, include_id_panels=include_id_panels):
+    for card in result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas):
         lines.append(card['title'])
         for row in card['rows'].values():
             lines.append(display_component(row['component']) + ': ' + row['value'] + ' [' + row['date'] + ']')

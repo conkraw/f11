@@ -1,12 +1,14 @@
-PICU Handoff 6.11: complete package
+PICU Handoff 6.12: complete ZIP package
 
-Extract PICU611.zip. Upload the contents of PICU_Handoff_v6_11_Rooms_Infusions
-into the existing application code repository, replacing matching files.
-Keep app.py at the root. Include infusions.py and every supplied Python module.
-No new dependencies relative to 6.10.
+Extract PICU612.zip. Upload the contents of PICU_Handoff_v6_12_Latest_Gas
+into the existing app code repository, replacing matching files.
+Keep app.py at the root. Include blood_gases.py and all supplied Python files.
+No new dependencies relative to Version 6.11.
 
-Keep deployment Secrets, password hash, encryption key, token and data repo.
-Do not rerun either secrets generator.
-The archive upgrades to schema 11 on its next save. Do not downgrade partial files.
-Sidebar: Version 6.11 | Custom rooms and neurologic infusions
-No direct GitHub code changes were made in creating this ZIP.
+Keep deployment Secrets, password, encryption key, token and private data repo.
+Do not rerun either secrets generator. Schema 1-11 archives upgrade to schema 12.
+Do not downgrade partial files after saving the new schema.
+
+Sidebar: Version 6.12 | Latest gas: VEN / ART / CAP
+Re-paste the complete SmartPhrase or just the paired P table.
+No direct GitHub operations were performed to create this ZIP.

@@ -165,12 +165,12 @@ def horizontal_card_markup(card: dict) -> str:
     return '<b>' + title + ':</b> ' + ' | '.join(values)
 
 
-def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, include_id_panels: bool = False) -> list:
+def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, include_id_panels: bool = False, blood_gas: dict | None = None) -> list:
     style = ParagraphStyle('labline', fontName='Times-Roman', fontSize=font_size,
                            leading=font_size + 1, splitLongWords=True,
                            allowWidows=1, allowOrphans=1)
     note_style = ParagraphStyle('labnote', parent=style, fontSize=6.1, leading=7)
-    cards = result_cards(data, include_id_panels=include_id_panels)
+    cards = result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas)
     out = [Paragraph(escape(NOTE), note_style)] if cards else []
     trees = [card for card in cards if card['kind'] in ('cbc', 'bmp')]
     for i in range(0, len(trees), 4):
@@ -189,8 +189,8 @@ def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, inclu
     return out
 
 
-def laboratory_html(data: dict, include_id_panels: bool = False) -> str:
-    cards = result_cards(data, include_id_panels=include_id_panels)
+def laboratory_html(data: dict, include_id_panels: bool = False, blood_gas: dict | None = None) -> str:
+    cards = result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas)
     pieces = ['<div class="labnote">' + escape(NOTE) + '</div>'] if cards else []
     pieces.append('<div class="labcards">')
     for card in cards:

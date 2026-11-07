@@ -75,3 +75,9 @@ oooooooooooooooooooooooooooooooo
 Respiratory Viral Panel:
 [Insert your Epic respiratory viral panel result table here]
 oooooooooooooooooooooooooooooooo
+
+
+pppppppppppppppppppppppppppppppp
+[Insert the Epic Results from last 7 days blood-gas table here, including Lab,
+Units, collection dates and times. Use the real SmartLink, not this placeholder.]
+pppppppppppppppppppppppppppppppp

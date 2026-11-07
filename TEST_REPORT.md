@@ -1,57 +1,65 @@
-# Validation: Version 6.11
+# Validation: Version 6.12
 
 ## Executed checks
 
-The original Version 6.10 archive passed 927 tests before changes. The updated
-code passes 996 tests under Python 3.13 using PYTHONPATH=. pytest -q
---disable-warnings. The final delivery ZIP is extracted and the full suite is
-rerun before delivery. No tests are skipped in the suite.
+The unmodified Version 6.11 ZIP passed all 996 tests before changes. Version 6.12
+passes 1,103 tests on Python 3.13 with python -m pytest -q --disable-warnings.
+No tests are skipped. This includes 107 new P-block gas tests. The delivery ZIP
+is also extracted into a new directory and the entire suite is rerun there.
 
-The 927 retained tests were adjusted where the requested preset-room labels and
-schema number intentionally changed. Fabricated legacy fixtures were corrected
-to omit the new infusion-rule setting, as a real old archive would. Existing
-clinical parsers, export and encryption regressions remain in the suite.
+Existing regression fixtures were adjusted for schema 12 and the requested change
+from separate arterial/venous gas summaries to one latest specimen. Legacy
+fixtures explicitly omit the new blood_gas field, matching real older archives.
+The test suite still checks the other parsers, medication taper/ADS/PN handling,
+room autosave/removal, infusion emphasis, hidden medications, lab layouts, culture
+and viral summaries, export pagination, storage conflicts and encryption.
 
-There are 69 new tests covering preset aliases, room-key/session migration,
-no-silent-merge protection, custom-room deletion and Undo, failed storage writes,
-conflicts, keeping other drafts and medication rules, preventing removed rooms
-from reappearing in Print all, expired callbacks, infusion/PRN classification,
-explicit display overrides, dose/rate separation, exact formulation/route/frequency
-matching, future reimports with different doses, pending widget edits on room
-switches, Admin editing without a handoff, HTML escaping, bold PDF font spans,
-heading order, hidden rows, and long-content pagination.
+New checks cover wrapped and horizontal date/time headers, ART/VEN/CAP aliases,
+chronological selection across specimen types, unsorted columns, source flags,
+blank and hidden cells, partial latest gases, no cross-time/specimen backfilling,
+explicit-time and date-only ties, empty P clearing, omitted P preservation,
+P precedence over legacy G, malformed-input rollback, old gas fallback labels,
+PDF/HTML/text exports, Print all room separation, editing, pending gas edits at
+room switch, schema-11 migration, nonempty infusion-rule preservation, and
+ciphertext round trips. UI tests use a small Streamlit widget stub.
 
-A synthetic schema-10 encrypted archive was generated in a separate Python
-process with the unmodified Version 6.10 code from PICU610.zip. Version 6.11 opened
-it with the same generated test key. All previous sheet fields, medication rows,
-IDs, timestamps and rules were preserved. The room key and embedded label changed
-from 4201 to P4201, as requested. The migrated vault encrypted/decrypted unchanged
-under schema 11. No real private data repository or user encryption key was used.
+The user-supplied P-table pattern was tested separately outside the deliverable.
+It selects ART at 11/06/26 08:04 with pH 7.48*, PCO2 42, PO2 61* and base excess
+7*. The older VEN values and unspecified corrected/ISTAT rows are not printed.
+The source snapshot itself is not included as a clinical example in this ZIP.
 
-The new synthetic preview has one landscape Letter page at 7.2-point body text.
-It was rendered and visually checked. Neuro observations are first, then two
-infusions with bold names and bold-underlined explicit doses. Recorded rates are
-separate. A PRN product containing the word infusion remains in Other Medications.
-The room is P4201. PDF text and font tests verify the content and emphasis.
-Compact infusion entries stay together across page boundaries. Oversized entries
-remain splittable and continue without clipping or endless pagination.
+## Original-version migration
 
-## Limits
+An encrypted synthetic schema-11 archive was generated in a separate process
+using the unchanged code extracted from the original PICU611.zip. The new code
+opened it using the same generated test key. All prior sheet fields, identifiers,
+notes, medication records and settings were unchanged. Only schema=12 and
+blood_gas=None were added. A second encrypted round trip preserved the migrated
+archive. No user encryption key or real handoff-store record was accessed.
 
-UI and callback tests use a widget stub, not the full Streamlit browser lifecycle.
-Installing Streamlit 1.52 into an isolated test directory was attempted, but the
-available package source returned no matching distribution. The real Streamlit
-interface, hosted deployment, and authenticated private GitHub saves were not run.
-The fake-store tests do not verify live connectivity, token permissions or hosting
-behavior. No direct GitHub operations were made.
+## Printed layout
 
-Autosave requires imported handoff data and a live session. Unsubmitted paste-form
-text is not saved as an imported handoff. Deletion removes the current room record
-from the active archive, not historical encrypted commits. Undo is session-only
-and retains just the most recent removal. It will not overwrite a re-added room.
+The synthetic preview has one landscape Letter page at 7.2-point body text.
+It was rendered with Poppler and visually inspected. The single ART gas line
+appears in Lab Results / Trends below the hepatic/coagulation summaries. CBC/BMP
+trees, demographic fields, neurologic observations and infusion emphasis remain.
+Tests additionally verify three specimen labels, a one-gas-per-room rule, single
+and multi-room PDFs, HTML escaping, and preserving all eligible source values.
 
-Automatic infusion classification is only a display rule based on explicit source
-frequency and route. It is not a pump-status check. Held/future order labels are
-retained. Doses, concentrations and recorded rates are not recalculated. Existing
-custom wording remains authoritative. These checks do not establish clinical
-validity, identity of a room occupant, institutional approval or privacy compliance.
+## Limitations
+
+Streamlit is not installed in this build environment. The complete running
+Streamlit/browser lifecycle, hosted deployment and authenticated private storage
+connection were not tested. Callback and widget-stub tests are not browser tests.
+No direct GitHub operations were performed.
+
+Missing or equal collection times cannot establish a true chronological winner.
+The source-order fallback is qualified in the printed gas title and editor.
+Legacy G rows lack matrix-column identity and therefore retain a same-draw
+unverified label. A P snapshot is authoritative even when empty. An omitted P
+preserves the last imported snapshot, so include P when updating gas results.
+
+Tests do not establish clinical accuracy of the Epic source, privacy compliance,
+current patient identity or actual support status. The host processes pasted
+content before encryption. Exported files are not encrypted. No new dependencies
+or credential/storage-path changes are part of this update.

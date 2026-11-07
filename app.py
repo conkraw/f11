@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.11: custom room removal, P-prefixed presets and neuro infusions."""
+"""PICU SmartPhrase v6.12: latest dated VEN/ART/CAP gas from the P-block matrix."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -21,6 +21,7 @@ from batching import available_handoffs
 from parser import MAX_PASTE, SECTION_NAMES
 from security import valid_password_hash, verify_password
 from labs import validate_labs, lactate_text, id_labs_text
+from blood_gases import FIELDS as GAS_FIELDS, validate_gases, latest_sample, gas_summary, legacy_gases
 from vitals import validate_vitals, text_by_system
 from lab_layout import laboratory_html
 from observations import NEURO_SECTIONS, validate_neuro, validate_nutrition, format_nutrition
@@ -76,7 +77,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_")):
             st.session_state.pop(key, None)
 
 
@@ -123,6 +124,18 @@ def editor_snapshot(room: str) -> dict:
                     if field == "organisms":
                         value = [line.strip() for line in value.splitlines() if line.strip()]
                     row[field] = value
+    if sheet["blood_gas"] is not None:
+        for sample in sheet["blood_gas"]["samples"]:
+            prefix = "gas_" + sample["id"] + "_"
+            for field in ("date", "include"):
+                if prefix + field in ss:
+                    sample[field] = ss[prefix + field]
+            for index, label in enumerate(GAS_FIELDS):
+                if label in sample["values"]:
+                    for field in ("value", "unit"):
+                        key = prefix + str(index) + "_" + field
+                        if key in ss:
+                            sample["values"][label][field] = ss[key].strip()
     for index, row in enumerate(sheet["vitals"]):
         key = "vital_" + sheet["id"] + "_" + str(index)
         for field, widget in (("value", key), ("include", key + "_include")):
@@ -599,13 +612,78 @@ def vital_row_change(room: str, index: int, field: str, key: str) -> None:
         note(str(exc), "error")
 
 
+def gas_edit(room: str, sample_id: str, label: str, field: str, key: str) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    if room != ss.get("current_room"):
+        return
+    data = ss["drafts"][room]["blood_gas"]
+    if data is None:
+        return
+    candidate = deepcopy(data)
+    sample = next((row for row in candidate["samples"] if row["id"] == sample_id), None)
+    if sample is None:
+        return
+    target = sample["values"][label] if label else sample
+    old = target[field]
+    target[field] = ss[key].strip() if isinstance(ss[key], str) else ss[key]
+    try:
+        validate_gases(candidate)
+        ss["drafts"][room]["blood_gas"] = candidate
+    except ValueError as exc:
+        ss[key] = old
+        note(str(exc), "error")
+
+
+def gas_editor(sheet: dict) -> None:
+    st.subheader("Latest blood gas")
+    data = sheet["blood_gas"]
+    selection_data = legacy_gases(sheet["labs"]) if data is None else data
+    sample, issues = latest_sample(selection_data)
+    if sample:
+        st.text(gas_summary(selection_data))
+    else:
+        st.caption("No gas results selected. Paste the paired P block to add the latest gas.")
+    if data is None and sample:
+        st.caption("This is a legacy G-block result. A date-only listing cannot establish a common draw or exact time. Paste P for timed column-based selection.")
+    for issue in issues:
+        st.caption(issue)
+    if data is None:
+        return
+    st.caption("The newest included specimen/column prints once. Empty and hidden cells are not backfilled. Older columns stay available here but do not print.")
+    with st.expander("Review retained gas columns (" + str(len(data["samples"])) + ")"):
+        for sample in data["samples"]:
+            prefix = "gas_" + sample["id"] + "_"
+            st.text(sample["specimen"] + " | " + sample["date"])
+            for field, label in (("date", "Gas collection date / time"), ("include", "Include this gas in latest selection")):
+                key = prefix + field
+                if key not in st.session_state:
+                    st.session_state[key] = sample[field]
+                kwargs = dict(key=key, on_change=gas_edit, args=(sheet["room"], sample["id"], "", field, key))
+                if field == "include":
+                    st.checkbox(label, **kwargs)
+                else:
+                    st.text_input(label, max_chars=80, **kwargs)
+            for index, label in enumerate(GAS_FIELDS):
+                if label not in sample["values"]:
+                    continue
+                for field in ("value", "unit"):
+                    key = prefix + str(index) + "_" + field
+                    if key not in st.session_state:
+                        st.session_state[key] = sample["values"][label][field]
+                    st.text_input(label + (" result" if field == "value" else " source unit"), key=key,
+                                  max_chars=100 if field == "value" else 50,
+                                  on_change=gas_edit, args=(sheet["room"], sample["id"], label, field, key))
+
+
 def labs_vitals_editor(sheet: dict) -> None:
     import streamlit.components.v1 as components
     neuro_weight_editor(sheet)
     viral_editor(sheet)
     st.subheader("Laboratory results")
-    st.caption("CBC and BMP show the last two supplied results per component. Other tests show the latest result per component. Arterial and venous gases stay separate. Dates and source flags are preserved. No collection times or same-draw groupings are invented.")
-    components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}.lab-summary{font:14px/1.3 sans-serif;overflow-wrap:anywhere;margin:3px 0}.lab-full{grid-column:1/-1}</style>' + laboratory_html(sheet["labs"]), height=490, scrolling=True)
+    st.caption("CBC and BMP show the last two supplied results per component. Other tests show the latest result per component. Only one latest gas is printed, labeled VEN, ART or CAP. The P table keeps specimen and column values together. Dates and source flags are preserved. No collection times or same-draw groupings are invented.")
+    components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}.lab-summary{font:14px/1.3 sans-serif;overflow-wrap:anywhere;margin:3px 0}.lab-full{grid-column:1/-1}</style>' + laboratory_html(sheet["labs"], blood_gas=sheet["blood_gas"]), height=490, scrolling=True)
     if lactate_text(sheet["labs"]):
         st.text("Cardiovascular: " + lactate_text(sheet["labs"]))
     if id_labs_text(sheet["labs"]):
@@ -623,6 +701,7 @@ def labs_vitals_editor(sheet: dict) -> None:
                     st.checkbox(label, **kwargs)
                 else:
                     st.text_input(label, max_chars=1000 if field == "value" else 80, **kwargs)
+    gas_editor(sheet)
     st.subheader("Vital signs")
     if not sheet["vitals"]:
         st.caption("Paste an E block to add vital signs.")
@@ -932,7 +1011,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.11 | Custom rooms and neurologic infusions")
+        st.caption("Version 6.12 | Latest gas: VEN / ART / CAP")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)

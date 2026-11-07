@@ -1,20 +1,84 @@
-# PICU Handoff 6.11: custom rooms and neurologic infusions
+# PICU Handoff 6.12: one latest blood gas
 
-Complete web-app package. Delivered as a ZIP only. No direct repository changes.
+Complete web-app package, delivered as a ZIP. No direct repository changes.
 
-## Update your existing application
+## Update your existing app
 
-Save open work before replacing files. Extract PICU611.zip, open the
-PICU_Handoff_v6_11_Rooms_Infusions folder, and upload its contents into your existing
-application code repository. Replace matching files and keep app.py at the root.
-Include the new infusions.py module and all other supplied Python files.
+Save open work, extract PICU612.zip, then upload the contents of
+PICU_Handoff_v6_12_Latest_Gas into the existing code repository. Replace matching
+files and keep app.py at the root. Include the new blood_gases.py and every
+updated Python module. Do not mix versions of the model, importer and renderer.
 
-Keep your existing Streamlit Secrets, password hash, encryption key, GitHub token,
-and private data repository unchanged. Do not rerun create_secrets.py or the
-secrets-generation notebook. No new dependencies relative to Version 6.10.
-Restart the deployment and look for:
+Keep your Streamlit Secrets, password hash, encryption key, token and private
+storage repository unchanged. Do not rerun either secrets generator. No new
+packages are required. Restart and look for:
 
-    Version 6.11 | Custom rooms and neurologic infusions
+    Version 6.12 | Latest gas: VEN / ART / CAP
+
+Existing schemas 1 through 11 migrate to schema 12 with the same key and all
+existing fields and settings preserved. The new blood_gas field initially is
+None. The next successful save writes schema 12. Do not downgrade partial files.
+
+## P-block gas table
+
+Paste the paired p dividers around the Epic table headed Results from last 7
+days, including Lab, Units, dates and times. No additional heading is required.
+The application reads wrapped date/time headers as in your new SmartPhrase.
+
+The printed lab area shows one horizontal gas summary with VEN, ART or CAP,
+its collection date/time, and only the supplied values from that specimen in
+that column. It chooses the newest explicitly displayed gas by source timestamp,
+not the order of the specimen types and not a preference for arterial results.
+Supported specimen-qualified rows include pH, PCO2, PO2, HCO3, base excess and
+oxygen saturation. Units and source flags remain unchanged. No dose, lab value,
+time, specimen label or missing component is calculated.
+
+Empty cells, -- and < > are not measurements. A newer incomplete gas remains
+incomplete, without borrowing pH, PO2 or another value from an older column.
+Untyped corrected PO2 and the example ISTAT deficit percentage fields are not
+substituted for specimen-specific PO2 or base excess. Their omission is noted
+in the import screen. Hidden interval results cannot be recovered from < >.
+
+If the latest date has missing collection times or different specimens tie at
+the exact timestamp, source order is the explicit fallback. A notice appears
+in the editor and a qualifier remains in the printed gas title. This is not a
+claim that the source proves which tied result is newest.
+
+## Re-pasting and review
+
+P alone updates gas results without replacing medications, other labs, vitals,
+room information, or notes. A successful P replaces the prior automatic gas
+snapshot. An included empty or no-results P clears the automatic gas display.
+Omitting P preserves that room's previous P snapshot. Always include P again
+when you need the gas to reflect the new source report.
+
+Once P is supplied, it takes precedence over any old G-block gas rows, even
+when the P result is empty. Old G values never fill a missing P field. For a
+saved handoff that has never received P, one legacy gas may be shown using the
+latest dated specimen group. Its label says legacy G, same-draw unverified,
+because dates alone cannot prove a common draw or exact collection order.
+Re-paste P to use the timestamped matrix instead.
+
+Labs / Vitals now includes Latest blood gas and an expandable list of retained
+gas columns. Edit their dates, values or source units, or exclude a gas from
+selection. Older columns stay in the encrypted snapshot for review but do not
+print. The editor's latest selection, PDF, HTML, plain text and Print all use
+one shared selection rule. Room autosave includes pending gas edits.
+
+The supplied examples/synthetic_latest_gas.txt is a synthetic practice paste.
+examples/latest_gas_preview.pdf shows the new layout. Sample-loading buttons
+have not been added back to the app.
+
+## Validation and privacy
+
+See TEST_REPORT.md for actual checks. The printed preview is synthetic. No
+user keys, patient records or deployment secrets are included. This update does
+not change the host, encrypted archive path, access requirements, logging or
+Git history retention. Downloads remain unencrypted. Use institution-approved
+hosting and storage for clinical information. No live deployment or private
+handoff-store connection was tested here.
+
+## Existing features retained
 
 ## Custom rooms and preset labels
 
@@ -88,9 +152,10 @@ Extremely long entries or handoffs continue instead of being clipped.
 
 ## Saved-data migration
 
-Schema 11 adds saved infusion display preferences and canonical preset-room labels.
-Schemas 1 through 10 migrate on load with the existing encryption key. The next
-successful save writes schema 11 to the same encrypted-data/handoff-v1.enc path.
+Schema 12 adds the independent P-block blood-gas snapshot. Existing infusion
+display preferences and canonical room labels are preserved. Schemas 1 through
+11 migrate on load with the existing key. The next successful save writes
+schema 12 to the same encrypted-data/handoff-v1.enc path.
 Do not downgrade individual application files after saving in the new schema.
 Keep the full update together. No raw pasted SmartPhrase is added to storage.
 
@@ -121,14 +186,3 @@ fields do not establish clinical approval. Use institution-approved hosting and
 storage for patient information. No deployment secrets or private records were
 accessed while building this ZIP. Source examples are synthetic.
 
-## Testing
-
-See TEST_REPORT.md. For a synthetic visual example, open
-examples/rooms_infusions_preview.pdf or paste examples/synthetic_neuro_infusions.txt.
-The installed app starts with your existing mappings, not the example's illustrative
-mappings. Assign the example medications to Neurologic to see infusion grouping.
-
-Implementation references:
-- https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state
-- https://docs.streamlit.io/develop/api-reference/widgets/st.selectbox
-- https://docs.streamlit.io/1.52.0/develop/api-reference/widgets/st.download_button

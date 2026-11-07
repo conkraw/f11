@@ -49,7 +49,7 @@ def test_full_import_source_rows_and_retained_blank_override():
 
 def test_per_component_trees_keep_mixed_prior_dates_visible():
     cards=result_cards(whole()['labs'])
-    assert len(cards)==9
+    assert len(cards)==8
     assert [x['kind'] for x in cards[:4]]==['cbc','cbc','bmp','bmp']
     assert cards[1]['rows']['WBC']['date']=='01/02/2026'
     assert cards[1]['rows']['HGB']['date']=='01/03/2026'
@@ -96,12 +96,12 @@ def test_flags_and_units_never_calculated_or_removed():
     assert '2.1 mmol/L (H)' in lactate_text(data)
 
 
-def test_one_result_for_other_labs_and_separate_gas_specimens():
+def test_other_labs_and_only_latest_gas_specimen():
     data=parsed('AST\t20\t01/03/2026\nAST\t30\t01/02/2026\nPHA\t7.4\t01/03/2026\nPHV\t7.3\t01/02/2026')
     cards=result_cards(data)
-    assert len(cards)==3 and len(cards[0]['rows'])==1
-    assert cards[1]['title']=='Arterial gas | latest'
-    assert cards[2]['title']=='Venous gas | latest'
+    assert len(cards)==2 and len(cards[0]['rows'])==1
+    assert cards[1]['title'].startswith('Gas ART | latest')
+    assert not any(c['title'].startswith('Gas VEN') for c in cards)
     assert 'HCO3A' not in cards[1]['rows']
     assert '30 [' not in labs_text(data)
 
@@ -314,7 +314,7 @@ def test_v6_encrypted_roundtrip_and_v5_migration():
     baseline=deepcopy(old)
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     upgraded=open_vault(oldtoken,key)
-    assert upgraded['schema']==11 and old==baseline
+    assert upgraded['schema']==12 and old==baseline
     after=upgraded['rooms']['P4102'];before=old['rooms']['P4102']
     for k in ('fields','noninvasive','ventilation','id','updated_at'):
         assert after[k]==before[k]
@@ -338,7 +338,7 @@ def test_lab_exports_are_dated_and_do_not_leak_hidden_order():
     text='\n'.join(p.get_text() for p in pdf)
     assert all(p.rect.width==792 and p.rect.height==612 for p in pdf)
     assert '01/03/26' in text and '01/02/26' in text and 'preceding per component' in text
-    assert 'Arterial gas' in text and 'Venous gas' in text
+    assert 'Gas ART | latest' in text and 'Gas VEN' not in text
     assert 'Override Pull' not in text
     for page in pdf:
         for b in page.get_text('blocks'):

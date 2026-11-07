@@ -86,7 +86,7 @@ def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
     cols = ''.join(f'<col style="width:{w*100:.1f}%">' for w in WIDTHS)
     bands = []
     for key in BOTTOM:
-        bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(sheet['labs']) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
+        bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(sheet['labs'], blood_gas=sheet['blood_gas']) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
     extra = '\n'.join(k + ': ' + fields[k] for k in ('Skin / Wounds', 'Tasks', 'Other') if fields[k].strip())
     if extra:
         bands.insert(2, '<div class="band"><strong>Additional notes:</strong> <span class="content">' + escape(extra) + '</span></div>')
@@ -216,7 +216,7 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
                       if fields[name].strip())
     if extra:
         band_items.insert(2, ('Additional notes', extra))
-    bands = [(name, (laboratory_flowables(sheet['labs'], total_width-6, font_size)
+    bands = [(name, (laboratory_flowables(sheet['labs'], total_width-6, font_size, blood_gas=sheet['blood_gas'])
                     if name == 'Lab Results / Trends' else []) + paragraphs(text))
              for name, text in band_items]
     access = [(name, paragraphs(fields[name])) for name in ACCESS_FIELDS]
