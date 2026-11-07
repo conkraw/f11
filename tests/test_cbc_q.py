@@ -236,7 +236,7 @@ def test_cbc_only_room_print_all_and_cleared_q_not_counted_as_content():
 
 
 def test_schema12_upgrade_preserves_old_gases_rows_mappings_and_fields():
-    sheet=new_sheet('P4102');sheet.pop('cbc')
+    sheet=new_sheet('P4102');sheet.pop('recurring_orders');sheet.pop('cbc')
     sheet['blood_gas']=parse_gases('Lab\tUnits\t01/06/26 0900\nPH ART\t\t7.40').data
     sheet['fields']['Neurologic']='Preserved separate note'
     old=new_vault();old['schema']=12;old['rooms']['P4102']=sheet
@@ -244,8 +244,8 @@ def test_schema12_upgrade_preserves_old_gases_rows_mappings_and_fields():
     key=Fernet.generate_key().decode()
     cipher=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     new=open_vault(cipher,key)
-    assert old==before and new['schema']==SCHEMA_VERSION==13
-    assert new['rooms']['P4102']==dict(sheet,cbc=None)
+    assert old==before and new['schema']==SCHEMA_VERSION==14
+    assert new['rooms']['P4102']==dict(sheet,cbc=None,recurring_orders=None)
     assert new['settings']==old['settings']
     assert open_vault(seal_vault(new,key),key)==new
 

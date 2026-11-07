@@ -1,14 +1,16 @@
-PICU Handoff 6.13: complete ZIP package
+VERSION 6.14 | RECURRING LABS/IMAGING
 
-Extract PICU613.zip. Upload the contents of PICU_Handoff_v6_13_CBC into the
-existing application code repository, replacing matching files. Keep app.py
-at the root. Include cbc.py, output_text.py and all supplied modules.
-No new dependencies relative to Version 6.12.
+This is the complete app, not a patch.
+Replace matching files in the application code repository. Keep app.py at the root.
+New source file: recurring_orders.py
+Updated source files: app.py, parser.py, importing.py, models.py, exports.py, batching.py
+New tests, synthetic example, print preview and documentation are included.
 
-Keep Streamlit Secrets, password, encryption key, token and private data repo.
-Do not rerun either secrets generator. Schemas 1-12 migrate to schema 13.
-Do not downgrade partial files after saving the new schema.
+Keep existing Secrets, encryption key, password hash, token, mappings and data repository.
+Do not run the secrets generator again. No new dependencies are required.
+Schema 14 adds recurring_orders. All older supported archive formats migrate.
+No direct GitHub repository changes were made.
 
-Sidebar: Version 6.13 | Q CBC, ANC / ALC and cleaner medication output
-Paste the complete Q table, or your full SmartPhrase, then Create / update handoff.
-No direct GitHub operations were performed to deliver this ZIP.
+Pasted R block updates only the selected recurring lab/imaging schedule.
+Paste the entire SmartPhrase to update other sections as usual.
+CBC and blood-gas parsing and lower lab result trees are unchanged.

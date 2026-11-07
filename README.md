@@ -1,3 +1,17 @@
+# PICU Handoff Version 6.14: recurring orders in Labs/Imaging
+
+This complete ZIP updates the existing web app. No local Python reinstall or new package dependencies are needed.
+
+Save your open handoffs. Replace the application code with every file in this package, keeping app.py at the repository root. Include recurring_orders.py. Keep your existing Streamlit Secrets, password hash, encryption key, token, mappings and private data repository unchanged. Do not run the secrets generator again.
+
+Paste the paired R section or the complete SmartPhrase and click Create / update handoff. The Labs/Imaging column shows selected scheduled tests, their intervals and their stated Number of Occurrences. The editor has a Labs/Imaging tab for reviewing candidates, duplicate choices and corrections. Room-change autosave and Print all include these orders.
+
+Duplicate test plus schedule: keep the largest count, not the sum. One-time and STAT orders are excluded even when their Timing starts with Recurring. Counts are copied from the source and are not remaining-draw estimates. CMP is excluded from the requested BMP-only filter, not relabeled as BMP. CBC/gas/result parsing is unchanged.
+
+See RECURRING_ORDERS_UPDATE.md, START_HERE.html and TEST_REPORT.md. examples/synthetic_recurring_orders.txt is a practice paste. No sample-load buttons were added back to the daily screen.
+
+## Prior release details
+
 # PICU Handoff 6.13: Q-section CBC, ANC / ALC and medication display
 
 Complete ZIP update. No direct GitHub changes. Save open work, extract PICU613.zip,

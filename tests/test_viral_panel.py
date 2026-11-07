@@ -238,10 +238,10 @@ def test_saved_snapshot_and_ui_names_are_encrypted_round_trip():
 def test_v9_migration_keeps_every_previous_field():
     s=imp((ROOT/'examples/synthetic_demographics_labs.txt').read_text())
     v=save_sheet_in(new_vault(),s);v['schema']=9;v['settings'].pop('medication_infusions', None)
-    v['rooms']['P4102'].pop('cbc', None);v['rooms']['P4102'].pop('blood_gas', None)
+    v['rooms']['P4102'].pop("recurring_orders", None);v['rooms']['P4102'].pop("cbc", None);v['rooms']['P4102'].pop('blood_gas', None)
     del v['rooms']['P4102']['viral_panel']
     before=deepcopy(v);m=upgrade_vault(v)
-    assert v==before and m['schema']==SCHEMA_VERSION==13 and m['settings']==dict(v['settings'], medication_infusions=[])
+    assert v==before and m['schema']==SCHEMA_VERSION==14 and m['settings']==dict(v['settings'], medication_infusions=[])
     for key,value in v['rooms']['P4102'].items():assert m['rooms']['P4102'][key]==value
     assert m['rooms']['P4102']['viral_panel']==empty_viral_panel()
     key=generate_key()

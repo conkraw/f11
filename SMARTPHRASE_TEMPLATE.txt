@@ -89,3 +89,9 @@ all collection dates/times and result columns. Include standard and ISTAT Hgb,
 NEUTROS ABS/ANC and automatic/manual absolute lymphocyte rows. Use your real
 SmartLink, not this placeholder.]
 qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+Orders Placed This Encounter
+Procedures
+[Insert your Epic orders SmartLink here]
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr

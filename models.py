@@ -26,8 +26,14 @@ from infusions import validate_infusion_rules, neuro_body
 from blood_gases import validate_gases
 from cbc import validate_cbc
 from output_text import medication_output
+from recurring_orders import validate_orders, orders_text
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
+
+
+def section_label(section: str) -> str:
+    """Display rename only. Keep the Labs archive key and mappings compatible."""
+    return "Labs/Imaging" if section == "Labs" else section
 
 # Interpretation of the user's ranges: even P4102..P4116, then the listed 4200 rooms.
 PRESET_NUMBERS = [str(n) for n in range(4102, 4117, 2)] + ["4201", "4203", "4209"] + [str(n) for n in range(4211, 4224, 2)]
@@ -56,7 +62,7 @@ def normalize_room(value: str) -> str:
 
 def new_sheet(room: str) -> dict:
     return {"id": uuid.uuid4().hex, "room": normalize_room(room), "created_at": utc_now(),
-            "updated_at": None, "fields": {s: "" for s in SYSTEMS}, "medications": [], "ventilation": None, "noninvasive": [], "vitals": [], "labs": empty_labs(), "neuro_vitals": empty_neuro(), "nutrition": None, "cultures": empty_cultures(), "dosing_weight": "", "admission_date": "", "viral_panel": empty_viral_panel(), "blood_gas": None, "cbc": None}
+            "updated_at": None, "fields": {s: "" for s in SYSTEMS}, "medications": [], "ventilation": None, "noninvasive": [], "vitals": [], "labs": empty_labs(), "neuro_vitals": empty_neuro(), "nutrition": None, "cultures": empty_cultures(), "dosing_weight": "", "admission_date": "", "viral_panel": empty_viral_panel(), "blood_gas": None, "cbc": None, "recurring_orders": None}
 
 
 def new_vault() -> dict:
@@ -64,7 +70,7 @@ def new_vault() -> dict:
 
 
 def validate_sheet(sheet: dict) -> None:
-    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc"}:
+    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders"}:
         raise ValidationError("The handoff structure is invalid.")
     if not isinstance(sheet["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", sheet["id"]):
         raise ValidationError("The handoff identifier is invalid.")
@@ -93,6 +99,7 @@ def validate_sheet(sheet: dict) -> None:
         validate_viral_panel(sheet["viral_panel"])
         validate_gases(sheet["blood_gas"])
         validate_cbc(sheet["cbc"])
+        validate_orders(sheet["recurring_orders"])
     except ValueError as exc:
         raise ValidationError(str(exc)) from None
     ids = set()
@@ -156,14 +163,14 @@ def apply_diagnoses(sheet: dict, diagnosis_text: str, destination: str, append: 
 
 
 def upgrade_vault(vault: dict) -> dict:
-    """Migrate schemas 1-12 without replacing keys, notes or saved mappings."""
+    """Migrate schemas 1-13 without replacing keys, notes or saved mappings."""
     if not isinstance(vault, dict) or set(vault) != {"schema", "settings", "rooms"}:
         raise ValidationError("The encrypted archive has an invalid structure.")
     version = vault.get("schema")
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
-    if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12):
+    if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13):
         raise ValidationError("The encrypted archive has an unsupported structure. It was not overwritten.")
     candidate = deepcopy(vault)
     settings = candidate["settings"]
@@ -202,6 +209,8 @@ def upgrade_vault(vault: dict) -> dict:
             expected.add("viral_panel")
         if version >= 12:
             expected.add("blood_gas")
+        if version >= 13:
+            expected.add("cbc")
         if not isinstance(sheet, dict) or set(sheet) != expected:
             raise ValidationError("A previous handoff structure is invalid. Nothing was discarded.")
         expected_fields = set(LEGACY_SYSTEMS if version == 1 else SYSTEMS)
@@ -243,7 +252,9 @@ def upgrade_vault(vault: dict) -> dict:
             sheet["viral_panel"] = empty_viral_panel()
         if version < 12:
             sheet["blood_gas"] = None
-        sheet["cbc"] = None
+        if version < 13:
+            sheet["cbc"] = None
+        sheet["recurring_orders"] = None
         room = normalize_room(original_room)
         if normalize_room(sheet["room"]) != room:
             raise ValidationError("A previous handoff does not match its room. Nothing was discarded.")
@@ -278,6 +289,9 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
         section = row["section"]
         content = medication_output(format_medication(row))
         result[section] = (result[section].rstrip() + "\n" if result[section].strip() else "") + content
+    scheduled = orders_text(sheet["recurring_orders"])
+    if scheduled:
+        result["Labs"] = scheduled + ("\n-----\n" + result["Labs"] if result["Labs"].strip() else "")
     result["Neurologic"] = neuro_body(sheet["fields"]["Neurologic"], sheet["medications"])
     vent = respiratory_text(sheet)
     if vent:

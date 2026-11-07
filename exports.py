@@ -10,7 +10,7 @@ from copy import deepcopy
 from datetime import datetime
 import time
 import re
-from models import SYSTEMS, fields_with_medications, validate_sheet, automatic_vitals
+from models import SYSTEMS, fields_with_medications, validate_sheet, automatic_vitals, section_label
 from infusions import neuro_body, is_infusion, infusion_entry
 from medications import visible, format_medication
 from output_text import medication_output
@@ -22,7 +22,7 @@ from print_time import eastern_print_time, PRINT_TIME_SCRIPT
 
 COLUMNS = (("PATIENT", None), ("NEURO", "Neurologic"), ("RESP", "Respiratory"),
            ("CARDIAC", "Cardiovascular"), ("FEN / GI", "FEN / GI"),
-           ("HEME", "Hematology"), ("ID", "Infectious Disease"), ("LABS", "Labs"))
+           ("HEME", "Hematology"), ("ID", "Infectious Disease"), ("LABS/IMAGING", "Labs"))
 WIDTHS = (0.12, 0.14, 0.17, 0.12, 0.15, 0.10, 0.10, 0.10)
 BOTTOM = ("Other Medications", "Lab Results / Trends", "Goals / Follow-up")
 ACCESS_FIELDS = ("Airway", "Last Intubation", "Access", "Drains / Tubes")
@@ -36,7 +36,7 @@ def handoff_text(sheet: dict, printed_at: datetime | None = None) -> str:
     for section in SYSTEMS:
         content = fields[section].strip()
         if content:
-            parts.extend(["", section.upper(), content])
+            parts.extend(["", section_label(section).upper(), content])
     return "\n".join(parts) + "\n"
 
 

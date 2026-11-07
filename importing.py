@@ -1,4 +1,4 @@
-"""One-click A/B/C/D/E/F/G/I/K/L/M/N/O/P/Q import with all-or-nothing updates for malformed input."""
+"""One-click A/B/C/D/E/F/G/I/K/L/M/N/O/P/Q/R import with all-or-nothing updates for malformed input."""
 from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -15,8 +15,9 @@ from demographics import parse_admission
 from viral import parse_viral_panel
 from blood_gases import parse_gases
 from cbc import parse_cbc
+from recurring_orders import parse_orders, selected_orders
 
-SUPPORTED_SECTIONS = "abcdefgiklmnopq"
+SUPPORTED_SECTIONS = "abcdefgiklmnopqr"
 
 
 @dataclass
@@ -38,7 +39,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
     parsed = parse_smartphrase(text)
     relevant = set(SUPPORTED_SECTIONS) & (set(parsed.blocks) | parsed.invalid)
     if not relevant:
-        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O, P or Q dividers.")
+        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O, P, Q or R dividers.")
         return out
     out.notices.extend(parsed.issues)
     candidate = deepcopy(sheet)
@@ -138,6 +139,15 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 candidate["cbc"] = cbc.data
                 out.notices.extend(cbc.issues)
                 out.imported.append("CBC and latest ANC / ALC" if cbc.data["rows"] else "CBC display cleared")
+            elif letter == "r":
+                orders = parse_orders(parsed.blocks[letter])
+                if orders.error:
+                    out.errors.append(orders.error)
+                    continue
+                candidate["recurring_orders"] = orders.data
+                out.notices.extend(orders.issues)
+                count = len(selected_orders(orders.data))
+                out.imported.append(str(count) + " recurring lab/imaging orders" if count else "recurring lab/imaging orders cleared")
             elif letter in "klm":
                 observations = parse_neuro(parsed.blocks[letter], letter)
                 if observations.error:

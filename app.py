@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.13: Q CBC, latest ANC/ALC and display-only medication cleanup."""
+"""PICU SmartPhrase v6.14: recurring R orders in Labs/Imaging."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -11,7 +11,7 @@ from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, hando
 from github_store import GitHubConfig, GitHubVault, StorageError
 from models import (MAX_FIELD, SYSTEMS, ValidationError, new_sheet, new_vault,
                     normalize_room, save_sheet_in, validate_vault, validate_sheet,
-                    upgrade_vault, fields_with_medications, respiratory_text, automatic_vitals, SCHEMA_VERSION, DEFAULT_ROOMS)
+                    upgrade_vault, fields_with_medications, respiratory_text, automatic_vitals, SCHEMA_VERSION, DEFAULT_ROOMS, section_label)
 from medications import (DESTINATIONS, format_medication, suggested_key, upsert_rule,
                          remap, rule_for_inline_mapping, validate_medication, visible, hidden_for, set_visibility_rule)
 from ventilation import LABELS, format_ventilation, validate_ventilation
@@ -22,6 +22,7 @@ from parser import MAX_PASTE, SECTION_NAMES
 from security import valid_password_hash, verify_password
 from labs import validate_labs, lactate_text, id_labs_text
 from cbc import validate_cbc, cbc_summary, cbc_selection_issues
+from recurring_orders import validate_orders, selected_orders, orders_text, order_line, recurring_frequency
 from blood_gases import FIELDS as GAS_FIELDS, validate_gases, latest_sample, gas_summary, legacy_gases
 from vitals import validate_vitals, text_by_system
 from lab_layout import laboratory_html
@@ -78,7 +79,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_")):
             st.session_state.pop(key, None)
 
 
@@ -125,6 +126,12 @@ def editor_snapshot(room: str) -> dict:
                     if field == "organisms":
                         value = [line.strip() for line in value.splitlines() if line.strip()]
                     row[field] = value
+    if sheet["recurring_orders"] is not None:
+        for row in sheet["recurring_orders"]["rows"]:
+            for field in ("name", "timing", "occurrences", "include"):
+                key = "rorder_" + row["id"] + "_" + field
+                if key in ss:
+                    row[field] = order_widget_value(field, ss[key])
     if sheet["cbc"] is not None:
         for row in sheet["cbc"]["rows"]:
             dkey = "cbc_date_" + sheet["id"] + "_" + str(row["column"])
@@ -1082,7 +1089,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.13 | Q CBC, ANC / ALC and cleaner medication output")
+        st.caption("Version 6.14 | Recurring orders in Labs/Imaging")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1117,7 +1124,7 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
             key = prefix + "section"
             if key not in st.session_state:
                 st.session_state[key] = row["section"]
-            st.selectbox("System for order " + str(number), DESTINATIONS, key=key,
+            st.selectbox("System for order " + str(number), DESTINATIONS, key=key, format_func=section_label,
                          on_change=medication_row_change, args=(room, row["id"], "section", key, store))
         if row["section"] == "Neurologic":
             key = prefix + "infusion_mode"
@@ -1268,7 +1275,7 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.button("Start blank for new patient", on_click=start_new_patient)
         st.button("Load saved handoff", on_click=load_saved_into_editor)
         st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
-    paste_tab, meds_tab, labs_tab, cultures_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Edit handoff", "Preview / print"])
+    paste_tab, meds_tab, labs_tab, cultures_tab, orders_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Labs/Imaging", "Edit handoff", "Preview / print"])
     with paste_tab:
         st.caption("Paste your SmartPhrase and click Create / update handoff. Imported results and edits save automatically before you change rooms.")
         st.button("Clear pasted text", on_click=clear_paste)
@@ -1300,13 +1307,18 @@ def handoff_page(store: GitHubVault | None) -> None:
         labs_vitals_editor(sheet)
     with cultures_tab:
         cultures_editor(sheet)
+    with orders_tab:
+        recurring_orders_editor(sheet)
     with edit_tab:
         st.caption("These are your separate notes. Re-pasting medications or ventilation does not erase them.")
         for section in SYSTEMS:
             key = edit_key(sheet, section)
             if key not in ss:
                 ss[key] = sheet["fields"][section]
-            with st.expander(section, expanded=section == "Diagnoses"):
+            with st.expander(section_label(section), expanded=section == "Diagnoses"):
+                if section == "Labs" and orders_text(sheet["recurring_orders"]):
+                    st.text(orders_text(sheet["recurring_orders"]) + "\n-----")
+                    st.caption("Edit the imported recurring orders in Labs/Imaging. Notes below stay separate.")
                 if section in automatic_vitals(sheet):
                     st.text(automatic_vitals(sheet)[section] + "\n-----")
                 if section == "Demographics / Weight" and sheet["admission_date"]:
@@ -1321,7 +1333,7 @@ def handoff_page(store: GitHubVault | None) -> None:
                 if section == "Diagnoses" and viral_text(sheet["viral_panel"]):
                     st.markdown('<div style="white-space:pre-wrap">----\n' + viral_markup(sheet["viral_panel"]) + '</div>', unsafe_allow_html=True)
                     st.caption("Positive O-block results print below the demographics / weight information. Edit under Labs / Vitals.")
-                st.text_area("Notes: " + section, key=key, height=100, max_chars=MAX_FIELD,
+                st.text_area("Notes: " + section_label(section), key=key, height=100, max_chars=MAX_FIELD,
                              on_change=update_field, args=(room, section, key))
                 if section == "Infectious Disease" and cultures_text(sheet["cultures"]):
                     st.markdown('<div style="white-space:pre-wrap">------\n' + culture_markup(sheet["cultures"]) + '</div>', unsafe_allow_html=True)
@@ -1623,7 +1635,7 @@ def admin_page(store: GitHubVault | None) -> None:
         select_admin_rule()
     with st.form("medication_mapping"):
         st.text_input("Medication name / prefix", key="mapping_name", max_chars=250)
-        st.selectbox("System", DESTINATIONS, key="mapping_destination")
+        st.selectbox("System", DESTINATIONS, key="mapping_destination", format_func=section_label)
         st.selectbox("Match", ["prefix", "exact"], key="mapping_match", format_func=lambda value: "Name starts with this text" if value == "prefix" else "Exact complete name")
         st.form_submit_button("Save mapping", on_click=save_admin_rule, args=(store,))
     if ss.get("admin_rule_index", -1) != -1:
@@ -1643,7 +1655,7 @@ def admin_page(store: GitHubVault | None) -> None:
     if "admin_diagnosis_dest" not in ss:
         ss["admin_diagnosis_dest"] = settings["diagnoses_destination"]
     with st.form("admin_settings"):
-        st.selectbox("Diagnosis destination", SYSTEMS, key="admin_diagnosis_dest")
+        st.selectbox("Diagnosis destination", SYSTEMS, key="admin_diagnosis_dest", format_func=section_label)
         st.text_area("Rooms, one per line", key="admin_rooms", height=150)
         st.form_submit_button("Save settings", on_click=save_admin_settings, args=(store,))
     with st.expander("Section imports"):
@@ -1651,6 +1663,73 @@ def admin_page(store: GitHubVault | None) -> None:
             st.text(key * 8 + " = " + heading + (" | automatic import" if key in SUPPORTED_SECTIONS else " | not imported yet"))
         st.caption("C/D rules control the display, not bedside device status. BiPAP needs both D-block pressures. CPAP needs EPAP or PEEP. Explicit HFNC or the documented mask-plus-flow convention can add HFNC. Inferred HFNC is labeled flow-based. No previous-paste values are reused.")
 
+
+
+def order_widget_value(field: str, value):
+    if field == "occurrences":
+        value = str(value).strip()
+        if not value:
+            return None
+        if not value.isascii() or not value.isdigit():
+            raise ValueError("Enter a whole-number occurrence count, or leave it blank when not supplied.")
+        return int(value)
+    return value.strip() if isinstance(value, str) else value
+
+
+def recurring_order_change(room: str, row_id: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    current = ss["drafts"][room]["recurring_orders"]
+    if current is None:
+        return
+    candidate = deepcopy(current)
+    row = next((r for r in candidate["rows"] if r["id"] == row_id), None)
+    if row is None or field not in ("name", "timing", "occurrences", "include"):
+        return
+    old = row[field]
+    try:
+        row[field] = order_widget_value(field, ss[key])
+        validate_orders(candidate)
+    except ValueError as exc:
+        ss[key] = ("" if old is None else str(old)) if field == "occurrences" else old
+        note(str(exc) + " The order was not changed.", "error")
+        return
+    ss["drafts"][room]["recurring_orders"] = candidate
+
+
+def recurring_orders_editor(sheet: dict) -> None:
+    st.subheader("Labs/Imaging")
+    st.caption("R-section scheduled orders only. Counts are the Number of Occurrences in the paste, not a calculation of remaining draws.")
+    data = sheet["recurring_orders"]
+    if data is None:
+        st.info("Paste the R section and click Create / update handoff to add recurring lab and chest X-ray orders.")
+        return
+    chosen = selected_orders(data)
+    if chosen:
+        st.text(orders_text(data))
+    else:
+        st.caption("No included recurring orders match the selected tests. One-time and STAT orders are omitted.")
+    st.caption("Matching test and schedule: highest occurrence count wins. Different schedules, specimens and panels remain separate. Older CBC and gas result displays are unchanged.")
+    if not data["rows"]:
+        return
+    selected_ids = {row["id"] for row in chosen}
+    with st.expander("Edit recurring orders / review duplicates", expanded=False):
+        for index, row in enumerate(data["rows"], 1):
+            status = "shown" if row["id"] in selected_ids else "excluded" if not row["include"] else "duplicate not shown"
+            st.text(str(index) + ". " + order_line(row) + " [" + status + "]")
+            with st.expander("Order " + str(index) + " details", expanded=False):
+                for field, label in (("include", "Include order"), ("name", "Order name"),
+                                     ("timing", "Timing, for example Recurring (Daily)"),
+                                     ("occurrences", "Number of occurrences")):
+                    key = "rorder_" + row["id"] + "_" + field
+                    if key not in st.session_state:
+                        st.session_state[key] = ("" if row[field] is None else str(row[field])) if field == "occurrences" else row[field]
+                    kwargs = dict(key=key, on_change=recurring_order_change, args=(sheet["room"], row["id"], field, key))
+                    if field == "include":
+                        st.checkbox(label, **kwargs)
+                    else:
+                        st.text_input(label, max_chars=500 if field != "occurrences" else 8, **kwargs)
 
 if __name__ == "__main__":
     try:

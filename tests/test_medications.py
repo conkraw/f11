@@ -246,7 +246,7 @@ def legacy_vault():
 def test_legacy_upgrade_keeps_every_note_and_id():
     old=legacy_vault()
     new=upgrade_vault(old)
-    assert new['schema']==13 and old['schema']==1
+    assert new['schema']==14 and old['schema']==1
     assert new['rooms']['P4102']['id']==old['rooms']['P4102']['id']
     for key,value in old['rooms']['P4102']['fields'].items():
         assert new['rooms']['P4102']['fields'][key]==value
@@ -257,7 +257,7 @@ def test_legacy_ciphertext_loads_with_existing_key():
     key=generate_key()
     token=Fernet(key.encode()).encrypt(json.dumps(legacy_vault()).encode())
     loaded=open_vault(token,key)
-    assert loaded['schema']==13
+    assert loaded['schema']==14
     assert 'LEGACY_NOTE' in handoff_text(loaded['rooms']['P4102'])
 
 
@@ -281,7 +281,7 @@ def test_mapping_and_meds_encrypted_roundtrip():
 def test_html_is_landscape_with_all_column_headers_and_bands():
     html=handoff_html(apply_medications(new_sheet('P4102'),sample().rows))
     assert 'letter landscape' in html
-    for header in ['PATIENT','NEURO','RESP','CARDIAC','FEN / GI','HEME','ID','LABS']:
+    for header in ['PATIENT','NEURO','RESP','CARDIAC','FEN / GI','HEME','ID','LABS/IMAGING']:
         assert '<th>'+header+'</th>' in html
     for label in ['Other Medications','Goals / Follow-up','Airway','Last Intubation','Access','Drains / Tubes']:
         assert label in html
