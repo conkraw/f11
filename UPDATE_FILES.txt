@@ -1,13 +1,15 @@
-PICU Handoff Version 6.18: full-package update
+PICU Handoff Version 6.19: full-package update
 
 Upload the complete supplied folder contents together. Keep app.py at the root.
-Updated runtime files: app.py, labs.py, models.py and error_store.py.
-No new runtime modules. Theophylline routing and display use the existing G lab
-snapshot. Original rows and editing controls are retained.
+Updated runtime files: app.py, error_store.py (version constant only).
+New runtime module: save_status.py.
+Added tests/test_save_status.py and examples/save_status_example.html.
 
-Added documentation, synthetic example/preview and tests/test_theophylline_resp.py.
-No production secrets, user handoffs or pasted patient examples are included.
-Keep the existing deployment Secrets, encryption key and private data archive.
-Do not run the secrets generator. No dependency or schema change is required.
+Save timestamps use the existing schema-17 updated_at property, only from a
+confirmed loaded save. No data migration or new dependencies are needed.
+All previous features remain included. The printed PDF layout is unchanged.
+No production secrets, user handoffs or patient pastes are included.
+Keep existing Streamlit Secrets, encryption key and private data repository.
+Do not run the secrets generator.
 
-Sidebar: Version 6.18 | Theophylline level in Respiratory
+Sidebar: Version 6.19 | Last saved date and time

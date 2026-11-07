@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.18: latest THEOPH level in the respiratory column."""
+"""PICU SmartPhrase v6.19: visible room-save dates and times before printing."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -22,6 +22,8 @@ from ventilation import LABELS, format_ventilation, validate_ventilation
 from noninvasive import DEVICE_FIELDS, format_noninvasive, validate_noninvasive
 from importing import import_sections, SUPPORTED_SECTIONS
 from batching import available_handoffs
+from save_status import (room_save_status, saved_time_text, latest_saved_time,
+                         most_recent_save_caption, save_status_table)
 from parser import MAX_PASTE, SECTION_NAMES
 from security import valid_password_hash, verify_password
 from labs import validate_labs, lactate_text, id_labs_text, theophylline_text
@@ -294,8 +296,9 @@ def autosave_before_room_change(store: GitHubVault | None) -> bool:
     ss.setdefault("base_sheets", {})[room] = deepcopy(saved)
     if changed_rules:
         reapply_open_mappings()
-    note("Previous room automatically saved to encrypted GitHub." if store else
-         "Previous room saved in this session only. GitHub storage is not enabled.",
+    message = ("Previous room automatically saved to encrypted GitHub." if store else
+               "Previous room saved in this session only. GitHub storage is not enabled.")
+    note(message + " Last saved: " + saved_time_text(saved["updated_at"]),
          "success" if store else "info")
     return True
 
@@ -941,7 +944,10 @@ def save_rooms(store: GitHubVault | None, rooms: list[str]) -> None:
         saved = deepcopy(candidate["rooms"][room])
         ss["drafts"][room] = saved
         ss.setdefault("base_sheets", {})[room] = deepcopy(saved)
-    note("Handoffs saved to encrypted GitHub." if store else "Saved in this session only. GitHub is not enabled.", "success")
+    message = ("Handoffs saved to encrypted GitHub." if store else
+               "Saved in this session only. GitHub is not enabled.")
+    stamp = latest_saved_time({room: candidate["rooms"][room] for room in rooms})
+    note(message + (" Last saved: " + stamp if stamp else ""), "success" if store else "info")
 
 
 def save_room(store: GitHubVault | None) -> None:
@@ -1176,7 +1182,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.18 | Theophylline level in Respiratory")
+        st.caption("Version 6.19 | Last saved date and time")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin", "Import errors"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1341,6 +1347,21 @@ def ventilation_editor(sheet: dict) -> None:
             st.button("Remove " + device["device"], key="remove_niv_" + sheet["id"] + "_" + device["device"],
                       on_click=remove_support_device, args=(sheet["room"], device["device"]))
 
+def display_room_save_status(room: str, store: GitHubVault | None):
+    """Read confirmed save metadata, independent of display or print timestamps."""
+    ss = st.session_state
+    kwargs = {"session_only": store is None}
+    if room in ss.get("base_sheets", {}):
+        kwargs["base_sheet"] = ss["base_sheets"][room]
+    return room_save_status(room, ss["vault"]["rooms"].get(room),
+                            ss.get("drafts", {}).get(room), **kwargs)
+
+
+def render_room_save_table(rooms: list[str], store: GitHubVault | None) -> None:
+    statuses = [display_room_save_status(room, store) for room in rooms]
+    st.markdown(save_status_table(statuses, session_only=store is None), unsafe_allow_html=True)
+
+
 def handoff_page(store: GitHubVault | None) -> None:
     st.title("Room handoff")
     ss = st.session_state
@@ -1349,6 +1370,10 @@ def handoff_page(store: GitHubVault | None) -> None:
     if "room_choice" not in ss:
         ss["room_choice"] = ss.get("current_room", "Choose a room")
     st.selectbox("Room", ["Choose a room"] + choices + ["Other room"], key="room_choice", on_change=room_changed, args=(store,))
+    with st.expander("Save status for all rooms", expanded=False):
+        render_room_save_table(choices, store)
+        st.caption("Times are Eastern (EST/EDT). Reload saved archive to see saves made in another session." if store else
+                   "Session-only testing: these times do not indicate a save to GitHub.")
     if ss.get("removed_room"):
         st.button("Undo last room removal", key="undo_room_handoff", on_click=undo_room_removal, args=(store,))
     if ss.get("room_choice") == "Other room":
@@ -1365,13 +1390,15 @@ def handoff_page(store: GitHubVault | None) -> None:
         return
     sheet = ss["drafts"][room]
     st.subheader("Room " + room)
+    status = display_room_save_status(room, store)
+    st.caption(status.caption)
+    st.caption(status.status + (". Changes save automatically when you change rooms." if status.unsaved else ""))
     import_review_editor(sheet)
     if room not in DEFAULT_ROOMS:
         with st.expander("Custom room options"):
             st.caption("Remove this custom room and its current saved handoff. Undo is available during this session. Medication rules are unchanged.")
             st.button("Remove custom room", key="remove_current_room", on_click=remove_custom_room, args=(room, store))
     saved = ss["vault"]["rooms"].get(room)
-    st.caption("Saved" if saved == sheet else "Changes will save automatically when you change rooms")
     if ss.get("base_sheets", {}).get(room) != saved:
         st.warning("A newer saved handoff exists for this room. Reload it before saving your edits.")
     top1, top2 = st.columns(2)
@@ -1498,6 +1525,7 @@ def print_all_page(store: GitHubVault | None) -> None:
         return
     st.caption("Includes saved rooms and the latest open drafts. Printing does not save changes. Blank sheets are omitted.")
     st.button("Save all open handoffs", on_click=save_all_rooms, args=(store,))
+    st.caption(most_recent_save_caption(ss["vault"]["rooms"], session_only=store is None))
     options = list(ready)
     # A fresh room list selects all rooms. Explicit selections survive normal reruns.
     if ss.get("print_room_options") != options or "print_rooms" not in ss:
@@ -1510,14 +1538,17 @@ def print_all_page(store: GitHubVault | None) -> None:
         return
     unsaved = sum(sheet != ss["vault"]["rooms"].get(sheet["room"]) for sheet in selected_sheets)
     st.caption(str(len(selected_sheets)) + " handoffs selected. " + str(unsaved) + " include unsaved draft changes. Each room starts on a new page.")
+    render_room_save_table([sheet["room"] for sheet in selected_sheets], store)
+    st.caption("Save times are Eastern (EST/EDT) and come from the loaded archive. Reload saved archive to see saves from another session." if store else
+               "Session-only testing: these save times are not durable GitHub saves.")
+    if unsaved:
+        st.warning("Some selected handoffs have unsaved changes. Save all open handoffs before printing to store them. Downloading alone does not save.")
     try:
         st.download_button("Download all selected handoffs (PDF)", download_payload(selected_sheets, "pdf", download_deadline()), "all_handoffs.pdf", "application/pdf", type="primary", key="download_all_pdf", on_click="ignore")
     except (ValueError, ImportError):
         st.error("The combined PDF could not be created. Use HTML or check the export requirements.")
     st.download_button("Download all selected handoffs (printable HTML)", download_payload(selected_sheets, "html", download_deadline()), "all_handoffs.html", "text/html", key="download_all_html", on_click="ignore")
     st.caption("Compact PDF is preferred for printing. Each room starts on its own page. Exceptionally long handoffs continue rather than losing content. Downloads are not encrypted.")
-    for sheet in selected_sheets:
-        st.text("Room " + sheet["room"] + (" | draft" if sheet != ss["vault"]["rooms"].get(sheet["room"]) else " | saved"))
 
 
 def select_admin_rule() -> None:

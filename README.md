@@ -1,19 +1,54 @@
-# PICU Handoff 6.18: Theophylline level in Respiratory
+# PICU Handoff 6.19: Last saved date and time
 
 Complete ZIP update. No direct repository changes were made.
 
 ## Installation
 
-Save open work, extract PICU618.zip, and open PICU_Handoff_v6_18_Theophylline.
+Save open work, extract PICU619.zip, and open PICU_Handoff_v6_19_Save_Times.
 Copy all contents into the existing app-code repository, replacing matching
 files. Keep app.py at the root. Restart the deployment and refresh the browser.
 Keep the current Streamlit Secrets, password, encryption key, token, private
 data repository, mappings and hidden-medication rules. Do not run the secrets
 generator. No new dependencies or schema changes are required. Schema 17 remains.
 
-Sidebar: Version 6.18 | Theophylline level in Respiratory
+Sidebar: Version 6.19 | Last saved date and time
 
-## Theophylline level
+## Last saved date and time
+
+The room heading shows the last confirmed save date and time for that handoff,
+in Eastern time with seconds and EST/EDT. A separate status says Saved,
+Unsaved changes, or Not saved yet. Custom rooms follow the same rules as presets.
+The Save status for all rooms expander shows every preset and custom room.
+
+Print all shows the most recent handoff save in the loaded archive beside
+Save all open handoffs. A table above the downloads shows each selected room,
+its last confirmed save, and whether that printout contains unsaved draft edits.
+Downloading still does not save. Use Save all open handoffs to persist edits.
+
+Manual Save, Save all, and room-switch autosave use the existing per-sheet
+updated_at field. A new save time is displayed only after the storage operation
+succeeds. Failed or conflicting writes do not advance it. Imports, edits, Admin
+rule saves, and print/export timestamps do not masquerade as handoff saves.
+A room switch without changes does not write a new save or advance its time.
+
+A new patient handoff does not borrow the previous occupant's save timestamp.
+A stored record with a missing/invalid/unspecified-timezone timestamp shows
+Save time unavailable rather than guessing a time. Session-only testing is
+explicitly labeled and does not claim a persistent GitHub save.
+
+Times reflect the most recently loaded archive and successful writes in the
+current session. They are not a live monitor of colleagues' activity. Use
+Reload saved archive to see another session's saves. Existing conflict checks
+and your open drafts remain in place. The timestamp does not identify a user.
+
+Previously saved timestamps are visible immediately after update. No re-paste
+or new save is needed to display a timestamp already in the archive. The
+printed handoff layout and its separate Print prepared timestamp are unchanged.
+All clinical parsers, routing rules, result selection, and export code are
+unchanged from 6.18. See SAVE_STATUS_UPDATE.txt and TEST_REPORT.md.
+
+## Theophylline level (retained)
+
 
 THEOPH in the G / LABS block is now shown once in RESP as Theophylline level,
 using the latest included source result. It appears after respiratory vitals
