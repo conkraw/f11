@@ -1,19 +1,68 @@
-# PICU Handoff 6.19: Last saved date and time
+# PICU Handoff 6.20: Respiratory and Heme Infusions
 
 Complete ZIP update. No direct repository changes were made.
 
 ## Installation
 
-Save open work, extract PICU619.zip, and open PICU_Handoff_v6_19_Save_Times.
-Copy all contents into the existing app-code repository, replacing matching
-files. Keep app.py at the root. Restart the deployment and refresh the browser.
+Save open work, extract PICU620.zip, and open
+PICU_Handoff_v6_20_Resp_Heme_Infusions. Copy all contents to the existing
+app-code repository, replacing matching files. Keep app.py at the root.
+Restart the deployment and refresh the browser.
+
 Keep the current Streamlit Secrets, password, encryption key, token, private
 data repository, mappings and hidden-medication rules. Do not run the secrets
-generator. No new dependencies or schema changes are required. Schema 17 remains.
+generator. No new dependencies or storage-format changes are required.
+Schema 17 remains unchanged.
 
-Sidebar: Version 6.19 | Last saved date and time
+Sidebar: Version 6.20 | Respiratory and Heme Infusions
 
-## Last saved date and time
+## Respiratory and hematology infusion display
+
+Respiratory Infusions and Heme Infusions use the same emphasis as neurologic
+Infusions and CV Infusions: bold heading, bold medication/formulation name,
+bold and underlined explicit Dose, and a separate recorded pump rate when it
+differs. With a blank Dose, an available recorded rate is emphasized instead.
+No dose, route, rate, frequency, unit or medication instruction is inferred.
+
+Respiratory vital signs, device settings and the Theophylline level retain their
+existing priority above medications. Continuous IV orders mapped to Respiratory
+and continuous nebulized/inhaled orders in that section enter Respiratory
+Infusions automatically. Scheduled and PRN nebulized treatments stay separate.
+This is a display grouping, not a change to the recorded route.
+
+Continuous hematology orders enter Heme Infusions. Qualifying heparin and
+cangrelor infusions retain the existing DVT Prophylaxis label as a subheading
+within that block. Scheduled enoxaparin stays in the separate non-infusion
+DVT Prophylaxis group. Other hematology infusions can be grouped without a
+DVT label. No order appears twice. Existing DVT eligibility rules are unchanged,
+and the heading does not establish a clinical indication or prophylactic dose.
+
+Product names containing infusion or infusion syringe do not by themselves
+establish continuous delivery. The automatic rule requires a continuous
+frequency and supported delivery route. PRN and one-time orders are not
+classified automatically. Unknown delivery patterns retain their ordinary
+medication display unless the user explicitly chooses Infusion.
+
+The Medications screen has Respiratory display and Heme display controls using
+Automatic / Infusion / Other medication. Exact formulation, route and frequency
+choices are remembered through the existing encrypted infusion settings.
+Admin > Infusion display choices remains available without a handoff open.
+No new medication-to-system mapping is invented by the new display logic.
+
+Held/start labels, sequence prefixes, hidden/excluded status and custom handoff
+wording are preserved. Dosing Weight parentheticals remain hidden only in handoff
+output, not erased from the stored medication records. Existing saved handoffs
+receive the new layout on reopening or printing without re-pasting.
+
+The new groups are used in the editor, preview, PDF, HTML, text and Print all.
+Plain text keeps the headings but cannot display font emphasis. Long content
+continues on another page instead of being clipped. The rest of the compact
+layout, save times, room-switch autosave and error-review workflow is retained.
+
+See RESP_HEME_INFUSIONS_UPDATE.txt and TEST_REPORT.md. The synthetic preview is
+examples/resp_heme_infusions_preview.pdf. No real patient example is bundled.
+
+## Last saved date and time (retained)
 
 The room heading shows the last confirmed save date and time for that handoff,
 in Eastern time with seconds and EST/EDT. A separate status says Saved,
@@ -44,8 +93,9 @@ and your open drafts remain in place. The timestamp does not identify a user.
 Previously saved timestamps are visible immediately after update. No re-paste
 or new save is needed to display a timestamp already in the archive. The
 printed handoff layout and its separate Print prepared timestamp are unchanged.
-All clinical parsers, routing rules, result selection, and export code are
-unchanged from 6.18. See SAVE_STATUS_UPDATE.txt and TEST_REPORT.md.
+The last-save controls and storage behavior are unchanged in 6.20.
+Clinical parsers remain unchanged. Infusion display and export formatting changes
+are described above. See SAVE_STATUS_UPDATE.txt and TEST_REPORT.md.
 
 ## Theophylline level (retained)
 
@@ -107,7 +157,12 @@ PRN syringes are not inferred to be continuous infusions from the product name.
 FEN / GI: Intake/Output/Net remain first, followed by GI prophylaxis,
 Bowel Regimen, Diuretics, separate notes and remaining medications.
 
-HEME: DVT Prophylaxis, then separate notes and remaining hematology medications.
+HEME: Heme Infusions first, retaining a DVT Prophylaxis subheading for qualifying
+infusions, then the non-infusion DVT Prophylaxis group, separate notes and
+remaining hematology medications. No order is duplicated.
+
+RESP: vitals, support settings, Theophylline level when present, Respiratory
+Infusions, separate notes and remaining respiratory medications.
 Existing vital-sign positioning is preserved.
 
 The same grouping drives the editor previews, PDF, HTML, text and Print all.

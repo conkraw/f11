@@ -22,7 +22,7 @@ from observations import empty_neuro, validate_neuro, neuro_rows, validate_nutri
 from cultures import empty_cultures, validate_cultures, cultures_text
 from demographics import validate_dosing_weight, validate_admission_date, demographic_weight_text
 from viral import empty_viral_panel, validate_viral_panel, viral_text
-from infusions import validate_infusion_rules, neuro_body, cardiovascular_body, hematology_body
+from infusions import validate_infusion_rules, neuro_body, cardiovascular_body, hematology_body, respiratory_body
 from medication_groups import validate_group_rules
 from blood_gases import validate_gases
 from cbc import validate_cbc
@@ -323,6 +323,7 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
     result["Neurologic"] = neuro_body(sheet["fields"]["Neurologic"], sheet["medications"])
     result["Cardiovascular"] = cardiovascular_body(sheet["fields"]["Cardiovascular"], sheet["medications"])
     result["Hematology"] = hematology_body(sheet["fields"]["Hematology"], sheet["medications"])
+    result["Respiratory"] = respiratory_body(sheet["fields"]["Respiratory"], sheet["medications"])
     theophylline = theophylline_text(sheet["labs"])
     if theophylline:
         result["Respiratory"] = theophylline + ("\n-----\n" + result["Respiratory"] if result["Respiratory"].strip() else "")

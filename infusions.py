@@ -1,6 +1,7 @@
 """Presentation-only infusion grouping. No clinical dose inference or conversion.
 
-Explicit continuous parenteral orders are recognized automatically. A saved
+Explicit continuous parenteral orders are recognized automatically. Respiratory
+continuous nebulized/inhaled orders also use the emphasized display. A saved
 user choice is keyed to the complete formulation, route and frequency, so a
 PRN order for the same drug is not accidentally changed. No doses are supplied
 by a rule. Source amounts, qualifiers, held/start labels and recorded rates stay.
@@ -16,6 +17,24 @@ from medication_groups import group_for as special_group, GROUP_NAMES
 
 MODES = ("auto", "infusion", "other")
 MODE_LABELS = {"auto": "Automatic", "infusion": "Infusion", "other": "Other medication"}
+INFUSION_HEADINGS = {
+    "Neurologic": "Infusions", "Cardiovascular": "CV Infusions",
+    "Respiratory": "Respiratory Infusions", "Hematology": "Heme Infusions",
+}
+INFUSION_SECTIONS = tuple(INFUSION_HEADINGS)
+DISPLAY_LABELS = {"Neurologic": "Neuro", "Cardiovascular": "CV",
+                  "Respiratory": "Respiratory", "Hematology": "Heme"}
+
+
+def supports_infusion_display(row: dict) -> bool:
+    """Keep existing special groups, allowing DVT infusions to be emphasized.
+
+    This does not change the stored system mapping or any clinical source field.
+    PRN/fever and GI groups retain their existing priority over infusion display.
+    """
+    section = effective_section(row)
+    group = special_group(row)
+    return section in INFUSION_HEADINGS and (not group or (section == "Hematology" and group == "dvt"))
 
 
 def infusion_key(row: dict) -> tuple[str, str, str]:
@@ -31,10 +50,15 @@ def is_infusion(row: dict) -> bool:
     # A PRN syringe may say 'infusion' in its product name. That is not sufficient.
     if re.search(r"\bprn\b|as needed", frequency):
         return False
-    return bool(re.search(r"\bcontinuous\b", frequency) and route in {
+    parenteral = route in {
         "intravenous", "iv", "intra arterial", "intraarterial", "ia",
         "subcutaneous", "subcut", "sq", "epidural", "intrathecal",
-    })
+    }
+    respiratory_delivery = effective_section(row) == "Respiratory" and route in {
+        "nebulization", "nebulisation", "nebulized", "nebulised",
+        "inhalation", "inhaled", "nebulized inhalation", "nebulised inhalation",
+    }
+    return bool(re.search(r"\bcontinuous\b", frequency) and (parenteral or respiratory_delivery))
 
 
 def validate_infusion_rules(rules: list[dict]) -> None:
@@ -121,15 +145,28 @@ def system_body_blocks(section: str, notes: str, rows: list[dict]) -> list[tuple
     meds = [r for r in rows if visible(r) and effective_section(r) == section]
     groups = []
     assigned = set()
-    if section in ("Neurologic", "Cardiovascular"):
-        drips = [r for r in meds if not special_group(r) and is_infusion(r)]
+    if section in INFUSION_SECTIONS:
+        drips = [r for r in meds if supports_infusion_display(r) and is_infusion(r)]
         if drips:
-            groups.append([("heading", "Infusions" if section == "Neurologic" else "CV Infusions")] +
-                          [("infusion", r) for r in drips])
+            block = [("heading", INFUSION_HEADINGS[section])]
+            if section == "Hematology":
+                # Preserve the user's DVT display category without printing a
+                # heparin/cangrelor order a second time in the scheduled group.
+                dvt = [r for r in drips if special_group(r) == "dvt"]
+                remaining = [r for r in drips if special_group(r) != "dvt"]
+                if dvt:
+                    block += [("subheading", "DVT Prophylaxis")] + [("infusion", r) for r in dvt]
+                if remaining:
+                    if dvt:
+                        block.append(("subheading", "Other Infusions"))
+                    block += [("infusion", r) for r in remaining]
+            else:
+                block += [("infusion", r) for r in drips]
+            groups.append(block)
             assigned.update(r["id"] for r in drips)
     modes = ("sedative_prn", "paralytic_prn", "fever") if section == "Neurologic" else ("dvt",) if section == "Hematology" else ()
     for mode in modes:
-        group = [r for r in meds if special_group(r) == mode]
+        group = [r for r in meds if r["id"] not in assigned and special_group(r) == mode]
         if group:
             groups.append([("heading", GROUP_NAMES[mode])] + [("medication", r) for r in group])
             assigned.update(r["id"] for r in group)
@@ -156,6 +193,8 @@ def render_body_blocks(blocks: list[tuple[str, object]], rich: bool = False, esc
             lines.append(infusion_entry(item, rich, esc, handoff_only=True))
         elif kind == "heading":
             lines.append("<b>" + encode(item) + "</b>" if rich else item)
+        elif kind == "subheading":
+            lines.append("<b><i>" + encode(item) + "</i></b>" if rich else item)
         elif kind == "medication":
             lines.append(encode(medication_output(format_medication(item))))
         else:
@@ -174,3 +213,7 @@ def cardiovascular_body(notes: str, rows: list[dict], rich: bool = False, esc=es
 
 def hematology_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
     return render_body_blocks(system_body_blocks("Hematology", notes, rows), rich, esc)
+
+
+def respiratory_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
+    return render_body_blocks(system_body_blocks("Respiratory", notes, rows), rich, esc)

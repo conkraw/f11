@@ -1,15 +1,18 @@
-PICU Handoff Version 6.19: full-package update
+Complete Version 6.20 package
 
-Upload the complete supplied folder contents together. Keep app.py at the root.
-Updated runtime files: app.py, error_store.py (version constant only).
-New runtime module: save_status.py.
-Added tests/test_save_status.py and examples/save_status_example.html.
+Upload the entire contents of PICU_Handoff_v6_20_Resp_Heme_Infusions to the
+existing app-code repository. Keep app.py at the root. Replace matching files.
+Keep Secrets, password, encryption key and private data repository unchanged.
+Do not rerun create_secrets.py. No new dependencies or schema changes.
 
-Save timestamps use the existing schema-17 updated_at property, only from a
-confirmed loaded save. No data migration or new dependencies are needed.
-All previous features remain included. The printed PDF layout is unchanged.
-No production secrets, user handoffs or patient pastes are included.
-Keep existing Streamlit Secrets, encryption key and private data repository.
-Do not run the secrets generator.
+Runtime changes:
+app.py
+infusions.py
+models.py (display composition only)
+exports.py
+error_store.py (version identification only)
 
-Sidebar: Version 6.19 | Last saved date and time
+Also includes updated documentation, synthetic preview/examples and regression
+tests. Existing clinical parsers and save-status code are unchanged.
+
+Sidebar: Version 6.20 | Respiratory and Heme Infusions

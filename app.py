@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.19: visible room-save dates and times before printing."""
+"""PICU SmartPhrase v6.20: emphasized respiratory and hematology infusions."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -42,7 +42,7 @@ from fen_gi import (MODES as GI_MODES, MODE_LABELS as GI_MODE_LABELS, GROUP_NAME
                     automatic_group, group_for, effective_section, fen_gi_body,
                     apply_gi_rules, set_gi_rule, gi_key, gi_mode_for)
 from infusions import (MODES, MODE_LABELS, is_infusion, infusion_entry, neuro_body, cardiovascular_body, hematology_body,
-                       set_infusion_rule, apply_infusion_rules, infusion_key, infusion_mode_for)
+                       set_infusion_rule, apply_infusion_rules, infusion_key, infusion_mode_for, respiratory_body, INFUSION_SECTIONS, DISPLAY_LABELS, supports_infusion_display)
 
 from medication_groups import (MODES as GROUP_MODES, MODE_LABELS as GROUP_MODE_LABELS,
     GROUP_SECTIONS, group_for as special_group, automatic_group as automatic_special_group,
@@ -1182,7 +1182,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.19 | Last saved date and time")
+        st.caption("Version 6.20 | Respiratory and Heme Infusions")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin", "Import errors"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1211,7 +1211,7 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
         summary, destination = st.columns([3, 1])
         with summary:
             suffix = " [HIDDEN]" if row["hidden"] else "" if row["include"] else " [EXCLUDED]"
-            if effective_section(row) in ("Neurologic", "Cardiovascular") and not special_group(row) and is_infusion(row):
+            if supports_infusion_display(row) and is_infusion(row):
                 st.markdown('<div style="white-space:pre-wrap;border-left:3px solid #555;padding-left:8px">' +
                             str(number) + '. <b>Infusion</b>' + suffix + '\n' +
                             infusion_entry(row, True) + '</div>', unsafe_allow_html=True)
@@ -1230,11 +1230,11 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
             st.selectbox("FEN/GI display for order " + str(number), GI_MODES, key=key,
                          format_func=lambda value: GI_MODE_LABELS[value], on_change=medication_row_change,
                          args=(room, row["id"], "gi_mode", key, store))
-        if effective_section(row) in ("Neurologic", "Cardiovascular") and not special_group(row):
+        if supports_infusion_display(row):
             key = prefix + "infusion_mode"
             if key not in st.session_state:
                 st.session_state[key] = row.get("infusion_mode", "auto")
-            st.selectbox(("Neuro" if effective_section(row) == "Neurologic" else "CV") + " display for order " + str(number), MODES, key=key,
+            st.selectbox(DISPLAY_LABELS[effective_section(row)] + " display for order " + str(number), MODES, key=key,
                          format_func=lambda value: MODE_LABELS[value], on_change=medication_row_change,
                          args=(room, row["id"], "infusion_mode", key, store))
         if effective_section(row) in ("Neurologic", "Hematology") or automatic_special_group(row) or row.get("group_mode", "auto") != "auto":
@@ -1485,8 +1485,8 @@ def handoff_page(store: GitHubVault | None) -> None:
                 if section == "FEN / GI":
                     st.markdown('<div style="white-space:pre-wrap">' + fen_gi_body("", sheet["medications"], None, True) + "</div>", unsafe_allow_html=True)
                     st.caption("Printed order: Intake/Output/Net, GI prophylaxis, Bowel Regimen, Diuretics, then separate notes and remaining FEN/GI medications.")
-                elif section in ("Neurologic", "Cardiovascular", "Hematology"):
-                    render_body = {"Neurologic": neuro_body, "Cardiovascular": cardiovascular_body, "Hematology": hematology_body}[section]
+                elif section in INFUSION_SECTIONS:
+                    render_body = {"Neurologic": neuro_body, "Cardiovascular": cardiovascular_body, "Hematology": hematology_body, "Respiratory": respiratory_body}[section]
                     st.markdown('<div style="white-space:pre-wrap">' + render_body("", sheet["medications"], True) + '</div>', unsafe_allow_html=True)
                 else:
                     for row in sheet["medications"]:
@@ -1760,7 +1760,7 @@ def edit_saved_infusion_rule(key: tuple[str, str, str], widget: str, store: GitH
 
 def infusion_admin(store: GitHubVault | None) -> None:
     with st.expander("Infusion display choices"):
-        st.caption("Automatic recognizes continuous parenteral orders, not PRN boluses. Overrides remember the exact formulation, route and frequency. No dose is copied to another order. Display grouping applies in Neurologic and Cardiovascular. Named PRN and fever-control groups remain separate.")
+        st.caption("Automatic recognizes continuous parenteral orders and continuous nebulized/inhaled orders mapped to Respiratory, not PRN boluses. Overrides remember the exact formulation, route and frequency. No dose is copied to another order. Display grouping applies in Neurologic, Cardiovascular, Respiratory and Hematology. DVT infusion labels are retained. Named PRN and fever-control groups remain separate.")
         for index, rule in enumerate(st.session_state["vault"]["settings"]["medication_infusions"]):
             st.text(rule["name"] + " | " + rule["route"] + " | " + rule["frequency"] + " -> " + MODE_LABELS[rule["mode"]])
             key = "infusion_rule_mode_" + str(index)

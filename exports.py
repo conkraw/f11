@@ -11,10 +11,10 @@ from datetime import datetime
 import time
 import re
 from import_review import review_summary
-from models import SYSTEMS, fields_with_medications, validate_sheet, automatic_vitals, section_label
+from models import SYSTEMS, fields_with_medications, validate_sheet, automatic_vitals, section_label, respiratory_text
 from infusions import (neuro_body, cardiovascular_body, hematology_body, is_infusion, infusion_entry,
-                       system_body_blocks, render_body_blocks)
-from labs import lactate_text
+                       system_body_blocks, render_body_blocks, INFUSION_SECTIONS)
+from labs import lactate_text, theophylline_text
 from medications import visible, format_medication
 from output_text import medication_output
 from fen_gi import effective_section, fen_gi_body
@@ -56,17 +56,31 @@ def patient_column(sheet: dict, fields: dict) -> str:
     return "\n\n".join(lines)
 
 
+def infusion_section_prefix(sheet: dict, section: str, has_body: bool) -> str:
+    """The same vitals/support/lab lead-in for HTML and grouped PDF columns."""
+    parts = [automatic_vitals(sheet).get(section, "")]
+    trailing_support_separator = False
+    if section == "Cardiovascular":
+        parts.append(lactate_text(sheet["labs"]))
+    elif section == "Respiratory":
+        support = respiratory_text(sheet)
+        level = theophylline_text(sheet["labs"])
+        parts.extend((support, level))
+        trailing_support_separator = bool(support and not level)
+    prefix = "\n-----\n".join(v for v in parts if v.strip())
+    if prefix and (has_body or trailing_support_separator):
+        prefix += "\n-----" + ("\n" if has_body else "")
+    return prefix
+
+
 def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
-    """Bold only generated microorganism names, never arbitrary source markup."""
+    """Escape source text while emphasizing generated headings, names and doses."""
     text = fields[section]
     if section == "FEN / GI":
         return fen_gi_body(sheet["fields"][section], sheet["medications"], sheet["intake_output"], True, esc)
-    if section in ("Neurologic", "Cardiovascular", "Hematology"):
+    if section in INFUSION_SECTIONS:
         body = render_body_blocks(system_body_blocks(section, sheet["fields"][section], sheet["medications"]), True, esc)
-        before = [automatic_vitals(sheet).get(section, "")]
-        if section == "Cardiovascular":
-            before.append(lactate_text(sheet["labs"]))
-        return "\n-----\n".join([esc(v) for v in before if v.strip()] + ([body] if body.strip() else []))
+        return esc(infusion_section_prefix(sheet, section, bool(body.strip()))) + body
     if section == "Diagnoses":
         plain = viral_text(sheet["viral_panel"])
         if plain and text.endswith(plain):
@@ -201,24 +215,26 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
                 return []
             return super().split(availWidth, availHeight)
     for column_index, (_, section) in enumerate(COLUMNS):
-        if section not in ("Neurologic", "Cardiovascular", "Hematology"):
+        if section not in INFUSION_SECTIONS:
             continue
         blocks = system_body_blocks(section, sheet["fields"][section], sheet["medications"])
         q = []
-        before = [automatic_vitals(sheet).get(section, "")]
-        if section == "Cardiovascular":
-            before.append(lactate_text(sheet["labs"]))
-        before = [v for v in before if v.strip()]
-        if before:
-            q.extend(paragraphs("\n-----\n".join(before) + ("\n-----" if blocks else "")))
+        prefix_text = infusion_section_prefix(sheet, section, bool(blocks)).rstrip("\n")
+        if prefix_text:
+            q.extend(paragraphs(prefix_text))
         index = 0
         while index < len(blocks):
             kind, item = blocks[index]
             prefix = ""
-            if kind == "heading" and index + 1 < len(blocks) and blocks[index + 1][0] == "infusion":
-                prefix = "<b>" + _clinical_markup(item) + "</b>\n"
-                index += 1
-                kind, item = blocks[index]
+            if kind in ("heading", "subheading"):
+                next_index = index
+                while next_index < len(blocks) and blocks[next_index][0] in ("heading", "subheading"):
+                    next_index += 1
+                if next_index < len(blocks) and blocks[next_index][0] == "infusion":
+                    # Keep the group/subgroup labels with the first name/dose.
+                    prefix = render_body_blocks(blocks[index:next_index], True, _clinical_markup) + "\n"
+                    index = next_index
+                    kind, item = blocks[index]
             if kind == "infusion":
                 markup = prefix + infusion_entry(item, True, _clinical_markup, handoff_only=True)
                 q.append(InfusionParagraph(markup.replace("\n", "<br/>"), style))

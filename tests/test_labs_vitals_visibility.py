@@ -190,7 +190,7 @@ def test_vitals_always_before_support_lactate_notes_and_meds():
     s['fields']['Infectious Disease']='ID MANUAL'
     s['medications']=remap(s['medications'],upsert_rule([],'albuterol','Respiratory'))
     f=fields_with_medications(s)
-    assert f['Respiratory'].index('Resp:')<f['Respiratory'].index('Vent Mode:')<f['Respiratory'].index('RESP MANUAL')<f['Respiratory'].index('albuterol')
+    assert f['Respiratory'].index('Resp:')<f['Respiratory'].index('Vent Mode:')<f['Respiratory'].index('Respiratory Infusions')<f['Respiratory'].index('albuterol')<f['Respiratory'].index('RESP MANUAL')
     assert f['Cardiovascular'].index('Heart Rate:')<f['Cardiovascular'].index('LACTIC ACID:')<f['Cardiovascular'].index('CARDIAC MANUAL')
     assert f['Infectious Disease'].startswith('Temp:')
 
