@@ -51,10 +51,10 @@ def test_no_unapproved_vault_fields():
 
 def test_rooms_exact():
     assert DEFAULT_ROOMS == ['P4102','P4104','P4106','P4108','P4110','P4112','P4114','P4116',
-                             '4201','4203','4209','4211','4213','4215','4217','4219','4221','4223']
+                             'P4201','P4203','P4209','P4211','P4213','P4215','P4217','P4219','P4221','P4223']
 
 
-@pytest.mark.parametrize('room,expected', [('4102','P4102'), ('p4104','P4104'), ('P4201','4201'), ('p4213','4213'), ('4307','4307')])
+@pytest.mark.parametrize('room,expected', [('4102','P4102'), ('p4104','P4104'), ('P4201','P4201'), ('p4213','P4213'), ('4307','4307')])
 def test_room_aliases(room, expected):
     assert normalize_room(room) == expected
 

@@ -10,7 +10,9 @@ from copy import deepcopy
 from datetime import datetime
 import time
 import re
-from models import SYSTEMS, fields_with_medications, validate_sheet
+from models import SYSTEMS, fields_with_medications, validate_sheet, automatic_vitals
+from infusions import neuro_body, is_infusion, infusion_entry
+from medications import visible, format_medication
 from lab_layout import laboratory_flowables, laboratory_html, LabRow
 from cultures import cultures_text
 from viral import viral_text
@@ -50,6 +52,10 @@ def patient_column(sheet: dict, fields: dict) -> str:
 def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
     """Bold only generated microorganism names, never arbitrary source markup."""
     text = fields[section]
+    if section == "Neurologic":
+        body = neuro_body(sheet["fields"][section], sheet["medications"], True, esc)
+        vitals = automatic_vitals(sheet).get(section, "")
+        return (esc(vitals) + ("\n-----\n" if body else "") if vitals else "") + body
     if section == "Diagnoses":
         plain = viral_text(sheet["viral_panel"])
         if plain and text.endswith(plain):
@@ -160,7 +166,7 @@ def _clinical_markup(text: str) -> str:
 
 def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.platypus import Paragraph
+    from reportlab.platypus import Paragraph, Spacer
     fields = fields_with_medications(sheet, include_lab_text=False)
     total_width = page_width - 2 * PRINT_MARGIN
     widths = [total_width * value for value in WIDTHS]
@@ -176,6 +182,35 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
 
     columns = [paragraphs(patient_markup(sheet, fields, _clinical_markup) if section is None else field_markup(sheet, fields, section, _clinical_markup), rich=True)
                for _, section in COLUMNS]
+    # Keep a compact infusion entry together so its name cannot be separated
+    # from the ordered dose at a page boundary. Extremely long custom entries
+    # still split instead of getting stuck or being clipped.
+    neuro_meds = [r for r in sheet["medications"] if visible(r) and r["section"] == "Neurologic"]
+    infusions = [r for r in neuro_meds if is_infusion(r)]
+    if infusions:
+        class InfusionParagraph(Paragraph):
+            def split(self, availWidth, availHeight):
+                if self.height <= 200:
+                    return []
+                return super().split(availWidth, availHeight)
+        q = []
+        vitals = automatic_vitals(sheet).get("Neurologic", "")
+        if vitals:
+            q.extend(paragraphs(vitals + "\n-----"))
+        for index, row in enumerate(infusions):
+            if index:
+                q.append(Spacer(1, 2))
+            markup = ("<b>INFUSIONS</b>\n" if index == 0 else "") + infusion_entry(row, True, _clinical_markup)
+            q.append(InfusionParagraph(markup.replace("\n", "<br/>"), style))
+        notes = sheet["fields"]["Neurologic"]
+        if notes.strip():
+            q.extend(paragraphs("-----\n" + notes.rstrip()))
+        others = [r for r in neuro_meds if not is_infusion(r)]
+        if others:
+            q.extend(paragraphs("-----\n<b>OTHER MEDICATIONS</b>", rich=True))
+            for row in others:
+                q.extend(paragraphs(format_medication(row)))
+        columns[1] = q
     band_items = [(name, fields[name]) for name in BOTTOM]
     extra = '\n'.join(name + ': ' + fields[name] for name in ('Skin / Wounds', 'Tasks', 'Other')
                       if fields[name].strip())

@@ -1,12 +1,12 @@
-PICU Handoff 6.10: complete package
+PICU Handoff 6.11: complete package
 
-Replace matching application files with the contents of this folder.
-Keep app.py at the repository root. Include requirements.txt.
-New modules: microbiology_display.py, print_time.py.
+Extract PICU611.zip. Upload the contents of PICU_Handoff_v6_11_Rooms_Infusions
+into the existing application code repository, replacing matching files.
+Keep app.py at the root. Include infusions.py and every supplied Python module.
+No new dependencies relative to 6.10.
 
-Sidebar: Version 6.10 | Room autosave and clean printing
-
-Do not replace deployment Secrets or regenerate the encryption key.
-No saved-data schema change. Existing records and settings stay compatible.
-Streamlit minimum: 1.52. New timezone dependency: tzdata.
-All other previous features are included. No direct GitHub code edits were made.
+Keep deployment Secrets, password hash, encryption key, token and data repo.
+Do not rerun either secrets generator.
+The archive upgrades to schema 11 on its next save. Do not downgrade partial files.
+Sidebar: Version 6.11 | Custom rooms and neurologic infusions
+No direct GitHub code changes were made in creating this ZIP.

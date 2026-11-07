@@ -1,6 +1,7 @@
-"""PICU SmartPhrase v6.10: clean workspace, room autosave and print formatting."""
+"""PICU SmartPhrase v6.11: custom room removal, P-prefixed presets and neuro infusions."""
 from __future__ import annotations
 from copy import deepcopy
+from html import escape
 from pathlib import Path
 import time
 
@@ -10,7 +11,7 @@ from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, hando
 from github_store import GitHubConfig, GitHubVault, StorageError
 from models import (MAX_FIELD, SYSTEMS, ValidationError, new_sheet, new_vault,
                     normalize_room, save_sheet_in, validate_vault, validate_sheet,
-                    upgrade_vault, fields_with_medications, respiratory_text, automatic_vitals, SCHEMA_VERSION)
+                    upgrade_vault, fields_with_medications, respiratory_text, automatic_vitals, SCHEMA_VERSION, DEFAULT_ROOMS)
 from medications import (DESTINATIONS, format_medication, suggested_key, upsert_rule,
                          remap, rule_for_inline_mapping, validate_medication, visible, hidden_for, set_visibility_rule)
 from ventilation import LABELS, format_ventilation, validate_ventilation
@@ -27,6 +28,8 @@ from demographics import validate_dosing_weight, validate_admission_date, demogr
 from cultures import validate_cultures, cultures_text, compact_groups, category_for
 from viral import validate_viral_panel, viral_text
 from microbiology_display import culture_markup, viral_markup
+from infusions import (MODES, MODE_LABELS, is_infusion, infusion_entry, neuro_body,
+                       set_infusion_rule, apply_infusion_rules, infusion_key, infusion_mode_for)
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title="PICU Handoff", layout="wide", initial_sidebar_state="expanded")
@@ -99,10 +102,14 @@ def editor_snapshot(room: str) -> dict:
         if key in ss:
             sheet["fields"][section] = ss[key]
     for row in sheet["medications"]:
+        old_signature = infusion_key(row)
+        old_mode = row.get("infusion_mode", "auto")
         prefix = "med_draft_" + row["id"] + "_"
-        for field in ("name", "dose", "route", "frequency", "last_rate", "rate_time", "section", "custom_text", "include"):
+        for field in ("name", "dose", "route", "frequency", "last_rate", "rate_time", "section", "custom_text", "include", "infusion_mode"):
             if prefix + field in ss:
                 row[field] = ss[prefix + field]
+        if infusion_key(row) != old_signature and row.get("infusion_mode", "auto") == old_mode:
+            row["infusion_mode"] = infusion_mode_for(row, ss["vault"]["settings"]["medication_infusions"])
     for group, prefix, fields in (
         (sheet["labs"]["rows"], "lab_", ("value", "date", "include")),
         (sheet["viral_panel"]["rows"], "viral_", ("name", "result", "date", "include")),
@@ -184,6 +191,7 @@ def autosave_before_room_change(store: GitHubVault | None) -> bool:
         candidate = deepcopy(ss["vault"])
         rules = candidate["settings"]["medication_mappings"]
         changed_rules = False
+        infusion_rules = candidate["settings"]["medication_infusions"]
         old_rows = {row["id"]: row for row in prior["medications"]}
         for row in draft["medications"]:
             old = old_rows.get(row["id"])
@@ -191,9 +199,13 @@ def autosave_before_room_change(store: GitHubVault | None) -> bool:
                 name, match = rule_for_inline_mapping(row["name"], rules)
                 rules = upsert_rule(rules, name, row["section"], match)
                 changed_rules = True
+            if old is not None and old.get("infusion_mode", "auto") != row.get("infusion_mode", "auto"):
+                infusion_rules = set_infusion_rule(infusion_rules, row, row.get("infusion_mode", "auto"))
+                changed_rules = True
         if changed_rules:
             candidate["settings"]["medication_mappings"] = rules
-            draft["medications"] = remap(draft["medications"], rules, candidate["settings"]["medication_visibility"])
+            candidate["settings"]["medication_infusions"] = infusion_rules
+            draft["medications"] = apply_infusion_rules(remap(draft["medications"], rules, candidate["settings"]["medication_visibility"]), infusion_rules)
         candidate = save_sheet_in(candidate, draft)
         commit(candidate, store)
     except (StorageError, ValidationError, ValueError) as exc:
@@ -731,10 +743,10 @@ def reapply_open_mappings() -> None:
     ss = st.session_state
     rules = ss["vault"]["settings"]["medication_mappings"]
     for sheet in ss.get("drafts", {}).values():
-        sheet["medications"] = remap(sheet["medications"], rules, ss["vault"]["settings"]["medication_visibility"])
+        sheet["medications"] = apply_infusion_rules(remap(sheet["medications"], rules, ss["vault"]["settings"]["medication_visibility"]), ss["vault"]["settings"]["medication_infusions"])
     # These callbacks run before the widgets are instantiated on the next run.
     for key in list(ss):
-        if key.startswith("med_") and key.endswith("_section"):
+        if (key.startswith("med_") and key.endswith(("_section", "_infusion_mode"))) or key.startswith("infusion_rule_mode_"):
             ss.pop(key, None)
 
 
@@ -748,12 +760,20 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
     original = next((r for r in rows if r["id"] == row_id), None)
     if original is None:
         return
-    old_value = original[field]
+    old_value = original.get(field, "auto") if field == "infusion_mode" else original[field]
     edited = deepcopy(original)
     edited[field] = ss[widget_key]
     try:
         validate_medication(edited)
-        if field == "section":
+        if field == "infusion_mode":
+            candidate = deepcopy(ss["vault"])
+            candidate["settings"]["medication_infusions"] = set_infusion_rule(
+                candidate["settings"]["medication_infusions"], edited, edited["infusion_mode"])
+            commit(candidate, store)
+            reapply_open_mappings()
+            note("Infusion display choice remembered for this formulation, route and frequency." +
+                 (" Saved to encrypted GitHub." if store else " Session-only test mode."), "success")
+        elif field == "section":
             rules = ss["vault"]["settings"]["medication_mappings"]
             name, match = rule_for_inline_mapping(edited["name"], rules)
             new_rules = upsert_rule(rules, name, edited["section"], match)
@@ -767,6 +787,9 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
                 ss.pop(key, None)
             note("Medication destination remembered in Admin." + (" Saved to encrypted GitHub." if store else " Session-only test mode."), "success")
         else:
+            if field in ("name", "route", "frequency"):
+                edited["infusion_mode"] = infusion_mode_for(edited, ss["vault"]["settings"]["medication_infusions"])
+                ss.pop("med_draft_" + row_id + "_infusion_mode", None)
             if field == "name":
                 edited["hidden"] = hidden_for(edited["name"], ss["vault"]["settings"]["medication_visibility"])
             original.update(edited)
@@ -820,8 +843,16 @@ def upgrade_existing_session() -> None:
     for key in ("drafts", "base_sheets"):
         changes[key] = {}
         for room, sheet in ss.get(key, {}).items():
-            changes[key][room] = None if sheet is None else upgrade_vault({"schema": old_schema, "settings": old_settings, "rooms": {room: sheet}})["rooms"][room]
+            canonical = normalize_room(room)
+            if canonical in changes[key]:
+                raise ValidationError("Two open room aliases conflict. Save and resolve them before upgrading.")
+            changes[key][canonical] = None if sheet is None else upgrade_vault({"schema": old_schema, "settings": old_settings, "rooms": {room: sheet}})["rooms"][canonical]
     ss.update(vault=converted, **changes)
+    for key in ("current_room", "room_choice"):
+        if ss.get(key) and ss[key] not in ("Choose a room", "Other room"):
+            ss[key] = normalize_room(ss[key])
+    for key in ("admin_rooms", "print_rooms", "print_room_options", "removed_room"):
+        ss.pop(key, None)
     for key in ("pending", "diagnosis_preview", "medication_pending"):
         ss.pop(key, None)
     discard_editor_widget_values()
@@ -901,7 +932,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.10 | Room autosave and clean printing")
+        st.caption("Version 6.11 | Custom rooms and neurologic infusions")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -925,13 +956,26 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
         prefix = "med_draft_" + row["id"] + "_"
         summary, destination = st.columns([3, 1])
         with summary:
-            st.text(f"{number}. " + format_medication(row) + (" [HIDDEN]" if row["hidden"] else "" if row["include"] else " [EXCLUDED]"))
+            suffix = " [HIDDEN]" if row["hidden"] else "" if row["include"] else " [EXCLUDED]"
+            if row["section"] == "Neurologic" and is_infusion(row):
+                st.markdown('<div style="white-space:pre-wrap;border-left:3px solid #555;padding-left:8px">' +
+                            str(number) + '. <b>INFUSION</b>' + suffix + '\n' +
+                            infusion_entry(row, True) + '</div>', unsafe_allow_html=True)
+            else:
+                st.text(f"{number}. " + format_medication(row) + suffix)
         with destination:
             key = prefix + "section"
             if key not in st.session_state:
                 st.session_state[key] = row["section"]
             st.selectbox("System for order " + str(number), DESTINATIONS, key=key,
                          on_change=medication_row_change, args=(room, row["id"], "section", key, store))
+        if row["section"] == "Neurologic":
+            key = prefix + "infusion_mode"
+            if key not in st.session_state:
+                st.session_state[key] = row.get("infusion_mode", "auto")
+            st.selectbox("Neuro display for order " + str(number), MODES, key=key,
+                         format_func=lambda value: MODE_LABELS[value], on_change=medication_row_change,
+                         args=(room, row["id"], "infusion_mode", key, store))
         st.button("Restore to handoff" if row["hidden"] else "Hide from handoff", key="hide_med_" + row["id"], on_click=hide_medication, args=(room, row["id"], not row["hidden"], store))
         with st.expander("Edit details for order " + str(number), expanded=False):
             def widget(field: str, label: str, kind: str = "text"):
@@ -1043,6 +1087,8 @@ def handoff_page(store: GitHubVault | None) -> None:
     if "room_choice" not in ss:
         ss["room_choice"] = ss.get("current_room", "Choose a room")
     st.selectbox("Room", ["Choose a room"] + choices + ["Other room"], key="room_choice", on_change=room_changed, args=(store,))
+    if ss.get("removed_room"):
+        st.button("Undo last room removal", key="undo_room_handoff", on_click=undo_room_removal, args=(store,))
     if ss.get("room_choice") == "Other room":
         st.text_input("Other room number", key="other_room", max_chars=16)
         st.button("Open room", on_click=open_room, args=(store,))
@@ -1057,6 +1103,10 @@ def handoff_page(store: GitHubVault | None) -> None:
         return
     sheet = ss["drafts"][room]
     st.subheader("Room " + room)
+    if room not in DEFAULT_ROOMS:
+        with st.expander("Custom room options"):
+            st.caption("Remove this custom room and its current saved handoff. Undo is available during this session. Medication rules are unchanged.")
+            st.button("Remove custom room", key="remove_current_room", on_click=remove_custom_room, args=(room, store))
     saved = ss["vault"]["rooms"].get(room)
     st.caption("Saved" if saved == sheet else "Changes will save automatically when you change rooms")
     if ss.get("base_sheets", {}).get(room) != saved:
@@ -1126,9 +1176,12 @@ def handoff_page(store: GitHubVault | None) -> None:
                 if section == "Infectious Disease" and cultures_text(sheet["cultures"]):
                     st.markdown('<div style="white-space:pre-wrap">------\n' + culture_markup(sheet["cultures"]) + '</div>', unsafe_allow_html=True)
                     st.caption("Edit imported specimens and results in Cultures. Temperature stays first in the printed ID column.")
-                for row in sheet["medications"]:
-                    if visible(row) and row["section"] == section:
-                        st.text(format_medication(row))
+                if section == "Neurologic":
+                    st.markdown('<div style="white-space:pre-wrap">' + neuro_body("", sheet["medications"], True) + '</div>', unsafe_allow_html=True)
+                else:
+                    for row in sheet["medications"]:
+                        if visible(row) and row["section"] == section:
+                            st.text(format_medication(row))
                 if section == "Diagnoses" and demographic_weight_text(sheet["nutrition"], sheet["dosing_weight"]):
                     st.text("----\n" + demographic_weight_text(sheet["nutrition"], sheet["dosing_weight"]))
                     st.caption("Edit measured weight, Z-score, dosing weight and admission date in Labs / Vitals.")
@@ -1242,13 +1295,166 @@ def save_admin_settings(store: GitHubVault | None) -> None:
         return
     ss = st.session_state
     try:
-        rooms = [normalize_room(line) for line in ss.get("admin_rooms", "").splitlines() if line.strip()]
+        rooms = list(dict.fromkeys(normalize_room(line) for line in ss.get("admin_rooms", "").splitlines() if line.strip()))
         candidate = deepcopy(ss["vault"])
         candidate["settings"].update(diagnoses_destination=ss["admin_diagnosis_dest"], rooms=rooms)
         commit(candidate, store)
+        ss["admin_rooms"] = "\n".join(rooms)
         note("Room and diagnosis settings saved.", "success")
     except (ValidationError, StorageError) as exc:
         note(str(exc), "error")
+
+
+def custom_room_names() -> list[str]:
+    ss = st.session_state
+    return [r for r in dict.fromkeys(ss["vault"]["settings"]["rooms"] +
+            list(ss["vault"]["rooms"]) + list(ss.get("drafts", {}))) if r not in DEFAULT_ROOMS]
+
+
+def remove_custom_room(room: str, store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    try:
+        room = normalize_room(room)
+        if room in DEFAULT_ROOMS:
+            raise ValidationError("This control removes custom rooms only. Preset rooms are kept.")
+        if room not in custom_room_names():
+            raise ValidationError("The custom room is no longer present.")
+        if room in ss.get("drafts", {}) and ss.get("base_sheets", {}).get(room) != ss["vault"]["rooms"].get(room):
+            raise ValidationError("A newer saved sheet exists for this room. Reload and compare before removing it.")
+        draft = (editor_snapshot(room) if room == ss.get("current_room") else
+                 deepcopy(ss.get("drafts", {}).get(room)))
+        removed = {"room": room, "saved": deepcopy(ss["vault"]["rooms"].get(room)),
+                   "draft": draft, "base": deepcopy(ss.get("base_sheets", {}).get(room)),
+                   "listed": room in ss["vault"]["settings"]["rooms"]}
+        candidate = deepcopy(ss["vault"])
+        candidate["rooms"].pop(room, None)
+        candidate["settings"]["rooms"] = [r for r in candidate["settings"]["rooms"] if r != room] or list(DEFAULT_ROOMS)
+        commit(candidate, store)
+    except (StorageError, ValueError, KeyError, TypeError) as exc:
+        note("The room was not removed. " + str(exc), "error")
+        return
+    except Exception:
+        note("Room removal was not confirmed. Keep your draft and reload the saved archive before retrying.", "error")
+        return
+    ss["removed_room"] = removed
+    ss.get("drafts", {}).pop(room, None)
+    ss.get("base_sheets", {}).pop(room, None)
+    ss["admin_rooms"] = "\n".join(candidate["settings"]["rooms"])
+    for key in ("print_rooms", "print_room_options", "custom_room_remove_choice"):
+        ss.pop(key, None)
+    if ss.get("current_room") == room:
+        discard_editor_widget_values()
+        ss.pop("current_room", None)
+        ss["room_choice"] = "Choose a room"
+        ss["paste"] = ""
+        ss.pop("import_result", None)
+    note("Custom room and current saved handoff removed. Undo is available during this session. Earlier encrypted Git history is not erased.", "success")
+
+
+def undo_room_removal(store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    removed = ss.get("removed_room")
+    if not removed:
+        return
+    room = removed["room"]
+    if room in custom_room_names():
+        note("That room has been added again. Undo will not overwrite it.", "error")
+        return
+    candidate = deepcopy(ss["vault"])
+    if removed["listed"] or removed["saved"] is None:
+        candidate["settings"]["rooms"].append(room)
+    if removed["saved"] is not None:
+        candidate["rooms"][room] = deepcopy(removed["saved"])
+    try:
+        commit(candidate, store)
+    except (ValueError, StorageError) as exc:
+        note("Undo was not saved. " + str(exc), "error")
+        return
+    if removed["draft"] is not None:
+        ss.setdefault("drafts", {})[room] = deepcopy(removed["draft"])
+        ss.setdefault("base_sheets", {})[room] = deepcopy(removed["base"])
+    ss.pop("removed_room", None)
+    ss["admin_rooms"] = "\n".join(candidate["settings"]["rooms"])
+    for key in ("print_rooms", "print_room_options", "custom_room_remove_choice"):
+        ss.pop(key, None)
+    note("Room restored. Any prior unsaved draft is retained separately from its saved handoff.", "success")
+
+
+def remove_selected_custom_room(store: GitHubVault | None) -> None:
+    room = st.session_state.get("custom_room_remove_choice")
+    if room:
+        remove_custom_room(room, store)
+
+
+def custom_room_admin(store: GitHubVault | None) -> None:
+    st.subheader("Custom rooms")
+    names = custom_room_names()
+    if names:
+        if st.session_state.get("custom_room_remove_choice") not in names:
+            st.session_state["custom_room_remove_choice"] = names[0]
+        st.selectbox("Custom room to remove", names, key="custom_room_remove_choice")
+        st.caption("Removes the room and its current saved handoff, not medication rules. Preset rooms are not listed here.")
+        st.button("Remove selected custom room", on_click=remove_selected_custom_room, args=(store,))
+    else:
+        st.caption("No custom rooms to remove.")
+    if st.session_state.get("removed_room"):
+        st.button("Undo last room removal", key="undo_room_admin", on_click=undo_room_removal, args=(store,))
+
+
+def reset_infusion_rule(key: tuple[str, str, str], store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    candidate = deepcopy(ss["vault"])
+    candidate["settings"]["medication_infusions"] = [r for r in candidate["settings"]["medication_infusions"]
+        if (r["name"], r["route"], r["frequency"]) != key]
+    try:
+        commit(candidate, store)
+        reapply_open_mappings()
+        note("Infusion display restored to Automatic. System assignments are unchanged.", "success")
+    except (ValueError, StorageError) as exc:
+        note(str(exc), "error")
+
+
+def edit_saved_infusion_rule(key: tuple[str, str, str], widget: str, store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    rules = ss["vault"]["settings"]["medication_infusions"]
+    existing = next((r for r in rules if (r["name"], r["route"], r["frequency"]) == key), None)
+    if existing is None:
+        note("The selected infusion rule changed. Reload Admin before editing it.", "error")
+        return
+    candidate = deepcopy(ss["vault"])
+    try:
+        row = dict(zip(("name", "route", "frequency"), key))
+        candidate["settings"]["medication_infusions"] = set_infusion_rule(rules, row, ss[widget])
+        commit(candidate, store)
+        reapply_open_mappings()
+        for k in list(ss):
+            if k.startswith("infusion_rule_mode_"):
+                ss.pop(k, None)
+        note("Infusion display rule updated. System assignments are unchanged.", "success")
+    except (ValueError, StorageError) as exc:
+        ss[widget] = existing["mode"]
+        note(str(exc), "error")
+
+
+def infusion_admin(store: GitHubVault | None) -> None:
+    with st.expander("Infusion display choices"):
+        st.caption("Automatic recognizes continuous parenteral orders, not PRN boluses. Overrides remember the exact formulation, route and frequency. No dose is copied to another order. Display grouping applies in Neurologic only.")
+        for index, rule in enumerate(st.session_state["vault"]["settings"]["medication_infusions"]):
+            st.text(rule["name"] + " | " + rule["route"] + " | " + rule["frequency"] + " -> " + MODE_LABELS[rule["mode"]])
+            key = "infusion_rule_mode_" + str(index)
+            if key not in st.session_state:
+                st.session_state[key] = rule["mode"]
+            st.selectbox("Display choice " + str(index + 1), MODES, key=key,
+                         format_func=lambda v: MODE_LABELS[v], on_change=edit_saved_infusion_rule,
+                         args=((rule["name"], rule["route"], rule["frequency"]), key, store))
 
 
 def admin_page(store: GitHubVault | None) -> None:
@@ -1279,6 +1485,8 @@ def admin_page(store: GitHubVault | None) -> None:
     else:
         st.info("No saved mappings yet. Unmapped medications go to Other Medications.")
     visibility_admin(store)
+    infusion_admin(store)
+    custom_room_admin(store)
     st.subheader("Room and diagnosis settings")
     if "admin_rooms" not in ss:
         ss["admin_rooms"] = "\n".join(settings["rooms"])

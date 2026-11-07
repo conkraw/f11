@@ -20,7 +20,7 @@ def test_batch_includes_saved_and_latest_drafts_without_duplicate_rooms():
     draft=deepcopy(saved)
     draft['fields']['Diagnoses']='NEWTOKEN'
     ready=available_handoffs(v,{'P4102':draft,'P4104':filled('P4104','DRAFTTOKEN')})
-    assert list(ready)==['P4102','P4104','4201']
+    assert list(ready)==['P4102','P4104','P4201']
     assert ready['P4102']['fields']['Diagnoses']=='NEWTOKEN'
     assert v['rooms']['P4102']['fields']['Diagnoses']=='OLDTOKEN'
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from models import validate_sheet, apply_diagnoses, apply_medications, apply_respiratory, ValidationError
 from parser import parse_smartphrase, SECTION_NAMES, MAX_PASTE
 from medications import parse_medications
+from infusions import apply_infusion_rules
 from noninvasive import parse_respiratory
 from labs import parse_labs
 from vitals import parse_vitals
@@ -57,7 +58,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 if meds.error:
                     out.errors.extend([meds.error] + meds.issues)
                     continue
-                candidate = apply_medications(candidate, meds.rows)
+                candidate = apply_medications(candidate, apply_infusion_rules(meds.rows, settings.get("medication_infusions", [])))
                 out.imported.append(str(len(meds.rows)) + " medication orders")
             elif letter in "cd":
                 if letter == "d" and ("c" in parsed.blocks or "c" in parsed.invalid):

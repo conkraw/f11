@@ -105,7 +105,7 @@ def test_session_upgrade_preserves_unsaved_notes(app):
     ss.update(vault=old,drafts={'P4102':deepcopy(old['rooms']['P4102'])},base_sheets={'P4102':deepcopy(old['rooms']['P4102'])})
     ss['drafts']['P4102']['fields']['Respiratory']='Unsaved old draft'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==10
+    assert ss['vault']['schema']==11
     assert ss['drafts']['P4102']['fields']['Respiratory']=='Unsaved old draft'
     assert ss['base_sheets']['P4102']['fields']['Respiratory']==''
     assert ss['drafts']['P4102']['medications']==[]

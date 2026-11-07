@@ -1,107 +1,134 @@
-# PICU Handoff 6.10: room autosave and clean printing
+# PICU Handoff 6.11: custom rooms and neurologic infusions
 
-Complete web-app ZIP. No direct code-repository change is made by distributing it.
+Complete web-app package. Delivered as a ZIP only. No direct repository changes.
 
-## Update the existing app
+## Update your existing application
 
-1. Save open work before replacing the app files.
-2. Extract PICU610.zip and open PICU_Handoff_v6_10_Workflow. Upload its contents
-   into your existing application code repository, replacing matching files.
-   Keep app.py at the repository root.
-3. Include all Python files and requirements.txt. New modules are print_time.py
-   and microbiology_display.py. The host must install Streamlit 1.52 or newer for
-   click-time downloads and tzdata for Eastern-time rules. They are in requirements.txt.
-4. Keep Streamlit Secrets, password hash, encryption key, GitHub token and private
-   data repository unchanged. Do not rerun the secrets generator.
-5. Restart the deployment. The sidebar identifies Version 6.10.
+Save open work before replacing files. Extract PICU611.zip, open the
+PICU_Handoff_v6_11_Rooms_Infusions folder, and upload its contents into your existing
+application code repository. Replace matching files and keep app.py at the root.
+Include the new infusions.py module and all other supplied Python files.
 
-Storage schema remains 10. Existing handoffs, mapping rules, hidden medications
-and source observations are preserved. No re-paste is needed for display changes.
+Keep your existing Streamlit Secrets, password hash, encryption key, GitHub token,
+and private data repository unchanged. Do not rerun create_secrets.py or the
+secrets-generation notebook. No new dependencies relative to Version 6.10.
+Restart the deployment and look for:
 
-## Cleaner workspace
+    Version 6.11 | Custom rooms and neurologic infusions
 
-All Load ... example buttons are removed from the handoff screen. The paste box,
-Create / update handoff, editors, save controls, Admin and Print all remain.
-Synthetic text files are still included in examples/ for optional manual testing.
+## Custom rooms and preset labels
 
-## Automatic save before changing rooms
+All preset rooms use a capital P, including P4201, P4203, P4209 and P4211 through
+P4223. Entering a preset number without P opens the same room rather than a new
+bed. Custom labels outside the preset list are not automatically rewritten.
 
-Selecting a different room saves the outgoing room's imported results and edits
-through the existing encrypted storage path before the destination room opens.
-Choosing Other room also saves before the current editor is hidden. Unchanged
-saved handoffs do not create unnecessary commits. Only the outgoing handoff is
-saved by a room change. Existing explicit Save and Save all actions remain.
+Old numeric preset labels are migrated in the encrypted archive and in an open
+session. IDs, dates, notes, source values and saved medication mappings are kept.
+Conflicting room aliases are rejected rather than merged or overwritten.
 
-If storage fails, a validation problem occurs, or the saved room has changed in
-another session, the app keeps the current room and its editor values. The room
-selector returns to the current room. A visible error explains that the save was
-not confirmed. It does not silently advance or overwrite a conflicting record.
+To remove an added room, open it and expand Custom room options, then choose
+Remove custom room. Or open Admin > Custom rooms and remove a selected custom
+room without opening its handoff. Preset rooms are not listed for removal.
 
-The snapshot captures editor values delivered with the room-switch event,
-including a just-blurred text field. The original pasted SmartPhrase is not
-saved in the archive. Click Create / update handoff to import pasted text before
-switching rooms. Unsubmitted form text is not an imported handoff. Autosave does
-not mean the app can save after a browser closes, disconnects or expires. Save
-before logging out or closing the browser. In session-only test mode, the save
-is session-only and the app explicitly says GitHub storage is not enabled.
+Removal deletes that room's current saved handoff and open draft from the active
+archive/session and from Print all. It does not change medication mappings or
+other rooms. A failed or conflicting save leaves the room and draft in place.
+Undo last room removal is available during the same signed-in session, restoring
+the prior saved handoff and any separate unsaved draft. It will not overwrite a
+room that has since been added again. Only the last removal is available to undo.
+Older encrypted Git history is not securely erased by this action.
 
-## Print time at the upper left
+## Neurologic infusion display
 
-Every PDF page, including continuation pages and Print all, shows a timestamp at
-upper left. It is created at download time, not copied from the last saved time.
-One print packet shares one timestamp. Printable HTML refreshes its timestamp
-when the browser opens print preview or prints.
+Neurologic vitals, target arousal, WAT and ICP/CPP remain at the top. Visible
+medications mapped to Neurologic are grouped as:
 
-The timezone is America/New_York: EST in standard time and EDT during daylight
-saving time, independent of the server or browser's local timezone. The source
-handoff dates and values are not rewritten by this display change.
+    Neurologic observations
+    -----
+    INFUSIONS
+    Medication / complete formulation
+    Dose: explicit ordered dose
+    Recorded rate: source pump rate, when different and present
+    Route | Frequency
+    -----
+    Separate notes
+    -----
+    OTHER MEDICATIONS
+    Remaining scheduled, once and PRN entries
 
-A downloaded PDF cannot detect a later physical printer action. Its heading
-therefore says Print prepared. Regenerate it for a fresh timestamp when printing
-later. HTML changes its heading to Printed on the browser's beforeprint event.
-Plain-text exports include the preparation timestamp but cannot contain bold fonts.
+Infusion names are bold. Their explicit Dose line is bold and underlined. A
+recorded rate is separate so a weight-based dose is not confused with mL/hr. If
+Dose is blank, the recorded rate is emphasized instead. No dose is calculated,
+reused from another patient, or inferred from a product concentration. Blank dose
+and rate stay blank. The complete formulation, held/start labels and source
+qualifiers stay visible. User-supplied custom wording remains authoritative.
 
-## Viral heading and positive-organism emphasis
+Continuous parenteral orders are recognized automatically from their route and
+frequency. An infusion product name or a historical pump rate alone is not enough.
+A q30 min PRN infusion-syringe order remains separate as a non-infusion unless you
+explicitly change its display choice. This is display grouping, not a determination
+of current pump use or a treatment recommendation.
 
-The O-block summary now reads Rapid Viral Panel: followed by the selected positive
-viral names. The source SmartPhrase heading can remain Respiratory Viral Panel.
-Source codes, dates, inclusion settings and positive-only selection are unchanged.
+In Medications, each Neurologic order has a Neuro display dropdown: Automatic,
+Infusion, or Other medication. A change is saved as a reusable encrypted rule keyed
+to that complete formulation, route and frequency. It does not remap the medication
+to a system or copy its dose. It applies to matching open drafts and future imports.
+Previously saved handoffs are not silently rewritten. Their stored choices remain
+until they are imported or edited and saved again. Old handoffs with no choice use
+Automatic when rendered, without needing a new paste.
 
-Positive viral targets and named culture organism results are bold in the screen
-summary, handoff preview, PDF and printable HTML. For example, Candida parapsilosis
-is bold, while the collection date and sample location remain normal weight.
-No growth, negative, pending and administrative statuses are not emphasized.
-The wording and provisional/final status of a result are not changed. Bolding is
-a display aid, not a determination that an organism represents clinical infection.
-Manually typed notes are kept as plain source text, not interpreted as HTML.
+Admin > Infusion display choices allows changing or clearing an override even
+when no handoff is open. Automatic removes the override. Medication system mapping
+and hiding/restoration continue to work independently.
 
-## Existing functionality retained
+All print formats retain the grouping. PDF and HTML provide the bold/underlined
+emphasis. Plain text has headings and explicit Dose/Recorded rate labels but no
+font styling. Compact PDF entries stay together at page boundaries when they fit.
+Extremely long entries or handoffs continue instead of being clipped.
 
-The compact landscape format, CBC/BMP trees and dates, horizontal hepatic and
-coagulation summaries, CRP/procalcitonin in ID, separated culture groups,
-SpO2 ranges, neurologic observations, measured weight/Z-score/dosing-weight order,
-admission date, respiratory settings, medication taper/PN/ADS handling, remembered
-system assignments, hidden/restorable medications and Print all remain included.
-Long handoffs continue onto another page rather than having content cut off.
+## Saved-data migration
 
-## Data boundaries
+Schema 11 adds saved infusion display preferences and canonical preset-room labels.
+Schemas 1 through 10 migrate on load with the existing encryption key. The next
+successful save writes schema 11 to the same encrypted-data/handoff-v1.enc path.
+Do not downgrade individual application files after saving in the new schema.
+Keep the full update together. No raw pasted SmartPhrase is added to storage.
 
-The app host receives pasted content before storage encryption. Existing private
-archive checks and encryption remain. This update does not access your deployment
-Secrets or private records from ChatGPT. No source data is put into this package.
-Exports are unencrypted. Git history can retain older encrypted versions. A shared
-app password, encryption and absence of a name/MRN field alone do not establish
-institutional approval. Use only approved hosting/storage for clinical data.
+## Existing features retained
 
-## Testing and technical references
+Room-switch autosave, manual Save/Save all, no example-loading buttons, Eastern
+print-preparation timestamps, Rapid Viral Panel heading, bold positive organisms,
+compact landscape printing, CBC/BMP trees with dates, hepatic/coagulation summaries,
+CRP/procalcitonin in ID, separated cultures, SpO2 ranges, neurologic observations,
+weight/Z-score/dosing-weight order, admission date, respiratory settings, medication
+taper/PN/ADS handling, remembered system assignments and hidden medications remain.
 
-See TEST_REPORT.md for the actual checks and limitations. The preview is synthetic.
-For an optional manual test, paste examples/synthetic_viral_positive.txt into a
-room, create the handoff, edit a note, then switch rooms and reopen it. Verify the
-save in your own deployment. Use the printable preview to check the header and bold names.
+Click Create / update handoff after pasting. Unsubmitted pasted text is not an
+imported draft and is not automatically saved. A failed room-switch save keeps the
+current room open. Save before logout or closing the browser. Session-only mode
+is not durable storage. Print all uses each room's latest draft when present.
+
+## Printing and privacy
+
+PDFs receive an America/New_York timestamp when prepared for download (EST or EDT
+as applicable). Download a fresh PDF to print later with a fresh timestamp. The
+saved PDF cannot detect physical printing. HTML updates its timestamp when browser
+print preview opens. Exports are unencrypted.
+
+The app host processes pasted content before storage encryption. Private archive
+checks and encryption remain, but shared-password access and removing name/MRN
+fields do not establish clinical approval. Use institution-approved hosting and
+storage for patient information. No deployment secrets or private records were
+accessed while building this ZIP. Source examples are synthetic.
+
+## Testing
+
+See TEST_REPORT.md. For a synthetic visual example, open
+examples/rooms_infusions_preview.pdf or paste examples/synthetic_neuro_infusions.txt.
+The installed app starts with your existing mappings, not the example's illustrative
+mappings. Assign the example medications to Neurologic to see infusion grouping.
 
 Implementation references:
 - https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state
+- https://docs.streamlit.io/develop/api-reference/widgets/st.selectbox
 - https://docs.streamlit.io/1.52.0/develop/api-reference/widgets/st.download_button
-- https://docs.python.org/3/library/zoneinfo.html
-- https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeprint_event

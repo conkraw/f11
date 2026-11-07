@@ -1,59 +1,57 @@
-# Validation: Version 6.10
+# Validation: Version 6.11
 
 ## Executed checks
 
-The original Version 6.9 ZIP passed 863 tests before changes. The updated package
-passes 927 tests (863 retained/updated regressions and 64 new workflow/print tests)
-under Python 3.13. The complete suite is run with PYTHONPATH=. pytest -q
---disable-warnings. The delivery ZIP is extracted and the same full suite is run
-again before delivery.
+The original Version 6.10 archive passed 927 tests before changes. The updated
+code passes 996 tests under Python 3.13 using PYTHONPATH=. pytest -q
+--disable-warnings. The final delivery ZIP is extracted and the full suite is
+rerun before delivery. No tests are skipped in the suite.
 
-Existing tests were updated only where expected behavior intentionally changed:
-the Rapid Viral Panel heading, click-time download generators, and saved timestamps
-created by room-switch autosave. All clinical parsing/storage regression tests remain.
+The 927 retained tests were adjusted where the requested preset-room labels and
+schema number intentionally changed. Fabricated legacy fixtures were corrected
+to omit the new infusion-rule setting, as a real old archive would. Existing
+clinical parsers, export and encryption regressions remain in the suite.
 
-New coverage includes outgoing-room save order, expected-SHA forwarding, keeping
-the current room after network/conflict/unexpected failures, retry behavior,
-pending field values, pending medication mappings, stale-base conflicts,
-unchanged-room optimization, custom/Other room navigation, expired callbacks,
-late old-room callback isolation, no sample buttons, actual store arguments,
-EST/EDT date conversion and the repeated fall-back hour, identical print stamps
-across packet/continuation pages, deferred download generation, immutable private
-download snapshots, expired download callbacks, positive-only bold font spans,
-negative/pending/normal-flora exclusions, HTML escaping, and unchanged archive data.
+There are 69 new tests covering preset aliases, room-key/session migration,
+no-silent-merge protection, custom-room deletion and Undo, failed storage writes,
+conflicts, keeping other drafts and medication rules, preventing removed rooms
+from reappearing in Print all, expired callbacks, infusion/PRN classification,
+explicit display overrides, dose/rate separation, exact formulation/route/frequency
+matching, future reimports with different doses, pending widget edits on room
+switches, Admin editing without a handoff, HTML escaping, bold PDF font spans,
+heading order, hidden rows, and long-content pagination.
 
-A synthetic encrypted archive was generated using the original Version 6.9 code
-in an isolated process, then opened with Version 6.10 and the same generated test
-key. The decrypted archive was exactly equal. Schema remains 10, with no migration
-or key replacement required. Its original viral results render with the new label
-and bold names without changing the stored record.
+A synthetic schema-10 encrypted archive was generated in a separate Python
+process with the unmodified Version 6.10 code from PICU610.zip. Version 6.11 opened
+it with the same generated test key. All previous sheet fields, medication rows,
+IDs, timestamps and rules were preserved. The room key and embedded label changed
+from 4201 to P4201, as requested. The migrated vault encrypted/decrypted unchanged
+under schema 11. No real private data repository or user encryption key was used.
 
-The generated ReportLab preview is one Letter landscape page. It was rendered
-and visually inspected. Its timestamp is at upper left. Positive viral names and
-Candida parapsilosis use bold font spans. Negative culture text stays unbolded.
+The new synthetic preview has one landscape Letter page at 7.2-point body text.
+It was rendered and visually checked. Neuro observations are first, then two
+infusions with bold names and bold-underlined explicit doses. Recorded rates are
+separate. A PRN product containing the word infusion remains in Other Medications.
+The room is P4201. PDF text and font tests verify the content and emphasis.
+Compact infusion entries stay together across page boundaries. Oversized entries
+remain splittable and continue without clipping or endless pagination.
 
-A separate generated-HTML check ran in headless Chromium using Playwright. With
-the browser timezone set to Asia/Tokyo and a controlled instant, beforeprint
-updated the stamp to the expected America/New_York date/time with EST. Both
-positive names had bold markup. There were no JavaScript page errors. This tests
-the downloaded HTML, not a Streamlit browser session or a physical printer.
+## Limits
 
-## Limitations
+UI and callback tests use a widget stub, not the full Streamlit browser lifecycle.
+Installing Streamlit 1.52 into an isolated test directory was attempted, but the
+available package source returned no matching distribution. The real Streamlit
+interface, hosted deployment, and authenticated private GitHub saves were not run.
+The fake-store tests do not verify live connectivity, token permissions or hosting
+behavior. No direct GitHub operations were made.
 
-The full Streamlit runtime/browser interface and authenticated private GitHub
-storage were not tested. Installing Streamlit in this build environment failed
-because package-host DNS resolution was unavailable. UI tests use a widget stub.
-Mock storage checks do not establish live token permissions, network availability,
-hosted concurrency behavior, or successful deployment.
+Autosave requires imported handoff data and a live session. Unsubmitted paste-form
+text is not saved as an imported handoff. Deletion removes the current room record
+from the active archive, not historical encrypted commits. Undo is session-only
+and retains just the most recent removal. It will not overwrite a re-added room.
 
-A PDF records its download/preparation time and cannot update when the same saved
-file is printed later. Printable HTML uses the browser beforeprint event. That
-represents printing/print-preview initiation, not confirmation of a physical print.
-
-Autosave applies to imported handoffs and editor values received by the server.
-It does not parse unsubmitted paste-form text, save after a browser closes, or
-recover a disconnected/expired browser session. In session-only mode no persistent
-GitHub save occurs. A failed persistent save blocks the requested room change.
-
-These checks do not establish clinical validity, patient identification, institutional
-approval, privacy compliance, or a security audit of the hosting environment.
+Automatic infusion classification is only a display rule based on explicit source
+frequency and route. It is not a pump-status check. Held/future order labels are
+retained. Doses, concentrations and recorded rates are not recalculated. Existing
+custom wording remains authoritative. These checks do not establish clinical
+validity, identity of a room occupant, institutional approval or privacy compliance.
