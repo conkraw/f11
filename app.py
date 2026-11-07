@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.21: keep emphasized infusions in the DVT group."""
+"""PICU SmartPhrase v6.22: team user guide, reusable source and separate Admin unlock."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -26,6 +26,10 @@ from save_status import (room_save_status, saved_time_text, latest_saved_time,
                          most_recent_save_caption, save_status_table)
 from parser import MAX_PASTE, SECTION_NAMES
 from security import valid_password_hash, verify_password
+from admin_access import admin_valid, unlock_admin, lock_admin, config_error as admin_config_error
+from user_guide import (default_guide, publication, validate_guide, instructions_html,
+                        MAX_TEMPLATE, MAX_INSTRUCTIONS, MAX_NOTES)
+from guide_store import GuideStore
 from labs import validate_labs, lactate_text, id_labs_text, theophylline_text
 from cbc import validate_cbc, cbc_summary, cbc_selection_issues
 from recurring_orders import validate_orders, selected_orders, orders_text, order_line, recurring_frequency
@@ -573,13 +577,13 @@ def visibility_admin(store: GitHubVault | None) -> None:
         st.caption("No hidden medication rules.")
     for i, rule in enumerate(hidden):
         st.text(rule["name"] + " [" + rule["match"] + "]")
-        st.button("Restore this medication", key="restore_rule_" + str(i), on_click=change_visibility_rule,
+        st.button("Restore this medication", key="restore_rule_" + str(i), on_click=admin_visibility_rule,
                   args=(rule["name"], False, rule["match"], store))
     with st.expander("Previously restored rules"):
         for i, rule in enumerate(rules):
             if not rule["hidden"]:
                 st.text(rule["name"] + " [" + rule["match"] + "]")
-                st.button("Hide again", key="rehide_rule_" + str(i), on_click=change_visibility_rule,
+                st.button("Hide again", key="rehide_rule_" + str(i), on_click=admin_visibility_rule,
                           args=(rule["name"], True, rule["match"], store))
 
 
@@ -1140,6 +1144,8 @@ def idle_guard(minutes: int) -> None:
         if now - st.session_state.get("last_activity", now) > minutes * 60 or now - st.session_state.get("login_at", now) > 8 * 3600:
             clear_session()
             st.rerun()
+        elif st.session_state.get("admin_unlocked") and not admin_valid(st.session_state, admin_config()):
+            st.rerun()
 
 
 
@@ -1182,8 +1188,8 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.21 | Unified DVT Prophylaxis group")
-        page = st.radio("Workspace", ["Handoff", "Print all", "Admin", "Import errors"], key="page")
+        st.caption("Version 6.22 | User guide and protected Admin")
+        page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
         st.button("Log out", on_click=clear_session)
@@ -1197,6 +1203,8 @@ def main() -> None:
         getattr(st, kind)(text)
     if page == "Admin":
         admin_page(store)
+    elif page == "Instructions / SmartPhrase":
+        instructions_page(store)
     elif page == "Import errors":
         import_errors_page(store)
     elif page == "Print all":
@@ -1364,6 +1372,12 @@ def render_room_save_table(rooms: list[str], store: GitHubVault | None) -> None:
 
 def handoff_page(store: GitHubVault | None) -> None:
     st.title("Room handoff")
+    with st.expander("Instructions and Epic SmartPhrase", expanded=False):
+        st.caption("Select a room, run the team SmartPhrase in Epic, paste the generated text, create, review, and save. Full steps are in Instructions / SmartPhrase in the sidebar.")
+        guide = load_user_guide(store)
+        if st.session_state.get("guide_load_error"):
+            st.warning(st.session_state["guide_load_error"])
+        render_smartphrase(guide, key="handoff_guide")
     ss = st.session_state
     settings = ss["vault"]["settings"]
     choices = list(dict.fromkeys(settings["rooms"] + list(ss["vault"]["rooms"]) + list(ss.get("drafts", {}))))
@@ -1552,7 +1566,7 @@ def print_all_page(store: GitHubVault | None) -> None:
 
 
 def select_admin_rule() -> None:
-    if not require_session():
+    if not require_admin():
         return
     ss = st.session_state
     index = ss.get("admin_rule_index", -1)
@@ -1565,7 +1579,7 @@ def select_admin_rule() -> None:
 
 
 def save_admin_rule(store: GitHubVault | None) -> None:
-    if not require_session():
+    if not require_admin():
         return
     ss = st.session_state
     candidate = deepcopy(ss["vault"])
@@ -1585,7 +1599,7 @@ def save_admin_rule(store: GitHubVault | None) -> None:
 
 
 def remove_admin_rule(store: GitHubVault | None) -> None:
-    if not require_session():
+    if not require_admin():
         return
     ss = st.session_state
     index = ss.get("admin_rule_index", -1)
@@ -1605,7 +1619,7 @@ def remove_admin_rule(store: GitHubVault | None) -> None:
 
 
 def save_admin_settings(store: GitHubVault | None) -> None:
-    if not require_session():
+    if not require_admin():
         return
     ss = st.session_state
     try:
@@ -1699,6 +1713,8 @@ def undo_room_removal(store: GitHubVault | None) -> None:
 
 
 def remove_selected_custom_room(store: GitHubVault | None) -> None:
+    if not require_admin():
+        return
     room = st.session_state.get("custom_room_remove_choice")
     if room:
         remove_custom_room(room, store)
@@ -1716,11 +1732,11 @@ def custom_room_admin(store: GitHubVault | None) -> None:
     else:
         st.caption("No custom rooms to remove.")
     if st.session_state.get("removed_room"):
-        st.button("Undo last room removal", key="undo_room_admin", on_click=undo_room_removal, args=(store,))
+        st.button("Undo last room removal", key="undo_room_admin", on_click=admin_undo_room_removal, args=(store,))
 
 
 def reset_infusion_rule(key: tuple[str, str, str], store: GitHubVault | None) -> None:
-    if not require_session():
+    if not require_admin():
         return
     ss = st.session_state
     candidate = deepcopy(ss["vault"])
@@ -1735,7 +1751,7 @@ def reset_infusion_rule(key: tuple[str, str, str], store: GitHubVault | None) ->
 
 
 def edit_saved_infusion_rule(key: tuple[str, str, str], widget: str, store: GitHubVault | None) -> None:
-    if not require_session():
+    if not require_admin():
         return
     ss = st.session_state
     rules = ss["vault"]["settings"]["medication_infusions"]
@@ -1773,6 +1789,11 @@ def infusion_admin(store: GitHubVault | None) -> None:
 
 def admin_page(store: GitHubVault | None) -> None:
     st.title("Admin")
+    if not admin_gate():
+        return
+    st.button("Lock Admin", on_click=lock_admin_page)
+    st.caption("Admin locks when you leave this workspace, after 15 minutes without Admin activity, or after one hour. Routine handoffs remain available.")
+    guide_admin(store)
     ss = st.session_state
     settings = ss["vault"]["settings"]
     rules = settings["medication_mappings"]
@@ -1928,7 +1949,7 @@ def intake_output_editor(sheet: dict) -> None:
 
 
 def update_gi_admin(rule_key: tuple, key: str, store: GitHubVault | None) -> None:
-    if not require_session():
+    if not require_admin():
         return
     ss = st.session_state
     old = next((r for r in ss["vault"]["settings"]["medication_gi_groups"] if (r["name"], r["route"], r["frequency"]) == rule_key), None)
@@ -1965,7 +1986,7 @@ def gi_admin(store: GitHubVault | None) -> None:
 
 
 def update_group_admin(rule_key: tuple, key: str, store: GitHubVault | None) -> None:
-    if not require_session():
+    if not require_admin():
         return
     ss = st.session_state
     old = next((r for r in ss["vault"]["settings"]["medication_groups"] if (r["name"], r["route"], r["frequency"]) == rule_key), None)
@@ -2123,6 +2144,195 @@ def import_errors_page(store: GitHubVault | None) -> None:
             status = "resolved" if record["status"] == "open" else "open"
             st.button("Mark resolved" if status == "resolved" else "Reopen", key="resolve_error_" + ident,
                       on_click=set_error_review, args=(ident, status, store), disabled=not saved or store is None)
+
+
+def admin_config() -> dict:
+    """Read current server secrets again in callbacks. No client-supplied hashes."""
+    try:
+        value = st.secrets.to_dict().get("app", {})
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+def require_admin() -> bool:
+    if not require_session():
+        return False
+    if admin_valid(st.session_state, admin_config(), touch=True):
+        return True
+    note("Unlock Admin with the separate Admin password before making this change.", "error")
+    return False
+
+
+def authenticate_admin() -> None:
+    password = st.session_state.pop("admin_login_password", "")
+    if not require_session():
+        return
+    unlock_admin(st.session_state, admin_config(), password)
+
+
+def lock_admin_page() -> None:
+    lock_admin(st.session_state)
+    st.session_state.pop("admin_login_error", None)
+
+
+def workspace_changed() -> None:
+    if st.session_state.get("page") != "Admin":
+        lock_admin(st.session_state)
+
+
+def admin_gate() -> bool:
+    if not require_session():
+        return False
+    config = admin_config()
+    if admin_valid(st.session_state, config, touch=True):
+        return True
+    problem = admin_config_error(config)
+    if problem:
+        st.info(problem)
+        st.caption("The setup helper adds one Admin password hash only. Keep your app password and encryption key unchanged.")
+        return False
+    st.caption("Enter the separate Admin password to change shared settings. You do not need it to create, edit, save, or print a handoff, or to read the user guide.")
+    with st.form("admin_unlock"):
+        st.text_input("Admin password", type="password", key="admin_login_password", max_chars=1024)
+        st.form_submit_button("Unlock Admin", on_click=authenticate_admin)
+    if st.session_state.get("admin_login_error"):
+        st.error(st.session_state["admin_login_error"])
+    return False
+
+
+def admin_visibility_rule(name: str, hidden: bool, match: str, store: GitHubVault | None) -> None:
+    if require_admin():
+        change_visibility_rule(name, hidden, match, store)
+
+
+def admin_undo_room_removal(store: GitHubVault | None) -> None:
+    if require_admin():
+        undo_room_removal(store)
+
+
+def load_user_guide(store: GitHubVault | None, refresh: bool = False) -> dict:
+    if not require_session():
+        return default_guide()
+    ss = st.session_state
+    if ss.get("guide_loaded") and not refresh:
+        return ss["user_guide"]
+    try:
+        guide, sha = GuideStore(store).load() if store else (ss.get("user_guide", default_guide()), None)
+    except (StorageError, ValueError):
+        ss["guide_load_error"] = "The published guide could not be loaded. Any previously loaded copy is shown below. Use Refresh published guide to retry. No guide or handoff was overwritten."
+        return ss.get("user_guide", default_guide())
+    ss.update(user_guide=guide, guide_sha=sha, guide_loaded=True)
+    ss.pop("guide_load_error", None)
+    return guide
+
+
+def refresh_user_guide(store: GitHubVault | None) -> None:
+    if require_session():
+        load_user_guide(store, refresh=True)
+
+
+def render_smartphrase(guide: dict, key: str) -> None:
+    st.subheader("Team Epic SmartPhrase")
+    if guide["smartphrase_name"].strip():
+        st.caption("SmartPhrase name to use in Epic")
+        st.code(guide["smartphrase_name"], language=None)
+    else:
+        st.info("The administrator has not published the SmartPhrase name yet.")
+    if guide["setup_notes"].strip():
+        st.markdown(guide["setup_notes"], unsafe_allow_html=False)
+    if guide["smartphrase_text"].strip():
+        st.caption("Reusable source definition for Epic, not a patient's results. Use the copy control on the code box or download the text. Run it in Epic first, then paste the generated patient text into Handoff.")
+        st.code(guide["smartphrase_text"], language=None, wrap_lines=False, height=240)
+        st.download_button("Download SmartPhrase source", guide["smartphrase_text"].encode("utf-8"),
+                           "Epic_SmartPhrase_Source.txt", "text/plain", key=key + "_source")
+    else:
+        st.caption("The source definition is not published yet. Ask your administrator to add your team's actual Epic SmartLinks in Admin. Sample patient results are not a source template.")
+
+
+def instructions_page(store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    st.title("Instructions / SmartPhrase")
+    st.caption("Read these steps and use the current team SmartPhrase. Only an administrator can edit this page.")
+    st.button("Refresh published guide", key="refresh_guide_read", on_click=refresh_user_guide, args=(store,))
+    guide = load_user_guide(store)
+    if st.session_state.get("guide_load_error"):
+        st.warning(st.session_state["guide_load_error"])
+    if guide["updated_at"]:
+        st.caption(("Last published: " if store else "Last saved in this session only: ") + saved_time_text(guide["updated_at"]))
+    render_smartphrase(guide, "instructions_guide")
+    st.markdown(guide["instructions"], unsafe_allow_html=False)
+    st.download_button("Download user guide (HTML)", instructions_html(guide).encode("utf-8"),
+                       "PICU_User_Guide.html", "text/html", key="guide_html")
+    st.download_button("Download instructions (text)", guide["instructions"].encode("utf-8"),
+                       "PICU_User_Instructions.txt", "text/plain", key="guide_text")
+
+
+def prepare_guide_editor(guide: dict, reset: bool = False) -> None:
+    ss = st.session_state
+    fields = ("smartphrase_name", "smartphrase_text", "setup_notes", "instructions")
+    if reset or "guide_editor_sha" not in ss or not any("guide_edit_" + field in ss for field in fields):
+        ss["guide_editor_sha"] = ss.get("guide_sha")
+        for field in fields:
+            ss["guide_edit_" + field] = guide[field]
+    else:
+        for field in fields:
+            ss.setdefault("guide_edit_" + field, guide[field])
+
+
+def load_published_guide_into_editor(store: GitHubVault | None) -> None:
+    if not require_admin():
+        return
+    guide = load_user_guide(store, refresh=True)
+    if not st.session_state.get("guide_load_error"):
+        prepare_guide_editor(guide, reset=True)
+        note("Published guide loaded into the editor. The previous guide draft was replaced.")
+
+
+def save_user_guide(store: GitHubVault | None) -> None:
+    if not require_admin():
+        return
+    ss = st.session_state
+    if not ss.get("guide_loaded") or ss.get("guide_load_error") or "guide_editor_sha" not in ss:
+        note("Load the published guide before saving. No changes were saved.", "error")
+        return
+    try:
+        guide = publication(ss.get("guide_edit_smartphrase_name", ""), ss.get("guide_edit_smartphrase_text", ""),
+                            ss.get("guide_edit_setup_notes", ""), ss.get("guide_edit_instructions", ""))
+        sha = GuideStore(store).save(guide, ss["guide_editor_sha"]) if store else None
+    except (StorageError, ValueError) as exc:
+        note(str(exc), "error")
+        return
+    ss.update(user_guide=guide, guide_sha=sha, guide_editor_sha=sha, guide_loaded=True)
+    ss.pop("guide_load_error", None)
+    note("Guide and SmartPhrase published to encrypted GitHub. Other users can choose Refresh published guide." if store else
+         "Guide saved in this session only. Enable the existing encrypted storage for shared persistence.", "success")
+
+
+def guide_admin(store: GitHubVault | None) -> None:
+    if not require_admin():
+        return
+    st.subheader("User instructions and Epic SmartPhrase")
+    st.caption("Edit reusable teaching content here, not expanded patient results, passwords or tokens. Saving this page does not change any room handoff, clinical parser, medication rule or Epic record.")
+    guide = load_user_guide(store)
+    if st.session_state.get("guide_load_error"):
+        st.warning(st.session_state["guide_load_error"])
+    if guide["updated_at"]:
+        st.caption(("Last published: " if store else "Last session-only save: ") + saved_time_text(guide["updated_at"]))
+    prepare_guide_editor(guide)
+    with st.form("guide_edit_form"):
+        st.text_input("Epic SmartPhrase name / shortcut", key="guide_edit_smartphrase_name", max_chars=120)
+        st.text_area("Reusable Epic SmartPhrase source text", key="guide_edit_smartphrase_text", height=230, max_chars=MAX_TEMPLATE)
+        st.text_area("Local Epic setup notes (optional)", key="guide_edit_setup_notes", height=100, max_chars=MAX_NOTES)
+        st.text_area("User instructions", key="guide_edit_instructions", height=360, max_chars=MAX_INSTRUCTIONS)
+        st.form_submit_button("Save instructions and SmartPhrase", on_click=save_user_guide, args=(store,))
+    st.caption("Save instructions before leaving Admin. Keep the paired section dividers intact. Test template changes in Epic with synthetic data before sharing. Saving here does not install or update a SmartPhrase inside Epic.")
+    st.button("Reload published guide into editor", on_click=load_published_guide_into_editor, args=(store,))
+    st.caption("Reload replaces the unsaved guide draft. Copy any changes you need before reloading.")
+    with st.expander("Published instructions preview", expanded=False):
+        st.markdown(guide["instructions"], unsafe_allow_html=False)
+    st.divider()
 
 if __name__ == "__main__":
     try:

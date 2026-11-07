@@ -1,57 +1,54 @@
-# Validation report: Version 6.21
+# Validation report: Version 6.22
 
-## Executed checks
+## Executed automated checks
 
-The unmodified supplied Version 6.20 archive passed 1,756 automated tests
-before editing. Version 6.21 passes 1,777 tests, including 21 new regression
-cases. The complete suite is also rerun from a separate extraction of the
-final ZIP. No tests were skipped or disabled.
-
+The unmodified supplied Version 6.21 ZIP passed 1,777 tests before editing.
+The update passes 1,843 tests, including 66 new tests. No tests were skipped.
+The same suite is rerun from a separate extraction of the final delivery ZIP.
 Command: PYTHONPATH=. python -m pytest -q --disable-warnings
 
-One existing version 6.20 test was revised for the requested change: DVT
-infusions and injections now share one top-level category instead of a
-separate infusion subgroup. Other existing assertions remain.
+The existing callback-test fixture now models an already unlocked administrator
+rather than only a signed-in app user. Existing clinical, print and storage
+assertions remain. The new security tests explicitly remove/revoke grants and
+exercise refusal paths. The UI stub supports the new code-text display and a
+cached guide for render tests not concerned with storage.
 
-## Coverage of the change
+## New coverage
 
-Tests cover a single DVT heading, all six order permutations of heparin,
-cangrelor and enoxaparin, preservation of original order, no duplicate entries,
-bold infusion names and doses, compact injection wording, recorded pump rates,
-custom wording, HTML escaping, hidden and excluded orders, manual group choices,
-manual infusion-display overrides and unrelated hematology infusions.
+Missing/invalid Admin hashes, wrong passwords, separate credentials, identical
+underlying app/Admin passwords with different salts, per-session cooldown,
+plaintext widget clearing, absolute and idle expiry, logout, changed credentials,
+leaving Admin, and direct callback denial are tested. Daily Handoff, save and
+read-only guide access remain available without an Admin grant.
 
-PDF, HTML, text and Print all output are checked. PDF text/font inspection
-checks name/dose emphasis and one occurrence per medication. A 30-order
-synthetic DVT list continues onto additional pages without losing entries.
-The existing test suite covers the room editor, save conflicts, encrypted
-storage, diagnostics, parsers, mappings, autosave and save-status timestamps.
+Guide validation checks field sizes, control characters, timestamps and source
+whitespace preservation. HTML escapes all published fields. Storage tests use
+mocked HTTP responses to check encrypted round trips, private storage checks,
+fixed filenames, generic commit text, stale-save conflicts, tampering, wrong
+keys and malformed responses. Guide saves are verified not to change rooms,
+mappings, saved timestamps or the clinical archive SHA. Failed saves retain the
+editor draft. Refreshing a read-only guide cannot silently rebase an unsaved
+Admin edit. Returning after widget cleanup rehydrates the saved guide fields.
+The Admin-password helper writes no files and prints no plaintext password.
 
-The single-page synthetic preview was generated with the application and
-rendered to PNG at 160 dpi. It was visually inspected. It shows one DVT
-Prophylaxis heading with emphasized heparin and cangrelor infusions followed
-by enoxaparin, with no extra Heme Infusions heading for these orders.
+Only app.py and the error-report version label changed among existing production
+Python files. The clinical parsers, models.py, encryption routines, printed
+handoff layout, medication groups, and save_status.py are byte-identical to the
+supplied Version 6.21 files. Schema 17 and the clinical archive path are unchanged.
 
-## Compatibility and package checks
+The standalone HTML user guide was opened and inspected in local Chromium. This
+checks the static guide, not the complete Streamlit application.
 
-Compared against the supplied 6.20 archive, only three runtime modules change:
-infusions.py changes display block ordering, app.py changes only its version
-label/docstring, and error_store.py changes only the app-version identifier.
-Every other runtime Python module and dependency file is byte-for-byte
-unchanged. In particular, models.py, all clinical parsers, exports.py,
-github_store.py, security.py and save_status.py are unchanged. Schema 17,
-medication data, saved group/display choices and storage paths are unchanged.
+## Limits
 
-Tests also seal/open a synthetic saved archive with the same key and verify
-that rendering does not alter any stored field, setting or save timestamp.
-The final ZIP is checked using ZipFile.testzip, a complete file comparison and
-a regenerated SHA-256 manifest. Only synthetic examples are added. No actual
-patient records, production credentials, caches or keys are included.
+Streamlit is not installed in this build environment. Installing it was attempted
+but package-host name resolution failed. Callback and UI tests use Streamlit
+stubs, not a live Streamlit browser lifecycle. A live hosted app, authenticated
+private GitHub writes, real Epic SmartLinks, and real clipboard operation inside
+Epic were not tested. The published source starts blank because no actual Epic
+SmartPhrase name or source definition was supplied.
 
-## Limitations
-
-Streamlit is not installed in this execution environment. Interface tests use
-widget stubs, not a browser session. Repository calls use mocked responses.
-The user's live deployment and authenticated private handoff repository have
-not been tested or modified. The grouping is a user-selected presentation
-category, not an assessment of prophylactic indication or dose suitability.
+The secondary password is a shared Admin gate, not individual accounts, MFA, or
+institutional approval. Normal Handoff mapping/hiding/custom-room actions retain
+their existing permissions. No deployment Secrets or private patient archive
+was accessed or modified during this build.

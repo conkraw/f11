@@ -19,6 +19,11 @@ def equip(app,monkeypatch):
     st=app.st
     downloads=[]
     keys=set()
+    # Unrelated UI render tests use an already loaded guide, not a live GET.
+    from user_guide import default_guide
+    st.session_state.setdefault('user_guide', default_guide())
+    st.session_state.setdefault('guide_sha', None)
+    st.session_state.setdefault('guide_loaded', True)
     def control(label,*args,**kwargs):
         key=kwargs.get('key')
         options=args[0] if args and isinstance(args[0],(list,tuple)) else None
@@ -31,7 +36,7 @@ def equip(app,monkeypatch):
             st.session_state.setdefault(key,default)
             return st.session_state[key]
         return default
-    for name in ['text','caption','info','warning','error','success','title','header','subheader','divider','markdown']:
+    for name in ['text','caption','info','warning','error','success','title','header','subheader','divider','markdown','code']:
         setattr(st,name,lambda *args,**kwargs:None)
     for name in ['text_input','text_area','selectbox','radio','checkbox']:
         setattr(st,name,control)

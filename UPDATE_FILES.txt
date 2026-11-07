@@ -1,17 +1,30 @@
-Complete Version 6.21 package
+Version 6.22: full package, not a patch
 
-Replace application repository files using the contents of
-PICU_Handoff_v6_21_DVT_Grouping. Keep app.py at the root.
-Keep existing Secrets, password, encryption key, token and private data
-repository unchanged. Do not rerun the secrets generator.
+Replace the application folder contents with this complete package.
+Keep app.py at the repository root.
 
-Runtime changes relative to 6.20:
-infusions.py: one DVT group with per-entry infusion emphasis
-app.py: version label only
-error_store.py: version identification only
+New files:
+  user_guide.py
+  guide_store.py
+  admin_access.py
+  set_admin_password.py
+  Generate_Admin_Password.ipynb
+  ADMIN_SETUP.txt
+  USER_GUIDE.html
+  USER_INSTRUCTIONS.txt
+  tests/test_user_guide_admin.py
 
-No clinical parser, dose, mapping, schema, encryption, autosave, save-status,
-dependency or PDF layout engine changes. Tests, documentation, synthetic
-example and preview are included.
+Existing code changed:
+  app.py (guide views and protected Admin callbacks)
+  error_store.py (version label only)
+  tests/test_callbacks.py (test fixture now represents unlocked Admin)
+  tests/test_ui_smoke.py (code-block and guide-loading test support)
 
-Sidebar: Version 6.21 | Unified DVT Prophylaxis group
+Updated documentation/example secrets and checksum manifest are included.
+
+Important: add admin_password_hash under the EXISTING [app] section in private
+Secrets. Use only the new Admin helper. Do not rerun the original secrets
+configuration generator or replace the encryption key. No other Secrets change.
+
+Do not upload downloaded handoffs, patient text, private inputs, or notebook
+output containing credentials. This package contains no real deployment secrets.
