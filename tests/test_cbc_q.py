@@ -180,7 +180,14 @@ def test_numeric_counts_preserve_value_and_flags(value):
 def test_bad_q_leaves_entire_previous_handoff_unchanged(text):
     base=imported(); before=deepcopy(base)
     out=import_sections(base,wrap('a','Diagnoses:\n1. New synthetic text')+'\n'+wrap('q',text),new_vault()['settings'])
-    assert out.errors and out.sheet is None and base==before
+    assert out.errors or out.diagnostics
+    assert out.sheet is not None and base==before
+    assert out.sheet['fields']['Diagnoses']=='New synthetic text'
+    assert 'q' in out.sheet['import_warnings']
+    if out.errors:
+        assert out.sheet['cbc']==before['cbc']
+    else:
+        assert not any(row['include'] for row in out.sheet['cbc']['rows'])
 
 
 def test_empty_omitted_and_q_precedence():
@@ -236,7 +243,7 @@ def test_cbc_only_room_print_all_and_cleared_q_not_counted_as_content():
 
 
 def test_schema12_upgrade_preserves_old_gases_rows_mappings_and_fields():
-    sheet=new_sheet('P4102');sheet.pop("intake_output", None);sheet.pop('recurring_orders');sheet.pop('cbc')
+    sheet=new_sheet('P4102');sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop('recurring_orders');sheet.pop('cbc')
     sheet['blood_gas']=parse_gases('Lab\tUnits\t01/06/26 0900\nPH ART\t\t7.40').data
     sheet['fields']['Neurologic']='Preserved separate note'
     old=new_vault();old['schema']=12;old["settings"].pop("medication_gi_groups", None);old['rooms']['P4102']=sheet
@@ -244,8 +251,8 @@ def test_schema12_upgrade_preserves_old_gases_rows_mappings_and_fields():
     key=Fernet.generate_key().decode()
     cipher=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     new=open_vault(cipher,key)
-    assert old==before and new['schema']==SCHEMA_VERSION==15
-    assert new['rooms']['P4102']==dict(sheet,cbc=None,recurring_orders=None,intake_output=None)
+    assert old==before and new['schema']==SCHEMA_VERSION==16
+    assert new['rooms']['P4102']==dict(sheet,cbc=None,recurring_orders=None,intake_output=None,import_warnings={})
     assert new['settings']==dict(old['settings'], medication_gi_groups=[])
     assert open_vault(seal_vault(new,key),key)==new
 
@@ -328,7 +335,8 @@ def test_custom_medication_output_only_and_notes_untouched():
 
 def test_conflicting_cbc_alias_cannot_silently_select_one():
     out=parse_cbc('Lab\tUnits\t01/06/26 0900\nWBC\tK/uL\t9\nWBC AUTO\tK/uL\t8')
-    assert out.error
+    assert not out.error and out.diagnostics
+    assert all(not row['include'] for row in out.data['rows'])
 
 
 def test_long_result_wraps_without_losing_missing_count_placeholders():

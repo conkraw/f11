@@ -10,6 +10,7 @@ from copy import deepcopy
 from datetime import datetime
 import time
 import re
+from import_review import review_summary
 from models import SYSTEMS, fields_with_medications, validate_sheet, automatic_vitals, section_label
 from infusions import neuro_body, is_infusion, infusion_entry
 from medications import visible, format_medication
@@ -34,6 +35,8 @@ def handoff_text(sheet: dict, printed_at: datetime | None = None) -> str:
     parts = ["Print prepared: " + eastern_print_time(printed_at), "PICU HANDOFF", "Room: " + sheet["room"], "Handoff reference: " + sheet["id"][:8],
              "Saved (UTC): " + (sheet["updated_at"] or "Unsaved draft"),
              "Confirm patient identity in Epic. A room is not a patient identifier."]
+    if review_summary(sheet):
+        parts.extend(["", review_summary(sheet)])
     for section in SYSTEMS:
         content = fields[section].strip()
         if content:
@@ -103,13 +106,13 @@ main{width:11in;min-height:8.5in;margin:0 auto;background:white;padding:.25in}
 .meta{font:10px Arial,sans-serif;margin-bottom:5px;display:flex;justify-content:space-between}
 table{border-collapse:collapse;width:100%;table-layout:fixed}th{font-size:8pt;text-align:center;padding:2px;border-bottom:1px solid black}
 .systems td{border:1px solid black;vertical-align:top;height:auto;min-height:0;padding:3px;font-size:7.2pt;line-height:1.14}
-.content{white-space:pre-wrap;overflow-wrap:anywhere}.band{border:1px solid black;border-top:0;font-size:7.2pt;line-height:1.14;padding:3px;min-height:15px}
+.import-review{font:bold 7pt/1.15 Arial,sans-serif;border:1px solid #222;padding:3px;margin-bottom:3px;overflow-wrap:anywhere}.content{white-space:pre-wrap;overflow-wrap:anywhere}.band{border:1px solid black;border-top:0;font-size:7.2pt;line-height:1.14;padding:3px;min-height:15px}
 .access{font-size:7.2pt}.access td{vertical-align:top;border:1px solid black;border-top:0;padding:3px;overflow-wrap:anywhere}
 .labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;align-items:start}.labcard{width:100%;height:auto;border:1px solid #888;break-inside:avoid}.labnote{font:6.1pt/1.15 "Times New Roman",serif;margin:1px 0}.lab-summary{font:7.2pt/1.14 "Times New Roman",serif;overflow-wrap:anywhere;margin:1px 0}.lab-full{grid-column:1/-1}
 footer{font:6.1pt/1.2 Arial,sans-serif;margin-top:4px}
 @page{size:letter landscape;margin:.25in}
 @media print{body{margin:0;padding:0;background:white}main{width:100%;min-height:0;padding:0;margin:0}.systems td{height:auto}thead{display:table-header-group}footer{font-size:6.1pt}.band{break-inside:auto}}
-</style></head><body><main><div class="meta"><span><span data-print-label>Print prepared: </span><span data-print-time>''' + escape(eastern_print_time(printed_at)) + '''</span> | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | PICU HANDOFF' + '''</span></div>
+</style></head><body><main><div class="meta"><span><span data-print-label>Print prepared: </span><span data-print-time>''' + escape(eastern_print_time(printed_at)) + '''</span> | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | PICU HANDOFF' + '</span></div>' + ('<div class="import-review">' + escape(review_summary(sheet)) + '</div>' if review_summary(sheet) else '') + '''
 <table class="systems"><colgroup>''' + cols + '</colgroup><thead><tr>' + headers + '</tr></thead><tbody><tr>' + cells + '</tr></tbody></table>' + ''.join(bands) + '<table class="access"><tbody><tr>' + access + '''</tr></tbody></table>
 <footer>Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted. Infusion rates reflect the source Last Rate, not a live feed.</footer>
 </main>''' + PRINT_TIME_SCRIPT + '</body></html>'
@@ -224,7 +227,11 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
                     if name == 'Lab Results / Trends' else []) + paragraphs(text))
              for name, text in band_items]
     access = [(name, paragraphs(fields[name])) for name in ACCESS_FIELDS]
-    return {'font_size': font_size, 'leading': font_size+1, 'width': total_width,
+    review = review_summary(sheet)
+    banner = Paragraph(escape(review), ParagraphStyle('review', fontName='Helvetica-Bold', fontSize=7, leading=8)) if review else None
+    review_height = banner.wrap(total_width, 10000)[1] + 4 if banner else 0
+    return {'review_banner': banner, 'review_height': review_height,
+            'font_size': font_size, 'leading': font_size+1, 'width': total_width,
             'widths': widths, 'columns': columns, 'bands': bands, 'access': access}
 
 
@@ -246,7 +253,7 @@ def _select_pdf_plan(sheet: dict, width: float, height: float) -> tuple[dict, bo
         if original is None:
             original = plan
         main, bands, access = _plan_heights(plan)
-        if main + sum(bands) + access <= available + .01:
+        if main + sum(bands) + access <= available - plan['review_height'] + .01:
             return plan, True
     # Do not leave a multi-page handoff needlessly tiny when a single page is
     # impossible. Revert to the default compact size and keep every item.
@@ -268,7 +275,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
     leading = plan['leading']
     queues, bands, access = plan['columns'], plan['bands'], plan['access']
     # Top of columns after the metadata and column headings.
-    column_top = height-margin-28
+    column_top = height-margin-28-plan['review_height']
     body_height = column_top-(margin+18)
 
     def draw_queue(queue, x, y, w, available):
@@ -320,6 +327,10 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         c.drawString(margin, height-margin-5, 'Print prepared: ' + print_stamp + ' | Room ' + sheet['room'] + (' | Continued' if page > 1 else ''))
         c.drawRightString(width-margin, height-margin-5,
                          'Sheet ' + str(position) + '/' + str(count) + ' | Reference ' + sheet['id'][:8] + ' | Page ' + str(page))
+        if plan['review_banner'] is not None:
+            banner = plan['review_banner']
+            _, bh = banner.wrap(total_width, 10000)
+            banner.drawOn(c, margin, height-margin-11-bh)
         plan.update(columns=queues, bands=bands, access=access)
         main_need, band_needs, access_need = _plan_heights(plan)
         all_fit = main_need+sum(band_needs)+access_need <= body_height+.01

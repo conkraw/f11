@@ -12,6 +12,7 @@ from datetime import datetime
 import re
 import uuid
 from labs import date_parts, short_date
+from import_review import diagnostic, diagnostic_text
 
 CORE = ('WBC', 'HGB', 'HCT', 'PLT', 'MCV')
 ALIASES = {
@@ -36,6 +37,13 @@ TOKEN = re.compile(r'(?P<date>' + DATE_PATTERN + r')|(?P<time>\b(?:\d{1,2}:\d{2}
 VALUE = re.compile(r'^[<>≤≥]?\s*[+\-−]?\d+(?:\.\d+)?\s*(?:\*+|\((?:H|L|HH|LL|A)\))?$', re.I)
 EMPTY = re.compile(r'^(?:|--+|[-—–]|<\s*>|not (?:done|available|reported)|pending|n/?a)$', re.I)
 MAX_ROWS = 2000
+
+
+def multiple_numeric_results(value: str) -> bool:
+    """A literal pipe means multiple source results, not a sortable range."""
+    parts = value.split('|')
+    return 2 <= len(parts) <= 10 and all(VALUE.fullmatch(part.strip()) for part in parts)
+
 
 
 def cbc_component(label: str) -> str | None:
@@ -71,7 +79,7 @@ def validate_cbc(data: dict | None) -> None:
         for key, limit in (('date', 80), ('unit', 50), ('value', 100)):
             if not isinstance(row[key], str) or len(row[key]) > limit or any(x in row[key] for x in '\r\n\t'):
                 raise ValueError('A CBC result, unit or collection date is invalid.')
-        if not VALUE.fullmatch(row['value'].strip()):
+        if not VALUE.fullmatch(row['value'].strip()) and not (not row['include'] and multiple_numeric_results(row['value'])):
             raise ValueError('Use a recorded numeric CBC result, not a missing-result placeholder.')
         date_parts(row['date'])
         if row['column'] in dates and dates[row['column']] != row['date']:
@@ -82,7 +90,7 @@ def validate_cbc(data: dict | None) -> None:
             raise ValueError('A CBC source label repeats in the same dated column.')
         cells[key] = True
         component = cbc_component(row['component'])
-        if component in CORE + ('HGB_ISTAT', 'HCT_ISTAT'):
+        if row['include'] and component in CORE + ('HGB_ISTAT', 'HCT_ISTAT'):
             alias_key = (row['column'], component)
             result = (row['value'], row['unit'])
             if alias_key in components and components[alias_key] != result:
@@ -130,6 +138,7 @@ class CBCResult:
     data: dict = field(default_factory=empty_cbc)
     issues: list[str] = field(default_factory=list)
     error: str = ''
+    diagnostics: list[dict] = field(default_factory=list)
 
 
 def parse_cbc(block: str) -> CBCResult:
@@ -154,7 +163,11 @@ def parse_cbc(block: str) -> CBCResult:
         out.error = str(exc)
         return out
     n, recognized, skipped = len(dates), 0, 0
-    seen = {}
+    seen, blocked = {}, set()
+    def warn(code, number, column=0, component='', action='cell_omitted'):
+        item = diagnostic('q', code, line=number, column=column, field=component, action=action)
+        out.diagnostics.append(item)
+        out.issues.append(diagnostic_text(item))
     for number, raw in enumerate(lines[first:], first+1):
         line = raw.strip()
         if not line or re.match(r'^<\s*>\s*=', line):
@@ -173,38 +186,60 @@ def parse_cbc(block: str) -> CBCResult:
         if '\t' not in raw and len(cells) == n+1 and all(EMPTY.fullmatch(c) or VALUE.fullmatch(c) for c in cells[1:]):
             cells.insert(1, '')
         if len(cells) != n+2:
-            out.error = f'CBC row {number} does not match the dated columns. Copy the complete table with tabs. Nothing was imported.'
-            return out
+            warn('cbc_row_columns', number, component=component, action='row_omitted')
+            continue
         if component in ('ANC', 'ALC') and cells[1].casefold() in ('%', 'percent', 'percentage'):
-            out.issues.append('An ANC/ALC-labelled row has percentage units. It was not used as an absolute count.')
+            warn('cbc_percentage', number, component=component, action='row_omitted')
             continue
         for column, value in enumerate(cells[2:]):
             if EMPTY.fullmatch(value):
                 continue
+            include = True
             if not VALUE.fullmatch(value):
-                out.error = f'CBC row {number} has an unrecognized result. Nothing was imported.'
-                return out
+                if multiple_numeric_results(value):
+                    # Keep the source cell for manual review, but never choose a value.
+                    include = False
+                    warn('cbc_multiple_values', number, column + 1, component)
+                else:
+                    warn('cbc_invalid_cell', number, column + 1, component)
+                    continue
             key = (column, cells[0].upper())
+            if key in blocked:
+                continue
             if key in seen:
                 if seen[key] == (value, cells[1]):
                     continue
-                out.error = 'The CBC table contains conflicting repeated results in the same column. Nothing was imported.'
-                return out
+                # Neither value wins just because it appeared first.
+                out.data['rows'] = [r for r in out.data['rows']
+                    if (r['column'], r['component'].upper()) != key]
+                blocked.add(key)
+                warn('cbc_conflict', number, column + 1, component)
+                continue
             seen[key] = (value, cells[1])
             out.data['rows'].append({'id': uuid.uuid4().hex, 'component': cells[0],
-                'value': value, 'unit': cells[1], 'date': dates[column], 'column': column, 'include': True})
+                'value': value, 'unit': cells[1], 'date': dates[column], 'column': column, 'include': include})
     if not recognized:
         out.error = 'No supported CBC rows were recognized in Q. The previous handoff was not changed.'
         return out
     if skipped:
         out.issues.append('Unrecognized Q-table rows were not used for the CBC. No absolute counts were calculated.')
+    aliases = defaultdict(list)
+    for row in out.data['rows']:
+        key = cbc_component(row['component'])
+        if row['include'] and key in CORE + ('HGB_ISTAT', 'HCT_ISTAT'):
+            aliases[(row['column'], key)].append(row)
+    for (column, component), values in aliases.items():
+        if len({(r['value'], r['unit']) for r in values}) > 1:
+            for row in values:
+                row['include'] = False
+            warn('cbc_conflict', 0, column + 1, component)
     try:
         validate_cbc(out.data)
     except ValueError as exc:
         out.error = str(exc)
         return out
     out.issues.extend(cbc_selection_issues(out.data))
-    out.data['notes'] = list(dict.fromkeys(out.issues))
+    out.data['notes'] = list(dict.fromkeys(out.issues))[:100]
     return out
 
 

@@ -12,14 +12,14 @@ from reportlab.lib.styles import ParagraphStyle
 from labs import result_cards, short_date, display_component
 
 NOTE = ('Latest/preceding PER COMPONENT, not confirmed same-draw panels. Dates are shown beside each result. '
-        'Same-date ties without collection times follow source order. -- = not supplied.')
+        'Same-date ties without collection times follow source order. -- = unavailable or omitted.')
 
 
 def note_for(cbc: dict | None) -> str:
     if cbc is None:
         return NOTE + ' ANC/ALC are the latest absolute counts, with independent dates.'
     return ('CBC: two latest documented source columns; ANC/ALC are independent latest absolute counts. '
-            'BMP: latest/preceding per component, not confirmed same-draw panels. -- = not supplied.')
+            'BMP: latest/preceding per component, not confirmed same-draw panels. -- = unavailable or omitted.')
 
 
 def ascii_text(s: str) -> str:

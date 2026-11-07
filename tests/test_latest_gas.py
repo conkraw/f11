@@ -1,3 +1,4 @@
+from recovery_helpers import assert_retained
 """P-matrix regression, export, persistence, callback and safety tests.
 
 Synthetic values only. The chronological/column pattern mirrors Epic output.
@@ -152,7 +153,8 @@ def test_source_flags_zero_negatives_and_decimals_are_preserved():
 def test_malformed_tables_block_import_without_erasing_existing(source):
     base=imported();before=deepcopy(base)
     result=import_sections(base,wrap('p',source),new_vault()['settings'])
-    assert result.errors and result.sheet is None and base==before
+    assert_retained(result, before, "p")
+    assert base==before
 
 
 def test_duplicates_identical_do_not_duplicate_component():
@@ -206,7 +208,8 @@ def test_p_reimport_replaces_no_accumulation():
 def test_conflicting_any_section_remains_atomic():
     original=imported();before=deepcopy(original)
     change=import_sections(original,wrap('p',TABLE)+'\n'+wrap('b','Medications:\nbad row'),new_vault()['settings'])
-    assert change.errors and change.sheet is None and original==before
+    assert_retained(change, before, "b")
+    assert original==before
 
 
 def test_p_takes_precedence_over_more_recent_legacy_g():
@@ -248,14 +251,14 @@ def test_gas_only_room_in_print_all_and_empty_p_not_blank_patient():
 
 
 def test_schema11_migration_preserves_old_fields_mapping_infusion_and_notes():
-    s=imported();s.pop("intake_output", None);s.pop("recurring_orders", None);s.pop("cbc", None);s.pop('blood_gas')
+    s=imported();s.pop("import_warnings", None);s.pop("intake_output", None);s.pop("recurring_orders", None);s.pop("cbc", None);s.pop('blood_gas')
     old=new_vault();old['schema']=11;old["settings"].pop("medication_gi_groups", None);old['rooms']['P4102']=s
     old['settings']['medication_mappings']=[{'name':'test','match':'prefix','destination':'Neurologic'}]
     before=deepcopy(old)
     updated=upgrade_vault(old)
-    assert old==before and updated['schema']==15
+    assert old==before and updated['schema']==16
     assert updated['settings']==dict(old['settings'], medication_gi_groups=[])
-    assert updated['rooms']['P4102']==dict(s,blood_gas=None,cbc=None,recurring_orders=None,intake_output=None)
+    assert updated['rooms']['P4102']==dict(s,blood_gas=None,cbc=None,recurring_orders=None,intake_output=None,import_warnings={})
     key=Fernet.generate_key().decode()
     token=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     assert open_vault(token,key)==updated
@@ -335,9 +338,9 @@ def test_session11_upgrade_keeps_unsaved_gas_independent_notes(app):
     ss['drafts']['P4102']['fields']['Neurologic']='UNSAVED sentinel'
     ss['vault']['schema']=11;ss['vault']["settings"].pop("medication_gi_groups", None)
     for sheet in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):
-        sheet.pop("intake_output", None);sheet.pop("recurring_orders", None);sheet.pop("cbc", None);sheet.pop('blood_gas')
+        sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop("recurring_orders", None);sheet.pop("cbc", None);sheet.pop('blood_gas')
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==15
+    assert ss['vault']['schema']==16
     assert ss['drafts']['P4102']['blood_gas'] is None
     assert ss['drafts']['P4102']['fields']['Neurologic']=='UNSAVED sentinel'
 

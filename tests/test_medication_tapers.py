@@ -1,3 +1,4 @@
+from recovery_helpers import assert_retained
 """Synthetic regressions for Epic taper connectors and scheduled orders.
 
 No patient records, real provider names, credentials or external services.
@@ -132,7 +133,8 @@ def test_incomplete_or_ambiguous_sequence_does_not_silently_pass(source):
     sheet=new_sheet('P4102');sheet['fields']['Neurologic']='Previous note'
     before=deepcopy(sheet)
     out=import_sections(sheet,'b'*12+'\n'+source+'\n'+'b'*12,new_vault()['settings'])
-    assert out.errors and out.sheet is None and out.imported==[] and sheet==before
+    assert_retained(out, before, "b")
+    assert sheet==before
 
 
 def test_arbitrary_eighth_column_still_rejected():
@@ -226,7 +228,7 @@ def test_sequence_and_dates_remain_through_encryption_and_same_schema():
     v=save_sheet_in(new_vault(),s)
     token=seal_vault(v,key)
     restored=open_vault(token,key)
-    assert restored==v and restored['schema']==15
+    assert restored==v and restored['schema']==16
     assert upgrade_vault(restored)==restored
     assert '[START ON 1/4/2026]' in restored['rooms']['P4102']['medications'][2]['name']
     assert 'Followed by:' in restored['rooms']['P4102']['medications'][2]['name']

@@ -1,6 +1,7 @@
-"""One-click A/B/C/D/E/F/G/I/K/L/M/N/O/P/Q/R/S import with all-or-nothing updates for malformed input."""
+"""One-click A/B/C/D/E/F/G/I/K/L/M/N/O/P/Q/R/S import with independent section recovery and explicit retained-data warnings."""
 from __future__ import annotations
 from copy import deepcopy
+import re
 from dataclasses import dataclass, field
 from models import validate_sheet, apply_diagnoses, apply_medications, apply_respiratory, ValidationError
 from parser import parse_smartphrase, SECTION_NAMES, MAX_PASTE
@@ -18,6 +19,7 @@ from cbc import parse_cbc
 from recurring_orders import parse_orders, selected_orders
 from fluid_balance import parse_balance
 from fen_gi import apply_gi_rules
+from import_review import diagnostic, diagnostic_text
 
 SUPPORTED_SECTIONS = "abcdefgiklmnopqrs"
 
@@ -28,6 +30,8 @@ class ImportResult:
     errors: list[str] = field(default_factory=list)
     notices: list[str] = field(default_factory=list)
     imported: list[str] = field(default_factory=list)
+    diagnostics: list[dict] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
 
 
 def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
@@ -43,14 +47,41 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
     if not relevant:
         out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O, P, Q, R or S dividers.")
         return out
+    # Repeated paired sections can mean two patients were pasted together.
+    # That document-wide identity ambiguity cannot be repaired by partial import.
+    if any(message.startswith("More than one ") for message in parsed.issues):
+        out.errors.append("Repeated sections may contain more than one patient. Nothing was changed.")
+        out.diagnostics.append(diagnostic('document', 'document_rejected', action='nothing_changed'))
+        return out
     out.notices.extend(parsed.issues)
     candidate = deepcopy(sheet)
+    def reject(group, code='section_parse_failed', line=0):
+        nonlocal candidate
+        item = diagnostic(group, code,
+                          action='orders_hidden' if group == 'r' else 'not_updated', line=line)
+        candidate['import_warnings'][group] = [item]
+        out.diagnostics.append(item)
+        if group not in out.skipped:
+            out.skipped.append(group)
+
     for letter in SUPPORTED_SECTIONS:
+        group = 'cd' if letter in 'cd' else letter
+        if letter == 'd' and ('c' in parsed.blocks or 'c' in parsed.invalid):
+            continue
+        if letter in 'cd' and set('cd') & parsed.invalid:
+            out.errors.append('Respiratory support: check the C/D dividers. This section was not updated.')
+            reject('cd', 'section_boundary')
+            continue
         if letter in parsed.invalid:
-            out.errors.append("Check the " + SECTION_NAMES[letter] + " dividers. Nothing was imported.")
+            out.errors.append("Check the " + SECTION_NAMES[letter] + " dividers. This section was not updated.")
+            reject(group, "section_boundary")
             continue
         if letter not in parsed.blocks:
             continue
+        before = deepcopy(candidate)
+        error_count, import_count = len(out.errors), len(out.imported)
+        recoveries = []
+        failure_code = "section_parse_failed"
         try:
             if letter == "a":
                 if parsed.diagnosis_error:
@@ -139,6 +170,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                     out.errors.append(cbc.error)
                     continue
                 candidate["cbc"] = cbc.data
+                recoveries = cbc.diagnostics[:100]
                 out.notices.extend(cbc.issues)
                 out.imported.append("CBC and latest ANC / ALC" if cbc.data["rows"] else "CBC display cleared")
             elif letter == "r":
@@ -166,11 +198,31 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 candidate["neuro_vitals"][letter] = observations.rows
                 out.notices.extend(observations.issues)
                 out.imported.append(SECTION_NAMES[letter] if observations.rows else SECTION_NAMES[letter] + " display cleared")
+            validate_sheet(candidate)
         except (ValidationError, ValueError) as exc:
             out.errors.append(str(exc))
-    if out.errors:
-        out.imported = []
-        return out
+        except Exception:
+            # Do not log the exception body, source text or stack locals.
+            failure_code = 'parser_exception'
+            out.errors.append('An unexpected parser problem occurred in this section.')
+        finally:
+            if len(out.errors) > error_count:
+                candidate = before
+                del out.imported[import_count:]
+                if group == 'r' and failure_code == 'section_parse_failed':
+                    message = ' '.join(out.errors[error_count:]).lower()
+                    failure_code = ('orders_count' if 'occurrence' in message else
+                                    'orders_timing' if 'timing' in message else 'orders_structure')
+                match = re.search(r"(?:row|line) (\d+)", out.errors[error_count], re.I)
+                reject(group, failure_code, int(match.group(1)) if match else 0)
+                for index in range(error_count, len(out.errors)):
+                    message = out.errors[index].replace('Nothing was imported.', '').replace('Nothing has been applied.', '')
+                    out.errors[index] = SECTION_NAMES[letter] + ': ' + message.strip() + ' Only this section was skipped.'
+            elif len(out.imported) > import_count:
+                candidate['import_warnings'].pop(group, None)
+                if recoveries:
+                    candidate['import_warnings'][group] = recoveries
+                    out.diagnostics.extend(recoveries)
     validate_sheet(candidate)
     out.sheet = candidate
     return out

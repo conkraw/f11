@@ -1,3 +1,4 @@
+from recovery_helpers import assert_retained
 """Synthetic v6 tests. No clinical records or live repository credentials."""
 from copy import deepcopy
 from pathlib import Path
@@ -137,7 +138,8 @@ def test_tabless_labs_numeric_boundary():
 def test_bad_g_prevents_partial_import_and_preserves_original():
     s=whole();before=deepcopy(s)
     result=import_sections(s,wrapped('e','VITALS','Heart Rate: 100')+'\n'+wrapped('g','LABS','bad unknown source'),new_vault()['settings'])
-    assert result.errors and result.sheet is None and s==before
+    assert_retained(result, before, "g")
+    assert s==before
 
 
 def test_blank_g_clears_old_auto_labs_only():
@@ -314,7 +316,7 @@ def test_v6_encrypted_roundtrip_and_v5_migration():
     baseline=deepcopy(old)
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     upgraded=open_vault(oldtoken,key)
-    assert upgraded['schema']==15 and old==baseline
+    assert upgraded['schema']==16 and old==baseline
     after=upgraded['rooms']['P4102'];before=old['rooms']['P4102']
     for k in ('fields','noninvasive','ventilation','id','updated_at'):
         assert after[k]==before[k]

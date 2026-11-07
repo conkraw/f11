@@ -1,14 +1,18 @@
-"""PICU SmartPhrase v6.15: S totals and grouped FEN/GI medications."""
+"""PICU SmartPhrase v6.16: section recovery and a shared encrypted error journal."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
 from pathlib import Path
 import time
+import json
+from datetime import datetime, timezone
 
 import streamlit as st
 from cryptography.fernet import Fernet
 from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, handoffs_html, print_layout_info, download_payload
 from github_store import GitHubConfig, GitHubVault, StorageError
+from error_store import ErrorJournal, new_error_event
+from import_review import review_summary, diagnostic_text, SECTIONS as REVIEW_SECTIONS
 from models import (MAX_FIELD, SYSTEMS, ValidationError, new_sheet, new_vault,
                     normalize_room, save_sheet_in, validate_vault, validate_sheet,
                     upgrade_vault, fields_with_medications, respiratory_text, automatic_vitals, SCHEMA_VERSION, DEFAULT_ROOMS, section_label)
@@ -686,6 +690,9 @@ def cbc_editor(sheet: dict) -> None:
     if not data["rows"]:
         st.caption("The included Q section contains no CBC results. Older G-block CBC results are not substituted.")
         return
+    for issue in data.get("notes", []):
+        if issue.startswith("CBC"):
+            st.caption(issue)
     for issue in cbc_selection_issues(data):
         st.caption(issue)
     with st.expander("Edit retained CBC results (" + str(len(data["rows"])) + ")"):
@@ -700,6 +707,8 @@ def cbc_editor(sheet: dict) -> None:
                           on_change=cbc_edit, args=(sheet["room"], "", "date", key, column))
             for row in rows:
                 st.text(row["component"] + " | " + row["value"] + " " + row["unit"])
+                if "|" in row["value"]:
+                    st.warning("Multiple source results in this cell. It is excluded from the CBC tree. Replace it with a verified single result before including it.")
                 for field, label in (("value", "Recorded CBC result"), ("unit", "Source unit"), ("include", "Include result in CBC selection")):
                     key = "cbc_" + row["id"] + "_" + field
                     if key not in st.session_state:
@@ -838,7 +847,7 @@ def clear_paste() -> None:
         st.session_state.pop("import_result", None)
 
 
-def create_handoff() -> None:
+def create_handoff(store: GitHubVault | None = None) -> None:
     if not require_session():
         return
     ss = st.session_state
@@ -846,11 +855,18 @@ def create_handoff() -> None:
     if not room:
         note("Select a room first.", "error")
         return
+    ss.pop("last_error_reference", None)
     result = import_sections(ss["drafts"][room], ss.get("paste", ""), ss["vault"]["settings"])
     if result.sheet is not None:
         set_editor(room, result.sheet)
     ss["import_result"] = {"room": room, "errors": result.errors,
                            "notices": result.notices, "imported": result.imported}
+    if result.diagnostics:
+        record = new_error_event(result.diagnostics)
+        ss.setdefault("pending_error_events", {})[record["id"]] = record
+        ss["last_error_reference"] = record["id"]
+        ss["error_log_saved"] = False
+        send_pending_errors(store)
 
 
 def start_new_patient() -> None:
@@ -1124,11 +1140,13 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.15 | Intake/output and FEN/GI medication groups")
-        page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
+        st.caption("Version 6.16 | Partial imports and shared error review")
+        page = st.radio("Workspace", ["Handoff", "Print all", "Admin", "Import errors"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
         st.button("Log out", on_click=clear_session)
+        if st.session_state.get("pending_error_events"):
+            st.warning("Technical error reports are not saved. Open Import errors to retry before closing this session.")
         st.caption("Room changes automatically save the current handoff. Use Save before logout. Medication mappings save immediately.")
         if not app.get("clinical_use_approved", False):
             st.caption("Use synthetic data unless your hosting and storage have institutional approval. See the setup guide.")
@@ -1137,6 +1155,8 @@ def main() -> None:
         getattr(st, kind)(text)
     if page == "Admin":
         admin_page(store)
+    elif page == "Import errors":
+        import_errors_page(store)
     elif page == "Print all":
         print_all_page(store)
     else:
@@ -1302,6 +1322,7 @@ def handoff_page(store: GitHubVault | None) -> None:
         return
     sheet = ss["drafts"][room]
     st.subheader("Room " + room)
+    import_review_editor(sheet)
     if room not in DEFAULT_ROOMS:
         with st.expander("Custom room options"):
             st.caption("Remove this custom room and its current saved handoff. Undo is available during this session. Medication rules are unchanged.")
@@ -1323,11 +1344,17 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.button("Clear pasted text", on_click=clear_paste)
         with st.form("parse_smartphrase"):
             st.text_area("SmartPhrase text", key="paste", height=240, max_chars=MAX_PASTE)
-            st.form_submit_button("Create / update handoff", on_click=create_handoff, type="primary")
+            st.form_submit_button("Create / update handoff", on_click=create_handoff, args=(store,), type="primary")
         result = ss.get("import_result", {})
         if result.get("room") == room:
             for error in result["errors"]:
-                st.error(error)
+                st.warning(error)
+            if result["errors"] and result["imported"]:
+                st.caption("Other sections were imported. Skipped sections are listed in the review warning above.")
+            if ss.get("last_error_reference"):
+                st.caption("Technical error reference: " + ss["last_error_reference"][:12] + ". See Import errors.")
+            if ss.get("error_log_notice"):
+                st.warning(ss["error_log_notice"])
             if result["imported"]:
                 st.caption("Updated: " + ", ".join(result["imported"]) + ". Edit below or save the handoff.")
             for message in result["notices"]:
@@ -1750,6 +1777,8 @@ def recurring_orders_editor(sheet: dict) -> None:
     st.subheader("Labs/Imaging")
     st.caption("R-section scheduled orders only. Counts are the Number of Occurrences in the paste, not a calculation of remaining draws.")
     data = sheet["recurring_orders"]
+    if "r" in sheet["import_warnings"]:
+        st.warning("The R section was skipped. Any list below is the previous snapshot for review only and is hidden from the printed handoff.")
     if data is None:
         st.info("Paste the R section and click Create / update handoff to add recurring lab and chest X-ray orders.")
         return
@@ -1852,6 +1881,131 @@ def gi_admin(store: GitHubVault | None) -> None:
         if not rules:
             st.caption("No overrides saved. The automatic defaults apply.")
 
+
+
+def acknowledge_import_warning(room: str, section: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    sheet = st.session_state["drafts"][room]
+    sheet["import_warnings"].pop(section, None)
+    note("Review acknowledged. No clinical value was changed. The reviewed handoff will save when you change rooms.")
+
+
+def import_review_editor(sheet: dict) -> None:
+    summary = review_summary(sheet)
+    if not summary:
+        return
+    st.warning(summary)
+    with st.expander("Review skipped or incomplete imports", expanded=False):
+        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed R orders are retained only for review and are hidden from print. Do not treat skipped values as refreshed.")
+        for section, items in sheet["import_warnings"].items():
+            for item in items:
+                st.text(diagnostic_text(item))
+            label = ("Use retained orders after checking Epic" if section == 'r' else
+                     "Acknowledge reviewed omissions" if any(i['action'].endswith('omitted') for i in items) else
+                     "Accept retained values after checking Epic")
+            st.button(label + " (" + REVIEW_SECTIONS[section] + ")", key="accept_import_" + sheet["id"] + "_" + section,
+                      on_click=acknowledge_import_warning, args=(sheet["room"], section))
+
+
+def send_pending_errors(store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    pending = ss.setdefault("pending_error_events", {})
+    if not pending:
+        ss.pop("error_log_notice", None)
+        return
+    if store is None:
+        ss["error_log_notice"] = "Technical errors are session-only. GitHub storage is not enabled."
+        return
+    try:
+        journal = ErrorJournal(store)
+        for ident, record in list(pending.items()):
+            sha = journal.save_new(record)
+            ss.setdefault("saved_error_events", {})[ident] = {"record": record, "sha": sha}
+            pending.pop(ident, None)
+        ss.pop("error_log_notice", None)
+        ss["error_log_saved"] = True
+    except Exception:
+        # Logging failure must not discard a clinical draft or leak raw details.
+        ss["error_log_notice"] = "The shared error log was not saved. Your imported handoff is still available. Retry in Import errors before closing this session."
+
+
+def refresh_error_log(store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    if store is None:
+        note("Shared error storage is not enabled. Only this session's records are available.")
+        return
+    try:
+        records, notices = ErrorJournal(store).load_month(ss.get("error_log_month", datetime.now(timezone.utc).strftime("%Y-%m")), limit=100)
+        ss["loaded_error_events"] = {x['record']['id']: x for x in records}
+        ss["loaded_error_month"] = ss["error_log_month"]
+        ss["error_list_notices"] = notices
+    except (StorageError, ValueError):
+        note("The shared error log could not be refreshed. The previous displayed list has not been changed.", "error")
+
+
+def set_error_review(ident: str, status: str, store: GitHubVault | None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    records = dict(ss.get("saved_error_events", {}))
+    records.update(ss.get("loaded_error_events", {}))
+    record = records.get(ident)
+    if record is None or store is None:
+        note("Load the saved error record before changing its status.", "error")
+        return
+    try:
+        updated = ErrorJournal(store).set_status(record['record'], record['sha'], status)
+        for key in ('saved_error_events', 'loaded_error_events'):
+            ss.setdefault(key, {})[ident] = updated
+        note("Shared error review status saved.", "success")
+    except (StorageError, ValueError):
+        note("The review change was not saved. Another team member may have changed it. Refresh the shared log and retry.", "error")
+
+
+def import_errors_page(store: GitHubVault | None) -> None:
+    st.title("Import errors")
+    ss = st.session_state
+    st.caption("Shared technical reports in the existing private GitHub repository. These reports contain app version, event time, section, error code and row/column positions only. No patient text, clinical values, rooms, names, MRNs, or staff identity are logged.")
+    st.caption("This uses the app's existing sign-in. It is not an individual staff audit trail. Marking a report resolved does not change any handoff or remove Git history.")
+    if "error_log_month" not in ss:
+        ss["error_log_month"] = datetime.now(timezone.utc).strftime("%Y-%m")
+    st.text_input("Error log month (UTC, YYYY-MM)", key="error_log_month", max_chars=7)
+    st.button("Refresh shared errors", key="refresh_shared_errors", on_click=refresh_error_log, args=(store,), disabled=store is None)
+    pending = ss.get("pending_error_events", {})
+    if pending:
+        st.warning(str(len(pending)) + " technical report(s) are not saved to GitHub and exist only in this session.")
+        st.button("Retry saving errors", key="retry_error_upload", on_click=send_pending_errors, args=(store,), disabled=store is None)
+    for message in ss.get("error_list_notices", []):
+        st.warning(message)
+    records = dict(ss.get("saved_error_events", {}))
+    records.update(ss.get("loaded_error_events", {}))
+    records.update({key: {"record": value, "sha": None} for key, value in pending.items()})
+    month = ss.get("error_log_month", "")
+    rows = sorted((value for value in records.values() if value["record"]["created_at"].startswith(month)), key=lambda x: x["record"]["created_at"], reverse=True)
+    if not rows:
+        st.info("No error records loaded for this month. Refresh to retrieve reports from other sessions.")
+        return
+    safe_report = [value["record"] for value in rows]
+    st.download_button("Download technical error report (JSON)", json.dumps(safe_report, indent=2).encode("utf-8"),
+                       "import_errors.json", "application/json")
+    for value in rows:
+        record = value["record"]
+        ident = record["id"]
+        saved = bool(value["sha"])
+        title = record["created_at"] + " | " + record["status"] + " | " + ident[:12] + ("" if saved else " | NOT SAVED")
+        with st.expander(title, expanded=False):
+            st.caption("App version " + record["app_version"] + " | " + ident)
+            for item in record["diagnostics"]:
+                st.text(diagnostic_text(item))
+                st.caption("Code: " + item["code"])
+            status = "resolved" if record["status"] == "open" else "open"
+            st.button("Mark resolved" if status == "resolved" else "Reopen", key="resolve_error_" + ident,
+                      on_click=set_error_review, args=(ident, status, store), disabled=not saved or store is None)
 
 if __name__ == "__main__":
     try:

@@ -1,3 +1,4 @@
+from recovery_helpers import assert_retained
 """SpO2 summary range regressions using synthetic inputs only."""
 from copy import deepcopy
 from pathlib import Path
@@ -77,7 +78,7 @@ def test_malformed_summary_never_invents_or_sorts_endpoints(source):
     original = sample_sheet()
     snapshot = deepcopy(original)
     result = import_sections(original, block(source), new_vault()['settings'])
-    assert result.errors and result.sheet is None
+    assert_retained(result, snapshot, "e")
     assert original == snapshot
 
 
@@ -156,7 +157,7 @@ def test_pdf_html_text_batch_and_encrypted_save():
         assert len(pdf) == 2
         assert all('SpO2: 93% to 100%' in page.get_text() for page in pdf)
     vault = save_sheet_in(new_vault(), sheet)
-    assert vault['schema'] == SCHEMA_VERSION ==15
+    assert vault['schema'] == SCHEMA_VERSION ==16
     key = generate_key()
     assert open_vault(seal_vault(vault, key), key) == vault
 

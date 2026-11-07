@@ -83,7 +83,9 @@ def parse_smartphrase(text: str) -> ParseResult:
                 active, buffer = key, []
             continue
         # A likely divider with one or more wrong letters is NOT silently corrected.
-        if len(line) >= 8 and line.isalpha() and set(line.lower()) <= set("abcdefghijklmnopqrs"):
+        if (len(line) >= 8 and line.isalpha()
+                and re.search(r"([a-z])\1{5,}", line, re.I)
+                and max(line.lower().count(c) for c in set(line.lower())) / len(line) >= 0.75):
             result.issues.append(f"Malformed divider on line {n}. Use only one repeated letter on that line.")
             if active:
                 result.invalid.add(active)

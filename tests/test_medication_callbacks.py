@@ -136,7 +136,9 @@ def test_bad_medication_block_cannot_partially_apply(app):
     before=deepcopy(ss['drafts']['P4102'])
     ss['paste']='aaaaaaaa\nDiagnoses:\n1. Changed diagnosis\naaaaaaaa\nbbbbbbbb\nMedications:\n• med\t1 mg\tIV\tq4h\n• no tabs here\nbbbbbbbb'
     app.create_handoff()
-    assert ss['drafts']['P4102']==before
+    assert ss['drafts']['P4102']['medications']==before['medications']
+    assert ss['drafts']['P4102']['fields']['Diagnoses']=='Changed diagnosis'
+    assert 'b' in ss['drafts']['P4102']['import_warnings']
     assert ss['import_result']['errors']
 
 

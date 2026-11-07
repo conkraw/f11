@@ -1,3 +1,4 @@
+from recovery_helpers import assert_retained
 """Synthetic regression tests for I/K/L/M, migration and observed tidal volume."""
 from copy import deepcopy
 from io import BytesIO
@@ -91,7 +92,7 @@ def test_icp_and_cpp_stay_separate_and_in_order():
 def test_neuro_duplicate_conflict_is_atomic():
     sheet = populated(); before = deepcopy(sheet)
     result = import_sections(sheet,block('a','1. Changed')+'\n'+block('m','CPP: 50 mmHg\nCPP: 60 mmHg'),new_vault()['settings'])
-    assert result.errors and result.sheet is None and not result.imported
+    assert_retained(result, before, "m")
     assert sheet == before
 
 
@@ -295,7 +296,7 @@ def legacy_v6():
     vault=save_sheet_in(new_vault(),populated())
     vault['schema']=6;vault["settings"].pop("medication_gi_groups", None);vault['settings'].pop('medication_infusions', None)
     for sheet in vault['rooms'].values():
-        sheet.pop("intake_output", None);sheet.pop("recurring_orders", None);sheet.pop("cbc", None);sheet.pop('blood_gas', None);sheet.pop('neuro_vitals');sheet.pop('nutrition');sheet.pop('cultures');sheet.pop('dosing_weight');sheet.pop("intake_output", None);sheet.pop("recurring_orders", None);sheet.pop("cbc", None);sheet.pop('blood_gas', None);sheet.pop('viral_panel', None);sheet.pop('admission_date')
+        sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop("recurring_orders", None);sheet.pop("cbc", None);sheet.pop('blood_gas', None);sheet.pop('neuro_vitals');sheet.pop('nutrition');sheet.pop('cultures');sheet.pop('dosing_weight');sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop("recurring_orders", None);sheet.pop("cbc", None);sheet.pop('blood_gas', None);sheet.pop('viral_panel', None);sheet.pop('admission_date')
     vault['rooms']['P4102']['fields']['Other']='Do not lose this existing note'
     return vault
 
@@ -303,7 +304,7 @@ def legacy_v6():
 def test_schema6_migration_preserves_every_old_field_and_does_not_mutate():
     old=legacy_v6();before=deepcopy(old)
     new=upgrade_vault(old)
-    assert old==before and new['schema']==15
+    assert old==before and new['schema']==16
     for key,value in old['rooms']['P4102'].items():assert new['rooms']['P4102'][key]==value
     assert new['settings']==dict(old['settings'], medication_infusions=[], medication_gi_groups=[])
     assert new['rooms']['P4102']['neuro_vitals']==empty_neuro() and new['rooms']['P4102']['nutrition'] is None
@@ -313,7 +314,7 @@ def test_schema6_encrypted_archive_opens_with_same_key_and_preserves_notes():
     old=legacy_v6();key=Fernet.generate_key().decode()
     ciphertext=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     new=open_vault(ciphertext,key)
-    assert new['schema']==15 and new['rooms']['P4102']['fields']['Other']==old['rooms']['P4102']['fields']['Other']
+    assert new['schema']==16 and new['rooms']['P4102']['fields']['Other']==old['rooms']['P4102']['fields']['Other']
 
 
 def test_new_observations_encrypt_roundtrip():
@@ -359,7 +360,7 @@ def test_session_v6_migration_preserves_unsaved_drafts(app):
     ss['drafts']['P4102']['fields']['Neurologic']='Unsaved edit'
     ss['vent_old']='old index'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==15 and ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved edit'
+    assert ss['vault']['schema']==16 and ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved edit'
     assert 'vent_old' not in ss
 
 

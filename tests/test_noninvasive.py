@@ -1,3 +1,4 @@
+from recovery_helpers import assert_retained
 """Synthetic source-pattern tests. These do not validate current bedside device use."""
 from copy import deepcopy
 from migration_helpers import strip_v6_fields
@@ -131,7 +132,7 @@ def test_cpap_conflicting_pressures_rejects_whole_import():
     result=parse_respiratory(CPAP.replace('8 cm H2O','10 cm H2O'),MASK)
     assert result.error and 'differs' in result.error
     out=import_sections(new_sheet('P4102'),wrapped(CPAP.replace('8 cm H2O','10 cm H2O'),MASK),new_vault()['settings'])
-    assert out.sheet is None
+    assert_retained(out, new_sheet("P4102"), "cd")
 
 
 def test_two_fio2_values_stay_device_specific():
@@ -200,7 +201,7 @@ def test_bad_c_or_d_dividers_blocks_all_changes():
     for text in ('cccccccc\n'+BILEVEL+'\ncccccccc\ndddddddd\n'+HFNC,
                  'cccccccc\n'+BILEVEL+'\ndddddddd\n'+HFNC+'\ndddddddd'):
         result=import_sections(new_sheet('P4102'),text,new_vault()['settings'])
-        assert result.errors and result.sheet is None
+        assert_retained(result, new_sheet("P4102"), "cd")
 
 
 def test_niv_reimport_clears_stale_bipap_and_keeps_notes():
@@ -257,7 +258,7 @@ def test_schema_three_migration_preserves_invasive_notes_mappings_and_ids():
     strip_v6_fields(vault)
     vault['rooms']['P4102'].pop('noninvasive')
     migrated=upgrade_vault(vault)
-    assert migrated['schema']==15 and vault['schema']==3
+    assert migrated['schema']==16 and vault['schema']==3
     assert migrated['rooms']['P4102']['noninvasive']==[]
     assert migrated['rooms']['P4102']['ventilation']==s['ventilation']
     assert migrated['rooms']['P4102']['id']==s['id']
@@ -275,7 +276,7 @@ def test_encrypted_niv_roundtrip_and_schema3_ciphertext_upgrade():
     strip_v6_fields(vault)
     vault['rooms']['P4102'].pop('noninvasive')
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(vault).encode())
-    assert open_vault(oldtoken,key)['schema']==15
+    assert open_vault(oldtoken,key)['schema']==16
 
 
 def test_niv_only_rooms_print_all_and_both_exports():
@@ -352,7 +353,7 @@ def test_session_schema3_migration_preserves_unsaved_support_notes(app):
     ss['vault']['schema']=3;ss['vault']["settings"].pop("medication_gi_groups", None);ss['vault']['settings'].pop('medication_infusions', None)
     ss['vault']['settings'].pop('medication_visibility', None)
     for obj in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):
-        obj.pop("intake_output", None);obj.pop("recurring_orders", None);obj.pop("cbc", None);obj.pop('blood_gas', None)
+        obj.pop("import_warnings", None);obj.pop("intake_output", None);obj.pop("recurring_orders", None);obj.pop("cbc", None);obj.pop('blood_gas', None)
         obj.pop('noninvasive')
         obj.pop('neuro_vitals', None)
         obj.pop('nutrition', None)
@@ -363,7 +364,7 @@ def test_session_schema3_migration_preserves_unsaved_support_notes(app):
         obj.pop('vitals', None)
         for row in obj.get('medications', []): row.pop('hidden', None)
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==15
+    assert ss['vault']['schema']==16
     assert ss['drafts']['P4102']['fields']['Respiratory']=='Unsaved note'
     assert ss['drafts']['P4102']['noninvasive']==[]
 

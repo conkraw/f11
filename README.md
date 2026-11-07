@@ -1,3 +1,43 @@
+# PICU Handoff 6.16: Partial imports and shared error review
+
+Complete ZIP update. No direct repository changes were made for this release.
+
+Save your current handoffs, extract PICU616.zip, and open
+PICU_Handoff_v6_16_Import_Recovery. Upload all its contents to the existing
+application code repository, replacing matching files. Keep app.py at the root.
+Include the new import_review.py and error_store.py modules. Restart the app.
+Keep deployment Secrets, password, encryption key, GitHub token, private data
+repository, medication mappings and other saved settings. Do not run the secrets
+generator. No new dependencies are required. The next save uses schema 16.
+
+Sidebar: Version 6.16 | Partial imports and shared error review
+
+## Current behavior
+
+Ordinary order comments such as Peripheral no longer trigger malformed-divider
+errors. A pipe-separated CBC cell is retained but excluded for review, not
+replaced with its lowest value. Valid sections continue importing when another
+section fails. Failed R orders are hidden from the handoff, and other failed
+sections retain previous values with a visible not-updated warning. Review
+warnings persist in saved handoffs and all print/export formats.
+
+The Import errors workspace automatically stores sanitized, encrypted technical
+reports in a separate folder of the same private repository. Teammates using the
+same app can refresh the shared log, resolve or reopen reports, and download a
+technical report. Failed log saves are clearly marked and retryable, without
+throwing away the handoff. No clinical paste, values, room, name, MRN or staff
+identity is stored in the technical journal.
+
+Read IMPORT_RECOVERY.md for exact omission, retention, concurrency and privacy
+behavior. See TEST_REPORT.md for checks actually performed. The bundled
+examples/synthetic_import_recovery.txt is not a patient record. The two-page
+examples/import_recovery_preview.pdf shows both partial CBC and skipped orders.
+
+## Historical release notes below
+
+These notes describe earlier versions. In particular, older statements that one
+bad section cancels an entire import are superseded by Version 6.16 above.
+
 # PICU Handoff 6.15: Intake/output and FEN/GI medication groups
 
 This is a complete ZIP update to Version 6.14. No repository was changed directly.

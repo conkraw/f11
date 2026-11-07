@@ -1,3 +1,4 @@
+from recovery_helpers import assert_retained
 """Version 6.15 synthetic regressions. No live records or GitHub calls."""
 from copy import deepcopy
 from io import BytesIO
@@ -103,7 +104,8 @@ def test_full_paste_with_h_and_s_uses_only_s():
 def test_malformed_s_rejects_entire_proposal(body):
     old=populated();before=deepcopy(old)
     r=import_sections(old,wrap('a','Diagnoses:\n1. Replacement')+wrap('s',body),new_vault()['settings'])
-    assert r.errors and r.sheet is None and old==before
+    assert_retained(r, before, "s")
+    assert old==before
 
 
 def test_repeat_identical_totals_only_once():
@@ -113,7 +115,8 @@ def test_repeat_identical_totals_only_once():
 
 def test_empty_unmatched_s_does_not_clear():
     old=io_sheet();r=import_sections(old,'s'*10+'\n'+BALANCE,new_vault()['settings'])
-    assert r.sheet is None and old['intake_output']
+    assert_retained(r, old, "s")
+    assert old["intake_output"]
 
 
 @pytest.mark.parametrize('name,group',[
@@ -194,11 +197,11 @@ def test_gi_override_is_form_route_frequency_specific():
 
 def test_latest_archive_migration_preserves_original_fields_and_settings():
     old=new_vault();old['schema']=14;old['settings'].pop('medication_gi_groups')
-    s=new_sheet('P4102');s.pop('intake_output');s['fields']['FEN / GI']='Preserve this note'
+    s=new_sheet('P4102');s.pop("import_warnings", None);s.pop('intake_output');s['fields']['FEN / GI']='Preserve this note'
     old['rooms'][s['room']]=s;original=deepcopy(old)
     new=upgrade_vault(old)
-    assert old==original and new['schema']==SCHEMA_VERSION==15
-    assert new['rooms'][s['room']]==dict(s,intake_output=None)
+    assert old==original and new['schema']==SCHEMA_VERSION==16
+    assert new['rooms'][s['room']]==dict(s,intake_output=None,import_warnings={})
     assert new['settings']==dict(old['settings'],medication_gi_groups=[])
     key=Fernet.generate_key().decode()
     cipher=Fernet(key.encode()).encrypt(json.dumps(old).encode())
