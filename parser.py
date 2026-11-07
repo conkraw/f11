@@ -8,10 +8,10 @@ SECTION_NAMES = {
     "a": "Diagnoses", "b": "Medications", "c": "Invasive Ventilation",
     "d": "Non-invasive Ventilation", "e": "VITALS", "f": "CULTURES",
     "g": "LABS", "h": "INTAKE/OUTPUT", "i": "NUTRITION", "j": "Wound Review",
-    "k": "Target Arousal Level", "l": "WAT Score", "m": "ICP Trends", "n": "Date of Admission", "o": "Respiratory Viral Panel", "p": "Blood Gas",
+    "k": "Target Arousal Level", "l": "WAT Score", "m": "ICP Trends", "n": "Date of Admission", "o": "Respiratory Viral Panel", "p": "Blood Gas", "q": "Complete Blood Count",
 }
 MAX_PASTE = 150_000
-DIVIDER = re.compile(r"^([a-p])\1{7,}$", re.I)
+DIVIDER = re.compile(r"^([a-q])\1{7,}$", re.I)
 NUMBER_OR_BULLET = re.compile(r"^\s*(?:\d+[.)]\s+|[•\-]\s+)")
 
 
@@ -35,7 +35,7 @@ class ParseResult:
 
 
 def parse_smartphrase(text: str) -> ParseResult:
-    """Accept matching a..p divider lines of any length >= 8.
+    """Accept matching a..q divider lines of any length >= 8.
 
     Ambiguous/missing/duplicate boundaries fail closed for that section.
     Issues in a later section do not invalidate a complete, unambiguous a block.
@@ -81,7 +81,7 @@ def parse_smartphrase(text: str) -> ParseResult:
                 active, buffer = key, []
             continue
         # A likely divider with one or more wrong letters is NOT silently corrected.
-        if len(line) >= 8 and line.isalpha() and set(line.lower()) <= set("abcdefghijklmnop"):
+        if len(line) >= 8 and line.isalpha() and set(line.lower()) <= set("abcdefghijklmnopq"):
             result.issues.append(f"Malformed divider on line {n}. Use only one repeated letter on that line.")
             if active:
                 result.invalid.add(active)
@@ -97,12 +97,12 @@ def parse_smartphrase(text: str) -> ParseResult:
         result.issues.append("Text outside the paired dividers was not imported.")
     for key, body in list(result.blocks.items()):
         nonempty = [ln.strip() for ln in body.splitlines() if ln.strip()]
-        p_start = key == "p" and (not nonempty or
-            re.match(r"^(?:results? from (?:the )?last |blood gases?:?$|latest blood gas:?$|lab\s+units\b|no results?\b|none$)", nonempty[0], re.I))
+        p_start = key in ("p", "q") and (not nonempty or
+            re.match(r"^(?:results? from (?:the )?last |blood gases?:?$|latest blood gas:?$|complete blood count:?$|cbc:?$|lab\s+units\b|no results?\b|no lab exists for component:|none$)", nonempty[0], re.I))
         if not p_start and (not nonempty or _heading(nonempty[0]) != key):
             result.invalid.add(key)
             result.issues.append(f"The {SECTION_NAMES[key]} divider pair must begin with its matching heading.")
-        elif any(_heading(ln) not in (None, key) and not (key == "g" and _heading(ln) == "p") for ln in nonempty[1:]):
+        elif any(_heading(ln) not in (None, key) and not (key == "g" and _heading(ln) in ("p", "q")) for ln in nonempty[1:]):
             result.invalid.add(key)
             result.issues.append(f"Another section heading appears inside {SECTION_NAMES[key]}. Check the dividers.")
     if "a" not in result.blocks or "a" in result.invalid:

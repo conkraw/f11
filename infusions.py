@@ -10,6 +10,7 @@ from copy import deepcopy
 from html import escape
 import re
 from medications import normalized, match_name, visible, format_medication
+from output_text import medication_output
 
 MODES = ("auto", "infusion", "other")
 MODE_LABELS = {"auto": "Automatic", "infusion": "Infusion", "other": "Other medication"}
@@ -83,8 +84,12 @@ def apply_infusion_rules(rows: list[dict], rules: list[dict]) -> list[dict]:
     return result
 
 
-def infusion_entry(row: dict, rich: bool = False, esc=escape) -> str:
+def infusion_entry(row: dict, rich: bool = False, esc=escape, handoff_only: bool = False) -> str:
     """Keep the entire formulation. Emphasize the explicit ordered dose, not strength."""
+    if handoff_only:
+        row = deepcopy(row)
+        for field in ("name", "dose", "route", "frequency", "last_rate", "custom_text"):
+            row[field] = medication_output(row.get(field, ""))
     encode = esc if rich else lambda v: v
     bold = lambda v: '<b>' + encode(v) + '</b>' if rich else v
     custom = row.get('custom_text', '').strip()
@@ -117,15 +122,15 @@ def neuro_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> 
     encode = esc if rich else lambda v: v
     if not drips:
         return '\n'.join([encode(notes.rstrip())] * bool(notes.strip()) +
-                         [encode(format_medication(r)) for r in other])
+                         [encode(medication_output(format_medication(r))) for r in other])
     parts = ['<b>INFUSIONS</b>' if rich else 'INFUSIONS']
     for index, row in enumerate(drips):
         if index:
             parts.append("")
-        parts.append(infusion_entry(row, rich, esc))
+        parts.append(infusion_entry(row, rich, esc, handoff_only=True))
     if notes.strip():
         parts.extend(['-----', encode(notes.rstrip())])
     if other:
         parts.extend(['-----', '<b>OTHER MEDICATIONS</b>' if rich else 'OTHER MEDICATIONS'])
-        parts.extend(encode(format_medication(r)) for r in other)
+        parts.extend(encode(medication_output(format_medication(r))) for r in other)
     return '\n'.join(parts)

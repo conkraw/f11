@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.12: latest dated VEN/ART/CAP gas from the P-block matrix."""
+"""PICU SmartPhrase v6.13: Q CBC, latest ANC/ALC and display-only medication cleanup."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -21,6 +21,7 @@ from batching import available_handoffs
 from parser import MAX_PASTE, SECTION_NAMES
 from security import valid_password_hash, verify_password
 from labs import validate_labs, lactate_text, id_labs_text
+from cbc import validate_cbc, cbc_summary, cbc_selection_issues
 from blood_gases import FIELDS as GAS_FIELDS, validate_gases, latest_sample, gas_summary, legacy_gases
 from vitals import validate_vitals, text_by_system
 from lab_layout import laboratory_html
@@ -77,7 +78,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_")):
             st.session_state.pop(key, None)
 
 
@@ -124,6 +125,15 @@ def editor_snapshot(room: str) -> dict:
                     if field == "organisms":
                         value = [line.strip() for line in value.splitlines() if line.strip()]
                     row[field] = value
+    if sheet["cbc"] is not None:
+        for row in sheet["cbc"]["rows"]:
+            dkey = "cbc_date_" + sheet["id"] + "_" + str(row["column"])
+            if dkey in ss:
+                row["date"] = ss[dkey].strip()
+            for field in ("value", "unit", "include"):
+                key = "cbc_" + row["id"] + "_" + field
+                if key in ss:
+                    row[field] = ss[key].strip() if isinstance(ss[key], str) else ss[key]
     if sheet["blood_gas"] is not None:
         for sample in sheet["blood_gas"]["samples"]:
             prefix = "gas_" + sample["id"] + "_"
@@ -612,6 +622,66 @@ def vital_row_change(room: str, index: int, field: str, key: str) -> None:
         note(str(exc), "error")
 
 
+def cbc_edit(room: str, row_id: str, field: str, key: str, column: int = -1) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    if room != ss.get("current_room"):
+        return
+    data = ss["drafts"][room]["cbc"]
+    if data is None:
+        return
+    candidate = deepcopy(data)
+    targets = [row for row in candidate["rows"] if row["column"] == column] if field == "date" else [row for row in candidate["rows"] if row["id"] == row_id]
+    if not targets:
+        return
+    previous = targets[0][field]
+    value = ss[key].strip() if isinstance(ss[key], str) else ss[key]
+    for row in targets:
+        row[field] = value
+    try:
+        validate_cbc(candidate)
+        ss["drafts"][room]["cbc"] = candidate
+    except ValueError as exc:
+        ss[key] = previous
+        note(str(exc), "error")
+
+
+def cbc_editor(sheet: dict) -> None:
+    st.subheader("CBC / absolute counts")
+    data = sheet["cbc"]
+    st.caption("Q keeps each CBC column together. Standard hemoglobin is preferred over ISTAT across the supplied snapshot. ANC and ALC are the latest absolute counts across automatic/manual rows, with their own dates. No percentages are converted.")
+    if data is None:
+        st.caption("No Q snapshot yet. Earlier G-block CBC rows remain available until a Q block replaces their display.")
+        return
+    if not data["rows"]:
+        st.caption("The included Q section contains no CBC results. Older G-block CBC results are not substituted.")
+        return
+    for issue in cbc_selection_issues(data):
+        st.caption(issue)
+    with st.expander("Edit retained CBC results (" + str(len(data["rows"])) + ")"):
+        columns = list(dict.fromkeys(row["column"] for row in data["rows"]))
+        for column in columns:
+            rows = [row for row in data["rows"] if row["column"] == column]
+            st.text("CBC source column " + str(column + 1))
+            key = "cbc_date_" + sheet["id"] + "_" + str(column)
+            if key not in st.session_state:
+                st.session_state[key] = rows[0]["date"]
+            st.text_input("Collection date / time (whole column)", key=key, max_chars=80,
+                          on_change=cbc_edit, args=(sheet["room"], "", "date", key, column))
+            for row in rows:
+                st.text(row["component"] + " | " + row["value"] + " " + row["unit"])
+                for field, label in (("value", "Recorded CBC result"), ("unit", "Source unit"), ("include", "Include result in CBC selection")):
+                    key = "cbc_" + row["id"] + "_" + field
+                    if key not in st.session_state:
+                        st.session_state[key] = row[field]
+                    kwargs = dict(key=key, on_change=cbc_edit, args=(sheet["room"], row["id"], field, key))
+                    if field == "include":
+                        st.checkbox(label, **kwargs)
+                    else:
+                        st.text_input(label, max_chars=100 if field == "value" else 50, **kwargs)
+
+
 def gas_edit(room: str, sample_id: str, label: str, field: str, key: str) -> None:
     if not require_session():
         return
@@ -682,8 +752,8 @@ def labs_vitals_editor(sheet: dict) -> None:
     neuro_weight_editor(sheet)
     viral_editor(sheet)
     st.subheader("Laboratory results")
-    st.caption("CBC and BMP show the last two supplied results per component. Other tests show the latest result per component. Only one latest gas is printed, labeled VEN, ART or CAP. The P table keeps specimen and column values together. Dates and source flags are preserved. No collection times or same-draw groupings are invented.")
-    components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}.lab-summary{font:14px/1.3 sans-serif;overflow-wrap:anywhere;margin:3px 0}.lab-full{grid-column:1/-1}</style>' + laboratory_html(sheet["labs"], blood_gas=sheet["blood_gas"]), height=490, scrolling=True)
+    st.caption("Q supplies the two latest CBC columns. BMP and older G-only CBCs retain per-component selection. Other tests show the latest result per component. Only one latest gas is printed, labeled VEN, ART or CAP. The P table keeps specimen and column values together. Dates and source flags are preserved. No collection times or same-draw groupings are invented.")
+    components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}.lab-summary{font:14px/1.3 sans-serif;overflow-wrap:anywhere;margin:3px 0}.lab-full{grid-column:1/-1}</style>' + laboratory_html(sheet["labs"], blood_gas=sheet["blood_gas"], cbc=sheet["cbc"]), height=490, scrolling=True)
     if lactate_text(sheet["labs"]):
         st.text("Cardiovascular: " + lactate_text(sheet["labs"]))
     if id_labs_text(sheet["labs"]):
@@ -701,6 +771,7 @@ def labs_vitals_editor(sheet: dict) -> None:
                     st.checkbox(label, **kwargs)
                 else:
                     st.text_input(label, max_chars=1000 if field == "value" else 80, **kwargs)
+    cbc_editor(sheet)
     gas_editor(sheet)
     st.subheader("Vital signs")
     if not sheet["vitals"]:
@@ -1011,7 +1082,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.12 | Latest gas: VEN / ART / CAP")
+        st.caption("Version 6.13 | Q CBC, ANC / ALC and cleaner medication output")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)

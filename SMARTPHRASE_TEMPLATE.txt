@@ -81,3 +81,11 @@ pppppppppppppppppppppppppppppppp
 [Insert the Epic Results from last 7 days blood-gas table here, including Lab,
 Units, collection dates and times. Use the real SmartLink, not this placeholder.]
 pppppppppppppppppppppppppppppppp
+
+
+qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+[Insert the Epic Results from last 7 days CBC table here, including Lab, Units,
+all collection dates/times and result columns. Include standard and ISTAT Hgb,
+NEUTROS ABS/ANC and automatic/manual absolute lymphocyte rows. Use your real
+SmartLink, not this placeholder.]
+qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq

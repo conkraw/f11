@@ -15,6 +15,13 @@ NOTE = ('Latest/preceding PER COMPONENT, not confirmed same-draw panels. Dates a
         'Same-date ties without collection times follow source order. -- = not supplied.')
 
 
+def note_for(cbc: dict | None) -> str:
+    if cbc is None:
+        return NOTE + ' ANC/ALC are the latest absolute counts, with independent dates.'
+    return ('CBC: two latest documented source columns; ANC/ALC are independent latest absolute counts. '
+            'BMP: latest/preceding per component, not confirmed same-draw panels. -- = not supplied.')
+
+
 def ascii_text(s: str) -> str:
     for a, b in {'₂':'2', '−':'-', '–':'-', '—':'-', '≤':'<=', '≥':'>=', 'μ':'u', 'µ':'u'}.items():
         s = s.replace(a, b)
@@ -33,20 +40,25 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
     def node(key,x,y,maxw=48):
         row = rows.get(key)
         label = {'CREATININE':'Cr', 'GLUCOSE':'Glucose', 'NA':'Na', 'CL':'Cl', 'HGB':'Hgb', 'HCT':'Hct', 'PLT':'Plt'}.get(key,key)
+        if key == 'HGB' and row and row.get('component') == 'Hgb (ISTAT)':
+            label = 'Hgb (ISTAT)'
         text(x,y+8,label,6.1,'Times-Bold','center')
         text(x,y,row['value'] if row else '--',7.2,'Times-Roman','center')
         if row:
-            text(x,y-8,short_date(row['date']),6.1,'Times-Roman','center')
+            stamp = short_date(row['date']).split(' ')
+            text(x,y-8,stamp[0],6.1,'Times-Roman','center')
+            if len(stamp) > 1:
+                text(x,y-15,stamp[1],6.1,'Times-Roman','center')
     # If a cell cannot fit faithfully, use labelled branches below instead.
     if kind in ('cbc','bmp'):
         main = ('WBC','HGB','HCT','PLT') if kind == 'cbc' else ('NA','K','CL','CO2','BUN','CREATININE','GLUCOSE')
         for key in main:
             if key in rows and (stringWidth(ascii_text(rows[key]['value']),'Times-Roman',7.2) > 40*scale
-                              or stringWidth(short_date(rows[key]['date']),'Times-Roman',6.1)>42*scale):
+                              or max(stringWidth(part,'Times-Roman',6.1) for part in short_date(rows[key]['date']).split(' '))>42*scale):
                 kind = 'branch'
                 break
     if kind == 'cbc':
-        extras = [rows[k] for k in ('MCV','NEUTROABS','LYMPHSABS') if k in rows]
+        extras = [rows[k] for k in ('MCV','ANC','ALC','NEUTROABS','LYMPHSABS') if k in rows]
         height = 100 + len(extras)*8
         offset = len(extras)*8
         node('WBC',25,48+offset); node('HGB',90,66+offset,65)
@@ -56,7 +68,7 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
         line(66,48+offset,114,48+offset)
         for i, row in enumerate(extras):
             short = row['component']
-            value = short + ': ' + row['value'] + ' [' + short_date(row['date']) + ']'
+            value = short + ': ' + row['value'] + (' [' + short_date(row['date']) + ']' if row['date'] else '')
             text(6,6+8*(len(extras)-i-1),value,6.5)
     elif kind == 'bmp':
         extras = [rows[key] for key in ('CALCIUM', 'MG', 'PHOS') if key in rows]
@@ -78,7 +90,7 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
         for row in rows.values():
             value = display_component(row['component']) + ': ' + row['value']
             chunks = wrap(ascii_text(value), max(18, int(width/4.2)), break_long_words=True, break_on_hyphens=False) or ['']
-            lines.append((chunks, short_date(row['date'])))
+            lines.append((chunks, short_date(row['date']) if row['date'] else ''))
         height = 28 + sum(9*len(chunks)+11 for chunks,_ in lines)
         y = height-30
         line(5, y+4, 5, 11)
@@ -97,16 +109,16 @@ def tree_text_fits(card: dict, width: float) -> bool:
     """Reject a vector tree if any text would spill outside its allotted cell."""
     scale = width / 180
     keys = ('WBC','HGB','HCT','PLT') if card['kind']=='cbc' else ('NA','K','CL','CO2','BUN','CREATININE','GLUCOSE')
-    extras = ('MCV','NEUTROABS','LYMPHSABS') if card['kind']=='cbc' else ('CALCIUM', 'MG', 'PHOS')
+    extras = ('MCV','ANC','ALC','NEUTROABS','LYMPHSABS') if card['kind']=='cbc' else ('CALCIUM', 'MG', 'PHOS')
     for key in keys:
         row = card['rows'].get(key)
         if row and (stringWidth(ascii_text(row['value']), 'Times-Roman', 7.2) > 40*scale
-                    or stringWidth(short_date(row['date']), 'Times-Roman', 6.1) > 42*scale):
+                    or max(stringWidth(part, 'Times-Roman', 6.1) for part in short_date(row['date']).split(' ')) > 42*scale):
             return False
     for key in extras:
         row = card['rows'].get(key)
         if row:
-            text = row['component'] + ': ' + row['value'] + ' [' + short_date(row['date']) + ']'
+            text = row['component'] + ': ' + row['value'] + (' [' + short_date(row['date']) + ']' if row['date'] else '')
             if stringWidth(ascii_text(text), 'Times-Roman', 6.5) > width-12:
                 return False
     return True
@@ -151,27 +163,27 @@ def horizontal_card_markup(card: dict) -> str:
     An ordinary Paragraph wraps naturally, so long edits are not truncated.
     """
     rows = list(card['rows'].values())
-    dates = {short_date(row['date']) for row in rows}
+    dates = {short_date(row['date']) for row in rows if row['date']}
     title = escape(card['title'])
-    same_date = len(dates) == 1
+    same_date = len(dates) == 1 and all(row['date'] for row in rows)
     if same_date:
         title += ' [' + escape(next(iter(dates))) + ']'
     values = []
     for row in rows:
         value = escape(display_component(row['component'])) + ': ' + escape(row['value'])
-        if not same_date:
+        if not same_date and row['date']:
             value += ' [' + escape(short_date(row['date'])) + ']'
         values.append(value)
     return '<b>' + title + ':</b> ' + ' | '.join(values)
 
 
-def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, include_id_panels: bool = False, blood_gas: dict | None = None) -> list:
+def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, include_id_panels: bool = False, blood_gas: dict | None = None, cbc: dict | None = None) -> list:
     style = ParagraphStyle('labline', fontName='Times-Roman', fontSize=font_size,
                            leading=font_size + 1, splitLongWords=True,
                            allowWidows=1, allowOrphans=1)
     note_style = ParagraphStyle('labnote', parent=style, fontSize=6.1, leading=7)
-    cards = result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas)
-    out = [Paragraph(escape(NOTE), note_style)] if cards else []
+    cards = result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas, cbc=cbc)
+    out = [Paragraph(escape(note_for(cbc)), note_style)] if cards else []
     trees = [card for card in cards if card['kind'] in ('cbc', 'bmp')]
     for i in range(0, len(trees), 4):
         row = LabRow(trees[i:i+4], width)
@@ -189,9 +201,9 @@ def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, inclu
     return out
 
 
-def laboratory_html(data: dict, include_id_panels: bool = False, blood_gas: dict | None = None) -> str:
-    cards = result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas)
-    pieces = ['<div class="labnote">' + escape(NOTE) + '</div>'] if cards else []
+def laboratory_html(data: dict, include_id_panels: bool = False, blood_gas: dict | None = None, cbc: dict | None = None) -> str:
+    cards = result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas, cbc=cbc)
+    pieces = ['<div class="labnote">' + escape(note_for(cbc)) + '</div>'] if cards else []
     pieces.append('<div class="labcards">')
     for card in cards:
         if card['kind'] not in ('cbc', 'bmp'):

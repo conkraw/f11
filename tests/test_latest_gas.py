@@ -248,14 +248,14 @@ def test_gas_only_room_in_print_all_and_empty_p_not_blank_patient():
 
 
 def test_schema11_migration_preserves_old_fields_mapping_infusion_and_notes():
-    s=imported();s.pop('blood_gas')
+    s=imported();s.pop('cbc', None);s.pop('blood_gas')
     old=new_vault();old['schema']=11;old['rooms']['P4102']=s
     old['settings']['medication_mappings']=[{'name':'test','match':'prefix','destination':'Neurologic'}]
     before=deepcopy(old)
     updated=upgrade_vault(old)
-    assert old==before and updated['schema']==12
+    assert old==before and updated['schema']==13
     assert updated['settings']==old['settings']
-    assert updated['rooms']['P4102']==dict(s,blood_gas=None)
+    assert updated['rooms']['P4102']==dict(s,blood_gas=None,cbc=None)
     key=Fernet.generate_key().decode()
     token=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     assert open_vault(token,key)==updated
@@ -265,7 +265,9 @@ def test_new_gas_encrypted_roundtrip():
     vault=save_sheet_in(new_vault(),imported())
     key=Fernet.generate_key().decode()
     encrypted=seal_vault(vault,key)
-    assert b'7.40' not in encrypted and b'ART' not in encrypted
+    # Short letter sequences can occur by chance in base64 ciphertext.
+    # Check complete plaintext markers plus exact decrypt/validate round-trip.
+    assert b'7.40' not in encrypted and b'"specimen": "ART"' not in encrypted
     assert open_vault(encrypted,key)==vault
 
 
@@ -333,9 +335,9 @@ def test_session11_upgrade_keeps_unsaved_gas_independent_notes(app):
     ss['drafts']['P4102']['fields']['Neurologic']='UNSAVED sentinel'
     ss['vault']['schema']=11
     for sheet in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):
-        sheet.pop('blood_gas')
+        sheet.pop('cbc', None);sheet.pop('blood_gas')
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==12
+    assert ss['vault']['schema']==13
     assert ss['drafts']['P4102']['blood_gas'] is None
     assert ss['drafts']['P4102']['fields']['Neurologic']=='UNSAVED sentinel'
 

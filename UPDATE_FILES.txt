@@ -1,14 +1,14 @@
-PICU Handoff 6.12: complete ZIP package
+PICU Handoff 6.13: complete ZIP package
 
-Extract PICU612.zip. Upload the contents of PICU_Handoff_v6_12_Latest_Gas
-into the existing app code repository, replacing matching files.
-Keep app.py at the root. Include blood_gases.py and all supplied Python files.
-No new dependencies relative to Version 6.11.
+Extract PICU613.zip. Upload the contents of PICU_Handoff_v6_13_CBC into the
+existing application code repository, replacing matching files. Keep app.py
+at the root. Include cbc.py, output_text.py and all supplied modules.
+No new dependencies relative to Version 6.12.
 
-Keep deployment Secrets, password, encryption key, token and private data repo.
-Do not rerun either secrets generator. Schema 1-11 archives upgrade to schema 12.
+Keep Streamlit Secrets, password, encryption key, token and private data repo.
+Do not rerun either secrets generator. Schemas 1-12 migrate to schema 13.
 Do not downgrade partial files after saving the new schema.
 
-Sidebar: Version 6.12 | Latest gas: VEN / ART / CAP
-Re-paste the complete SmartPhrase or just the paired P table.
-No direct GitHub operations were performed to create this ZIP.
+Sidebar: Version 6.13 | Q CBC, ANC / ALC and cleaner medication output
+Paste the complete Q table, or your full SmartPhrase, then Create / update handoff.
+No direct GitHub operations were performed to deliver this ZIP.

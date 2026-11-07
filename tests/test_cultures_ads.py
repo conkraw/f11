@@ -278,10 +278,10 @@ def test_all_original_fields_preserved_from_schema_seven():
     vault=save_sheet_in(new_vault(),sheet)
     vault['schema']=7;vault['settings'].pop('medication_infusions', None)
     for row in vault['rooms'].values():
-        row.pop('blood_gas', None);row.pop('cultures');row.pop('dosing_weight');row.pop('viral_panel', None);row.pop('admission_date')
+        row.pop('cbc', None);row.pop('blood_gas', None);row.pop('cultures');row.pop('dosing_weight');row.pop('viral_panel', None);row.pop('admission_date')
     before=deepcopy(vault)
     changed=upgrade_vault(vault)
-    assert changed['schema']==SCHEMA_VERSION==12 and vault==before
+    assert changed['schema']==SCHEMA_VERSION==13 and vault==before
     assert changed['settings']==dict(before['settings'], medication_infusions=[])
     for key,value in before['rooms']['P4102'].items():assert changed['rooms']['P4102'][key]==value
     assert changed['rooms']['P4102']['cultures']==empty_cultures()
@@ -361,9 +361,9 @@ def test_current_session_migration_preserves_unsaved_notes(app):
     ss=app.st.session_state
     ss['vault']['schema']=7;ss['vault']['settings'].pop('medication_infusions', None)
     for sheet in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):
-        sheet.pop('cultures');sheet.pop('dosing_weight');sheet.pop('blood_gas', None);sheet.pop('viral_panel', None);sheet.pop('admission_date')
+        sheet.pop('cultures');sheet.pop('dosing_weight');sheet.pop('cbc', None);sheet.pop('blood_gas', None);sheet.pop('viral_panel', None);sheet.pop('admission_date')
     ss['drafts']['P4102']['fields']['Neurologic']='Unsaved note'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==12
+    assert ss['vault']['schema']==13
     assert ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved note'
     assert ss['drafts']['P4102']['cultures']==empty_cultures()

@@ -203,15 +203,17 @@ def ordered_components(data: dict) -> dict[str, list[dict]]:
     return result
 
 
-def result_cards(data: dict, include_id_panels: bool = True, blood_gas: dict | None = None) -> list[dict]:
+def result_cards(data: dict, include_id_panels: bool = True, blood_gas: dict | None = None, cbc: dict | None = None) -> list[dict]:
     """Structured lab cards shared by PDF, HTML and plain-text exports.
 
     Coagulation stays immediately below Hepatic in the laboratory area.
     Only inflammatory markers are routed to ID when include_id_panels is False.
     """
     groups = ordered_components(data)
-    cards, consumed = [], set()
-    for name, components, count, kind in (('CBC', CBC, 2, 'cbc'), ('BMP', BMP, 2, 'bmp')):
+    from cbc import cbc_cards, cbc_component
+    cards = cbc_cards(data, cbc)
+    consumed = {key for key in groups if cbc_component(key)}
+    for name, components, count, kind in (('BMP', BMP, 2, 'bmp'),):
         if not any(key in groups for key in components):
             continue
         for index in range(count):
@@ -251,7 +253,7 @@ def lactate_text(data: dict) -> str:
     for key, rows in ordered_components(data).items():
         if is_lactate(key):
             row = rows[0]
-            lines.append(row['component'] + ': ' + row['value'] + ' [' + row['date'] + ']')
+            lines.append(row['component'] + ': ' + row['value'] + (' [' + row['date'] + ']' if row['date'] else ''))
     return '\n'.join(lines)
 
 
@@ -260,12 +262,12 @@ def display_component(component: str) -> str:
     return 'Anti-Xa (HEPLMW)' if canonical(component) == 'HEPLMW' else component
 
 
-def labs_text(data: dict, include_id_panels: bool = True, blood_gas: dict | None = None) -> str:
+def labs_text(data: dict, include_id_panels: bool = True, blood_gas: dict | None = None, cbc: dict | None = None) -> str:
     lines = []
-    for card in result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas):
+    for card in result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas, cbc=cbc):
         lines.append(card['title'])
         for row in card['rows'].values():
-            lines.append(display_component(row['component']) + ': ' + row['value'] + ' [' + row['date'] + ']')
+            lines.append(display_component(row['component']) + ': ' + row['value'] + (' [' + row['date'] + ']' if row['date'] else ''))
     if lines:
         lines.append('Per-component results, not confirmed same-draw panels. Same-date ties follow source order when collection times are absent.')
     if data['notes']:

@@ -13,6 +13,7 @@ import re
 from models import SYSTEMS, fields_with_medications, validate_sheet, automatic_vitals
 from infusions import neuro_body, is_infusion, infusion_entry
 from medications import visible, format_medication
+from output_text import medication_output
 from lab_layout import laboratory_flowables, laboratory_html, LabRow
 from cultures import cultures_text
 from viral import viral_text
@@ -86,7 +87,7 @@ def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
     cols = ''.join(f'<col style="width:{w*100:.1f}%">' for w in WIDTHS)
     bands = []
     for key in BOTTOM:
-        bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(sheet['labs'], blood_gas=sheet['blood_gas']) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
+        bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(sheet['labs'], blood_gas=sheet['blood_gas'], cbc=sheet['cbc']) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
     extra = '\n'.join(k + ': ' + fields[k] for k in ('Skin / Wounds', 'Tasks', 'Other') if fields[k].strip())
     if extra:
         bands.insert(2, '<div class="band"><strong>Additional notes:</strong> <span class="content">' + escape(extra) + '</span></div>')
@@ -200,7 +201,7 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
         for index, row in enumerate(infusions):
             if index:
                 q.append(Spacer(1, 2))
-            markup = ("<b>INFUSIONS</b>\n" if index == 0 else "") + infusion_entry(row, True, _clinical_markup)
+            markup = ("<b>INFUSIONS</b>\n" if index == 0 else "") + infusion_entry(row, True, _clinical_markup, handoff_only=True)
             q.append(InfusionParagraph(markup.replace("\n", "<br/>"), style))
         notes = sheet["fields"]["Neurologic"]
         if notes.strip():
@@ -209,14 +210,14 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
         if others:
             q.extend(paragraphs("-----\n<b>OTHER MEDICATIONS</b>", rich=True))
             for row in others:
-                q.extend(paragraphs(format_medication(row)))
+                q.extend(paragraphs(medication_output(format_medication(row))))
         columns[1] = q
     band_items = [(name, fields[name]) for name in BOTTOM]
     extra = '\n'.join(name + ': ' + fields[name] for name in ('Skin / Wounds', 'Tasks', 'Other')
                       if fields[name].strip())
     if extra:
         band_items.insert(2, ('Additional notes', extra))
-    bands = [(name, (laboratory_flowables(sheet['labs'], total_width-6, font_size, blood_gas=sheet['blood_gas'])
+    bands = [(name, (laboratory_flowables(sheet['labs'], total_width-6, font_size, blood_gas=sheet['blood_gas'], cbc=sheet['cbc'])
                     if name == 'Lab Results / Trends' else []) + paragraphs(text))
              for name, text in band_items]
     access = [(name, paragraphs(fields[name])) for name in ACCESS_FIELDS]

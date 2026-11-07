@@ -1,4 +1,4 @@
-"""One-click A/B/C/D/E/F/G/I/K/L/M/N/O/P import with all-or-nothing updates for malformed input."""
+"""One-click A/B/C/D/E/F/G/I/K/L/M/N/O/P/Q import with all-or-nothing updates for malformed input."""
 from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -14,8 +14,9 @@ from cultures import parse_cultures
 from demographics import parse_admission
 from viral import parse_viral_panel
 from blood_gases import parse_gases
+from cbc import parse_cbc
 
-SUPPORTED_SECTIONS = "abcdefgiklmnop"
+SUPPORTED_SECTIONS = "abcdefgiklmnopq"
 
 
 @dataclass
@@ -37,7 +38,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
     parsed = parse_smartphrase(text)
     relevant = set(SUPPORTED_SECTIONS) & (set(parsed.blocks) | parsed.invalid)
     if not relevant:
-        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O or P dividers.")
+        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O, P or Q dividers.")
         return out
     out.notices.extend(parsed.issues)
     candidate = deepcopy(sheet)
@@ -129,6 +130,14 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 candidate["blood_gas"] = gas.data
                 out.notices.extend(gas.issues)
                 out.imported.append("latest blood gas" if gas.data["samples"] else "blood gas display cleared")
+            elif letter == "q":
+                cbc = parse_cbc(parsed.blocks[letter])
+                if cbc.error:
+                    out.errors.append(cbc.error)
+                    continue
+                candidate["cbc"] = cbc.data
+                out.notices.extend(cbc.issues)
+                out.imported.append("CBC and latest ANC / ALC" if cbc.data["rows"] else "CBC display cleared")
             elif letter in "klm":
                 observations = parse_neuro(parsed.blocks[letter], letter)
                 if observations.error:

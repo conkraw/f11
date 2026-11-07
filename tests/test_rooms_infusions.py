@@ -45,7 +45,7 @@ def test_custom_names_are_not_rewritten_as_other_beds(room):
 def legacy_ten():
     v=new_vault();v['schema']=10;v['settings'].pop('medication_infusions')
     v['settings']['rooms']=['P4102','4201','4213','4307']
-    s=new_sheet('P4201');s.pop('blood_gas');s['room']='4201';s['fields']['Diagnoses']='SYNTHETIC old record'
+    s=new_sheet('P4201');s.pop('cbc', None);s.pop('blood_gas');s['room']='4201';s['fields']['Diagnoses']='SYNTHETIC old record'
     s['medications']=[med()]
     v['rooms']['4201']=s
     v['settings']['medication_mappings']=upsert_rule([],'example','Neurologic')
@@ -54,9 +54,9 @@ def legacy_ten():
 
 def test_preset_key_upgrade_preserves_entire_sheet_except_room_and_original_input():
     old=legacy_ten();before=deepcopy(old);new=upgrade_vault(old)
-    assert old==before and new['schema']==SCHEMA_VERSION==12
+    assert old==before and new['schema']==SCHEMA_VERSION==13
     assert new['settings']['rooms']==['P4102','P4201','P4213','4307']
-    assert new['rooms']['P4201']==dict(old['rooms']['4201'],room='P4201',blood_gas=None)
+    assert new['rooms']['P4201']==dict(old['rooms']['4201'],room='P4201',blood_gas=None,cbc=None)
     assert new['settings']['medication_mappings']==old['settings']['medication_mappings']
     validate_vault(new)
 
@@ -70,7 +70,7 @@ def test_old_archive_decrypts_with_same_key_and_new_room_labels():
 
 
 def test_duplicate_preset_alias_sheets_do_not_silently_merge():
-    old=legacy_ten();old['rooms']['P4201']=new_sheet('P4201');old['rooms']['P4201'].pop('blood_gas');before=deepcopy(old)
+    old=legacy_ten();old['rooms']['P4201']=new_sheet('P4201');old['rooms']['P4201'].pop('cbc', None);old['rooms']['P4201'].pop('blood_gas');before=deepcopy(old)
     with pytest.raises(ValidationError,match='aliases'):
         upgrade_vault(old)
     assert old==before
@@ -222,7 +222,7 @@ def test_infusion_group_below_neuro_vitals_above_notes_and_other_meds():
     text=fields_with_medications(s)['Neurologic']
     assert text.index('SBS -1')<text.index('INFUSIONS')<text.index('INFUSION_NAME')<text.index('NOTE_SENTINEL')<text.index('OTHER MEDICATIONS')<text.index('BOLUS')
     html=handoff_html(s)
-    assert '<b>INFUSION_NAME</b>' in html and '<b><u>Dose: 1.2 mcg/kg/hr (Dosing Weight)</u></b>' in html
+    assert '<b>INFUSION_NAME</b>' in html and '<b><u>Dose: 1.2 mcg/kg/hr</u></b>' in html
     assert 'Recorded rate: 3.48 mL/hr' in html
     assert 'INFUSIONS' in handoff_text(s)
 

@@ -1,84 +1,98 @@
-# PICU Handoff 6.12: one latest blood gas
+# PICU Handoff 6.13: Q-section CBC, ANC / ALC and medication display
 
-Complete web-app package, delivered as a ZIP. No direct repository changes.
+Complete ZIP update. No direct GitHub changes. Save open work, extract PICU613.zip,
+and upload the contents of PICU_Handoff_v6_13_CBC into the existing app code
+repository. Replace matching files and keep app.py at the root. Include cbc.py,
+output_text.py and all supplied modules. Keep deployment Secrets, the password,
+encryption key, token, private data repository and medication mappings unchanged.
+Do not rerun the secrets generator. No new dependencies are required.
 
-## Update your existing app
+Sidebar: Version 6.13 | Q CBC, ANC / ALC and cleaner medication output
 
-Save open work, extract PICU612.zip, then upload the contents of
-PICU_Handoff_v6_12_Latest_Gas into the existing code repository. Replace matching
-files and keep app.py at the root. Include the new blood_gases.py and every
-updated Python module. Do not mix versions of the model, importer and renderer.
+## Q is separate from P and G
 
-Keep your Streamlit Secrets, password hash, encryption key, token and private
-storage repository unchanged. Do not rerun either secrets generator. No new
-packages are required. Restart and look for:
+Paste the complete Epic CBC table inside paired q dividers, including Lab, Units,
+all collection dates/times and every value column. Wrapped date/time headers and
+an uppercase letter in a divider are supported. No extra CBC heading is needed.
 
-    Version 6.12 | Latest gas: VEN / ART / CAP
+The original CBC fishbone layout remains. The two latest documented CBC-containing
+columns are selected by date/time. Each tree keeps results from its own column.
+A gas-only Hct/ISTAT column does not displace a standard CBC column. A missing
+component is shown as -- rather than filled from another time. Columns do not
+prove specimen identity; they preserve the exact association Epic supplies.
 
-Existing schemas 1 through 11 migrate to schema 12 with the same key and all
-existing fields and settings preserved. The new blood_gas field initially is
-None. The next successful save writes schema 12. Do not downgrade partial files.
+Standard HEMOGLOBIN/HGB has priority over explicitly labelled ISTAT hemoglobin
+across the included Q snapshot. When any included standard hemoglobin exists,
+ISTAT hemoglobin is not printed, even if it is newer or the second standard value
+is absent. Only when there is no included standard hemoglobin may ISTAT values
+be selected, and the node is labelled Hgb (ISTAT). No method is guessed for
+unlabelled legacy HGB rows. Source ISTAT entries remain editable and encrypted.
 
-## P-block gas table
+## ANC and ALC below the CBC
 
-Paste the paired p dividers around the Epic table headed Results from last 7
-days, including Lab, Units, dates and times. No additional heading is required.
-The application reads wrapped date/time headers as in your new SmartPhrase.
+The latest absolute neutrophil result is selected across NEUTROS ABS, NEUTROABS,
+ANC and supported explicit absolute-count aliases. The latest absolute lymphocyte
+result is selected across LYMPHS ABS AUTO, LYMPHSABS, MANUAL ABSOLUTE LYMPHOCYTE CV
+and supported explicit absolute-count aliases. Recency, not automatic/manual
+preference, decides. Equal timestamps keep source order and differing ties produce
+an editor notice. A zero result remains a zero. Percentages are never converted.
 
-The printed lab area shows one horizontal gas summary with VEN, ART or CAP,
-its collection date/time, and only the supplied values from that specimen in
-that column. It chooses the newest explicitly displayed gas by source timestamp,
-not the order of the specimen types and not a preference for arterial results.
-Supported specimen-qualified rows include pH, PCO2, PO2, HCO3, base excess and
-oxygen saturation. Units and source flags remain unchanged. No dose, lab value,
-time, specimen label or missing component is calculated.
+The labels are ANC and ALC. They print once, below the latest CBC tree, with their
+own dates/times and supplied units. They may be older than the CBC and are not
+relabeled with its date. If a count is not supplied, its line shows -- without a
+fabricated date or unit. The preceding tree retains its own MCV when supplied.
 
-Empty cells, -- and < > are not measurements. A newer incomplete gas remains
-incomplete, without borrowing pH, PO2 or another value from an older column.
-Untyped corrected PO2 and the example ISTAT deficit percentage fields are not
-substituted for specimen-specific PO2 or base excess. Their omission is noted
-in the import screen. Hidden interval results cannot be recovered from < >.
+Q takes precedence over CBC rows in G, including when Q is explicitly empty.
+An omitted Q preserves the existing Q snapshot. An empty/no-results Q clears it.
+A new Q replaces rather than appends. G updates do not erase an existing Q.
+Legacy G-only CBCs still work until Q is supplied, with per-component rather than
+same-column selection. The two BMP trees and other lab routing are unchanged.
 
-If the latest date has missing collection times or different specimens tie at
-the exact timestamp, source order is the explicit fallback. A notice appears
-in the editor and a qualifier remains in the printed gas title. This is not a
-claim that the source proves which tied result is newest.
+Review retained source labels, results, units and dates in Labs / Vitals under
+CBC / absolute counts. Changing a column's date updates that whole column.
+Individual results can be excluded or restored without deletion.
 
-## Re-pasting and review
+## Gas compatibility
 
-P alone updates gas results without replacing medications, other labs, vitals,
-room information, or notes. A successful P replaces the prior automatic gas
-snapshot. An included empty or no-results P clears the automatic gas display.
-Omitting P preserves that room's previous P snapshot. Always include P again
-when you need the gas to reflect the new source report.
+P remains a separate snapshot with the same newest-specimen/column selection.
+Existing P formats and same-column protection are retained. This release also
+recognizes explicit POCT PCO2, VENOUS / POCT PO2, VENOUS labels and BASE EXCESS,
+VENOUS, plus their arterial/capillary equivalents. An unlabelled PH can join a
+column only when that exact column has one explicitly identified gas specimen
+from another supported analyte. This association is noted in the editor. PH is
+not assigned when the type is ambiguous. No values are borrowed across columns.
 
-Once P is supplied, it takes precedence over any old G-block gas rows, even
-when the P result is empty. Old G values never fill a missing P field. For a
-saved handoff that has never received P, one legacy gas may be shown using the
-latest dated specimen group. Its label says legacy G, same-draw unverified,
-because dates alone cannot prove a common draw or exact collection order.
-Re-paste P to use the timestamped matrix instead.
+The exact Epic message No lab exists for component is accepted as no gas data,
+not as a malformed table. Unknown nonempty table layouts or conflicting values
+still stop the import without altering any of the existing handoff. Date-less
+or exact-time gas ties retain the existing source-order warnings.
 
-Labs / Vitals now includes Latest blood gas and an expandable list of retained
-gas columns. Edit their dates, values or source units, or exclude a gas from
-selection. Older columns stay in the encrypted snapshot for review but do not
-print. The editor's latest selection, PDF, HTML, plain text and Print all use
-one shared selection rule. Room autosave includes pending gas edits.
+## Medication output only
 
-The supplied examples/synthetic_latest_gas.txt is a synthetic practice paste.
-examples/latest_gas_preview.pdf shows the new layout. Sample-loading buttons
-have not been added back to the app.
+The literal parenthetical phrase (Dosing Weight) is removed from generated
+medication wording in the preview, PDF, HTML, text and Print all, including
+neurologic infusions and custom medication wording. Dose units such as mg/kg
+and mcg/kg/hr, order-specific qualifiers, future dates, held labels, formulation,
+route, frequency and rates are kept. No dose is recalculated.
 
-## Validation and privacy
+The medication editor and encrypted records retain the original phrase. Mapping
+and hiding keys are untouched. The separate demographic Dosing weight field is
+not removed. Manual non-medication notes are not rewritten. Existing handoffs use
+this output-only cleanup immediately, without re-pasting their medications.
 
-See TEST_REPORT.md for actual checks. The printed preview is synthetic. No
-user keys, patient records or deployment secrets are included. This update does
-not change the host, encrypted archive path, access requirements, logging or
-Git history retention. Downloads remain unencrypted. Use institution-approved
-hosting and storage for clinical information. No live deployment or private
-handoff-store connection was tested here.
+## Checks and limits
 
-## Existing features retained
+Moving the CBC into its own timed section is reasonable, but no parser can
+recover data Epic hides with < > or infer missing source details. Malformed rows,
+column-count mismatches and ambiguous headers reject the entire proposed import
+rather than silently mixing columns, guessing values or erasing the last handoff.
+All previous fields remain available if the proposed import is rejected.
+
+See TEST_REPORT.md for executed checks. examples/synthetic_cbc_smartphrase.txt
+and examples/cbc_preview.pdf are synthetic. No user records, deployment secrets
+or real encryption keys are included. The actual hosted Streamlit interface and
+private GitHub store have not been exercised. Use existing institutional hosting
+and storage controls. Exported files are not encrypted.
 
 ## Custom rooms and preset labels
 
@@ -125,7 +139,7 @@ recorded rate is separate so a weight-based dose is not confused with mL/hr. If
 Dose is blank, the recorded rate is emphasized instead. No dose is calculated,
 reused from another patient, or inferred from a product concentration. Blank dose
 and rate stay blank. The complete formulation, held/start labels and source
-qualifiers stay visible. User-supplied custom wording remains authoritative.
+qualifiers are stored unchanged. Only the literal (Dosing Weight) qualifier is omitted from medication output. User-supplied custom wording remains authoritative.
 
 Continuous parenteral orders are recognized automatically from their route and
 frequency. An infusion product name or a historical pump rate alone is not enough.
@@ -152,12 +166,12 @@ Extremely long entries or handoffs continue instead of being clipped.
 
 ## Saved-data migration
 
-Schema 12 adds the independent P-block blood-gas snapshot. Existing infusion
-display preferences and canonical room labels are preserved. Schemas 1 through
-11 migrate on load with the existing key. The next successful save writes
-schema 12 to the same encrypted-data/handoff-v1.enc path.
-Do not downgrade individual application files after saving in the new schema.
-Keep the full update together. No raw pasted SmartPhrase is added to storage.
+Schema 13 adds an independent cbc snapshot. Schemas 1 through 12 migrate on load
+using the existing encryption key. No medication source wording, prior gas, lab,
+manual note, room ID or saved mapping is replaced. cbc is initially None, enabling
+legacy G-block CBC display until a Q block is supplied. The archive path remains
+encrypted-data/handoff-v1.enc. The next successful save writes schema 13.
+Do not downgrade individual files after saving. Keep the complete package together.
 
 ## Existing features retained
 

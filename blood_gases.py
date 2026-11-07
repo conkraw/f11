@@ -33,9 +33,18 @@ def empty_gases() -> dict:
 
 def gas_label(label: str) -> tuple[str, str] | None:
     """Only explicit specimen labels. Never infer type from value or unit."""
-    label = label.split(',', 1)[0].strip(" '\"")
-    key = re.sub(r'\s+', ' ', label.replace('₂', '2').replace('₃', '3')).upper()
-    match = re.fullmatch(r'(PH|PCO2|PO2|HCO3|BICARBONATE|BASE EXC|BASE EXCESS|O2 SAT|O2 SATURATION|SO2) (VEN|VENOUS|ART|ARTERIAL|CAP|CAPILLARY)', key)
+    # Existing labels may include a quoted alternate name after the first label.
+    # POCT rows instead use a comma to separate analyte from specimen type.
+    first = label.split(',', 1)[0].strip(" '\"")
+    whole = label.strip(" '\"")
+    match = None
+    for candidate in (first, whole):
+        key = re.sub(r'\s+', ' ', candidate.replace('₂', '2').replace('₃', '3')).upper()
+        key = re.sub(r'^POCT\s+', '', key)
+        key = re.sub(r',\s*', ' ', key)
+        match = re.fullmatch(r'(PH|PCO2|PO2|HCO3|BICARBONATE|BASE EXC|BASE EXCESS|O2 SAT|O2 SATURATION|SO2) (VEN|VENOUS|ART|ARTERIAL|CAP|CAPILLARY)', key)
+        if match:
+            break
     if not match:
         return None
     field_name, specimen = match.groups()
@@ -134,7 +143,7 @@ def parse_gases(block: str) -> GasResult:
     out = GasResult()
     lines = block.replace('\r\n', '\n').replace('\r', '\n').replace('\u00a0', ' ').splitlines()
     meaningful = [line.strip() for line in lines if line.strip()]
-    empty_lines = re.compile(r'^(?:blood gases?:?|latest blood gas:?|results? from (?:the )?last .*|none|no results?(?: found)?.*)$', re.I)
+    empty_lines = re.compile(r'^(?:blood gases?:?|latest blood gas:?|results? from (?:the )?last .*|none|no results?(?: found)?.*|no lab exists for component:.*)$', re.I)
     if not meaningful or all(empty_lines.fullmatch(line) for line in meaningful):
         return out
     # The first data row can be an unsupported analyte. The Lab/Units header is
@@ -165,11 +174,16 @@ def parse_gases(block: str) -> GasResult:
     by_column = [dict() for _ in dates]
     ignored = 0
     recognized = 0
+    generic_ph_rows = []
     for number, raw in enumerate(lines[first_row:], first_row + 1):
         line = raw.strip()
         if not line or re.match(r'^<\s*>\s*=', line) or re.match(r'^results? from (?:the )?last ', line, re.I):
             continue
-        typed = gas_label(_row_label(raw))
+        raw_label = _row_label(raw)
+        generic_ph = raw_label.strip().upper() in ("PH", "POCT PH")
+        typed = gas_label(raw_label)
+        if generic_ph:
+            typed = ("", "pH")
         if not typed:
             ignored += 1
             continue
@@ -190,6 +204,12 @@ def parse_gases(block: str) -> GasResult:
             return out
         specimen, label = typed
         unit = cells[1]
+        if generic_ph:
+            if unit:
+                out.error = 'An untyped pH row has unexpected units. Nothing was imported.'
+                return out
+            generic_ph_rows.append((number, cells))
+            continue
         for index, value in enumerate(cells[2:]):
             if EMPTY.fullmatch(value):
                 continue
@@ -205,6 +225,25 @@ def parse_gases(block: str) -> GasResult:
                 out.error = 'Two blood-gas rows disagree for the same specimen, column and component. Nothing was imported.'
                 return out
             sample['values'][label] = result
+    # Generic PH is used only where this exact column has one explicit specimen
+    # type established by another requested gas analyte. Never use older columns.
+    for number, cells in generic_ph_rows:
+        for index, value in enumerate(cells[2:]):
+            if EMPTY.fullmatch(value):
+                continue
+            if not VALUE.fullmatch(value):
+                out.error = 'An untyped pH row has an unrecognized result. Nothing was imported.'
+                return out
+            if len(by_column[index]) != 1:
+                out.issues.append('An untyped pH result could not be assigned to one explicit specimen in its own column and was omitted.')
+                continue
+            sample = next(iter(by_column[index].values()))
+            result = {'value': value, 'unit': ''}
+            if 'pH' in sample['values'] and sample['values']['pH'] != result:
+                out.error = 'Typed and untyped pH disagree within the same specimen column. Nothing was imported.'
+                return out
+            sample['values']['pH'] = result
+            out.issues.append('An untyped pH was associated with the only explicitly identified specimen in its own date/time column.')
     if not recognized and first_row < len(lines):
         out.error = 'No supported specimen-labeled blood-gas rows were found in P. Nothing was imported.'
         return out
