@@ -14,6 +14,7 @@ from models import SYSTEMS, fields_with_medications, validate_sheet, automatic_v
 from infusions import neuro_body, is_infusion, infusion_entry
 from medications import visible, format_medication
 from output_text import medication_output
+from fen_gi import effective_section, fen_gi_body
 from lab_layout import laboratory_flowables, laboratory_html, LabRow
 from cultures import cultures_text
 from viral import viral_text
@@ -53,6 +54,8 @@ def patient_column(sheet: dict, fields: dict) -> str:
 def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
     """Bold only generated microorganism names, never arbitrary source markup."""
     text = fields[section]
+    if section == "FEN / GI":
+        return fen_gi_body(sheet["fields"][section], sheet["medications"], sheet["intake_output"], True, esc)
     if section == "Neurologic":
         body = neuro_body(sheet["fields"][section], sheet["medications"], True, esc)
         vitals = automatic_vitals(sheet).get(section, "")
@@ -186,7 +189,7 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
     # Keep a compact infusion entry together so its name cannot be separated
     # from the ordered dose at a page boundary. Extremely long custom entries
     # still split instead of getting stuck or being clipped.
-    neuro_meds = [r for r in sheet["medications"] if visible(r) and r["section"] == "Neurologic"]
+    neuro_meds = [r for r in sheet["medications"] if visible(r) and effective_section(r) == "Neurologic"]
     infusions = [r for r in neuro_meds if is_infusion(r)]
     if infusions:
         class InfusionParagraph(Paragraph):

@@ -11,6 +11,7 @@ from html import escape
 import re
 from medications import normalized, match_name, visible, format_medication
 from output_text import medication_output
+from fen_gi import effective_section
 
 MODES = ("auto", "infusion", "other")
 MODE_LABELS = {"auto": "Automatic", "infusion": "Infusion", "other": "Other medication"}
@@ -116,7 +117,7 @@ def infusion_entry(row: dict, rich: bool = False, esc=escape, handoff_only: bool
 
 def neuro_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
     """Infusions first, then separate notes and remaining neuro medications."""
-    meds = [r for r in rows if visible(r) and r['section'] == 'Neurologic']
+    meds = [r for r in rows if visible(r) and effective_section(r) == 'Neurologic']
     drips = [r for r in meds if is_infusion(r)]
     other = [r for r in meds if not is_infusion(r)]
     encode = esc if rich else lambda v: v

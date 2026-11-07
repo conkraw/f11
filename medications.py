@@ -116,10 +116,12 @@ def upsert_rule(rules: list[dict], name: str, destination: str, match: str = "pr
 
 
 def validate_medication(row: dict) -> None:
-    if not isinstance(row, dict) or set(row) not in (FIELDS, FIELDS | {"infusion_mode"}):
+    if not isinstance(row, dict) or not FIELDS.issubset(row) or set(row) - FIELDS - {"infusion_mode", "gi_mode"}:
         raise ValueError("A medication entry has an invalid structure.")
     if row.get("infusion_mode", "auto") not in ("auto", "infusion", "other"):
         raise ValueError("Choose a valid infusion display setting.")
+    if row.get("gi_mode", "auto") not in ("auto", "prophylaxis", "bowel", "other"):
+        raise ValueError("Choose a valid FEN/GI display setting.")
     if not isinstance(row["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", row["id"]):
         raise ValueError("A medication identifier is invalid.")
     for key in ("name", "dose", "route", "frequency", "last_rate", "rate_time", "custom_text"):

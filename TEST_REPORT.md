@@ -1,21 +1,23 @@
-# Version 6.14 validation report
+# Version 6.15 validation report
 
-## Executed checks
+## Executed
 
-The unmodified Version 6.13 baseline passed 1,169 tests in this environment. The Version 6.14 suite passed 1,286 tests with no failures or skips. The command was PYTHONPATH=. pytest -q --disable-warnings.
+- The unmodified Version 6.14 package passed its 1,286-test baseline in this build environment.
+- The updated suite passed 1,363 tests using Python 3.13. This includes 77 new FEN/GI tests. Existing migration test fixtures were updated only to omit newly introduced fields when constructing a historical schema and to expect schema 15 after migration.
+- Coverage: S totals, missing/zero/negative values, exact unit/precision preservation, no Net calculation, conflicting totals, S-only and omitted/empty updates, H not counted twice, requested generic-name grouping, held and dated orders, topical glycerin exclusion, hidden/excluded rows, distinct schedules, exact-formulation overrides, escaping, rollback on failed saves, editing and pending-widget room autosave, existing rule preservation, encrypted round trips, session-only operation, PDF/HTML/text/batch export and one-page synthetic output.
+- Independently executed original Version 6.14 code to generate an encrypted synthetic archive. Version 6.15 opened it with the same key and preserved every old setting and every old saved field. New defaults are an empty GI-display-override list and null intake/output snapshots.
+- Privately checked the supplied complete SmartPhrase: all 24 medication rows imported, recorded S totals preserved, two separate sennosides orders retained. Previous parsed fields matched Version 6.14 after excluding generated IDs/timestamps. The supplied source file is not included in the ZIP.
+- CBC, blood-gas, laboratory, lab-tree, respiratory, recurring-order, culture, security, GitHub-storage and dependency files were byte-compared against the original baseline. Their parsers/logic are unchanged.
+- Rendered the synthetic landscape PDF at 160 dpi and visually inspected its one-page output. FEN/GI totals precede bold GI prophylaxis and Bowel Regimen headings without overlap or clipping.
 
-The added tests cover selected order aliases, excluded tests, repeating interval normalization, one-time and STAT filtering, missing/invalid counts, duplicate selection by maximum count, preserving different schedules/specimens/panels, keeping notes separate, R boundaries, R-only imports, clear-versus-omit behavior, all-or-nothing import failure, callbacks, pending widget edits during room autosave, encryption, migration, HTML/text/PDF export, orders-only rooms and Print all. Migration fixtures in older tests were updated only to omit the newly introduced field and assert the new current schema. Existing CBC, gas and medication parsing tests were retained.
+## Not established
 
-The three supplied complete SmartPhrase examples were imported separately. Their R sections yielded 6, 8 and 5 displayed schedules, respectively. The duplicate chest-X-ray orders with counts of 3 and 7 selected 7. The source examples and their clinical details are not included in the delivered ZIP.
+The automated interface checks use a Streamlit widget stub. They do not exercise a live browser lifecycle. Streamlit is not installed in this build environment. No hosted application or authenticated private handoff repository was accessed or tested. No direct GitHub changes were made. Tests do not establish clinical accuracy, source currency or institutional privacy compliance.
 
-For each supplied example, the unchanged Version 6.13 source was run separately. After excluding only generated IDs/timestamps and the new recurring_orders field, all pre-existing parsed handoff fields matched the Version 6.14 results exactly. The original CBC, blood-gas, lab and medication parser files, lab layout, encryption, GitHub storage implementation and dependency list were verified byte-for-byte unchanged.
+## Reproduce
 
-An encrypted synthetic archive was created by the original Version 6.13 code in a separate process. Version 6.14 opened it with the same encryption key, retained every previous field and setting, added recurring_orders=None, and successfully encrypted/decrypted the upgraded archive. No user deployment key or private store was accessed.
+Install requirements-dev.txt in an isolated test environment and run:
 
-The supplied synthetic preview has one landscape Letter page at the existing 7.2-point body size. It was rendered with pdftoppm and visually checked for the new column title, schedule list, CBC/BMP trees, latest gas, and preservation of the other columns. Existing long-content pagination tests passed.
+    python -m pytest -q --disable-warnings
 
-## Limitations
-
-Streamlit is not installed in the build environment. Interface tests use a Streamlit widget stub, not a real browser session. The hosted app and authenticated private storage connection were not tested. No direct GitHub changes were made.
-
-These tests establish the checked parsing and display behavior, not clinical validity or the active/completed status of an Epic order. Number of Occurrences is the source field, not draws remaining. Unrequested tests are deliberately excluded. Different frequencies and specimen types remain separate. Existing platform/privacy limitations still apply.
+Begin deployment testing with examples/synthetic_fen_gi.txt before using clinical records. Preserve the original encryption key.

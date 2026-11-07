@@ -1,4 +1,4 @@
-"""One-click A/B/C/D/E/F/G/I/K/L/M/N/O/P/Q/R import with all-or-nothing updates for malformed input."""
+"""One-click A/B/C/D/E/F/G/I/K/L/M/N/O/P/Q/R/S import with all-or-nothing updates for malformed input."""
 from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -16,8 +16,10 @@ from viral import parse_viral_panel
 from blood_gases import parse_gases
 from cbc import parse_cbc
 from recurring_orders import parse_orders, selected_orders
+from fluid_balance import parse_balance
+from fen_gi import apply_gi_rules
 
-SUPPORTED_SECTIONS = "abcdefgiklmnopqr"
+SUPPORTED_SECTIONS = "abcdefgiklmnopqrs"
 
 
 @dataclass
@@ -39,7 +41,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
     parsed = parse_smartphrase(text)
     relevant = set(SUPPORTED_SECTIONS) & (set(parsed.blocks) | parsed.invalid)
     if not relevant:
-        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O, P, Q or R dividers.")
+        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O, P, Q, R or S dividers.")
         return out
     out.notices.extend(parsed.issues)
     candidate = deepcopy(sheet)
@@ -61,7 +63,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 if meds.error:
                     out.errors.extend([meds.error] + meds.issues)
                     continue
-                candidate = apply_medications(candidate, apply_infusion_rules(meds.rows, settings.get("medication_infusions", [])))
+                candidate = apply_medications(candidate, apply_gi_rules(apply_infusion_rules(meds.rows, settings.get("medication_infusions", [])), settings.get("medication_gi_groups", [])))
                 out.imported.append(str(len(meds.rows)) + " medication orders")
             elif letter in "cd":
                 if letter == "d" and ("c" in parsed.blocks or "c" in parsed.invalid):
@@ -148,6 +150,14 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 out.notices.extend(orders.issues)
                 count = len(selected_orders(orders.data))
                 out.imported.append(str(count) + " recurring lab/imaging orders" if count else "recurring lab/imaging orders cleared")
+            elif letter == "s":
+                balance = parse_balance(parsed.blocks[letter])
+                if balance.error:
+                    out.errors.append(balance.error)
+                    continue
+                candidate["intake_output"] = balance.data
+                out.notices.extend(balance.issues)
+                out.imported.append("intake / output totals" if balance.data else "intake / output display cleared")
             elif letter in "klm":
                 observations = parse_neuro(parsed.blocks[letter], letter)
                 if observations.error:

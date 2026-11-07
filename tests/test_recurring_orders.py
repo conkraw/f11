@@ -220,18 +220,18 @@ def test_invalid_r_does_not_partly_overwrite_any_imported_section():
 
 
 def test_new_schema_preserves_every_old_field_and_mapping():
-    original=new_vault();original['schema']=13
-    s=new_sheet('P4102');s.pop('recurring_orders');s['fields']['Labs']='LEGACY LAB NOTE'
+    original=new_vault();original['schema']=13;original["settings"].pop("medication_gi_groups", None)
+    s=new_sheet('P4102');s.pop("intake_output", None);s.pop('recurring_orders');s['fields']['Labs']='LEGACY LAB NOTE'
     original['rooms']['P4102']=s
     before=deepcopy(original)
     upgraded=upgrade_vault(original)
-    assert original==before and upgraded['schema']==SCHEMA_VERSION==14
-    assert upgraded['rooms']['P4102']==dict(s,recurring_orders=None)
-    assert upgraded['settings']==before['settings']
+    assert original==before and upgraded['schema']==SCHEMA_VERSION==15
+    assert upgraded['rooms']['P4102']==dict(s,recurring_orders=None,intake_output=None)
+    assert upgraded['settings']==dict(before['settings'], medication_gi_groups=[])
 
 
 def test_encrypted_migration_and_roundtrip():
-    v=new_vault();v['schema']=13;s=new_sheet('P4102');s.pop('recurring_orders');v['rooms']['P4102']=s
+    v=new_vault();v['schema']=13;v["settings"].pop("medication_gi_groups", None);s=new_sheet('P4102');s.pop("intake_output", None);s.pop('recurring_orders');v['rooms']['P4102']=s
     key=Fernet.generate_key().decode()
     legacy=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     upgraded=open_vault(legacy,key)

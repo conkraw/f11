@@ -95,3 +95,9 @@ Orders Placed This Encounter
 Procedures
 [Insert your Epic orders SmartLink here]
 rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+
+
+ssssssssssssssssssssssssssssssss
+[Insert your Epic Intake/Output Summary here, including the three total lines:
+Intake, Output and Net. Replace this placeholder with the real SmartLink output.]
+ssssssssssssssssssssssssssssssss

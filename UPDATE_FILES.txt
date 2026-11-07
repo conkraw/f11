@@ -1,16 +1,7 @@
-VERSION 6.14 | RECURRING LABS/IMAGING
-
-This is the complete app, not a patch.
-Replace matching files in the application code repository. Keep app.py at the root.
-New source file: recurring_orders.py
-Updated source files: app.py, parser.py, importing.py, models.py, exports.py, batching.py
-New tests, synthetic example, print preview and documentation are included.
-
-Keep existing Secrets, encryption key, password hash, token, mappings and data repository.
-Do not run the secrets generator again. No new dependencies are required.
-Schema 14 adds recurring_orders. All older supported archive formats migrate.
-No direct GitHub repository changes were made.
-
-Pasted R block updates only the selected recurring lab/imaging schedule.
-Paste the entire SmartPhrase to update other sections as usual.
-CBC and blood-gas parsing and lower lab result trees are unchanged.
+Version 6.15 complete ZIP. Replace all application files, not just the two new modules.
+New modules: fluid_balance.py, fen_gi.py.
+Updated: app.py, models.py, parser.py, importing.py, medications.py,
+infusions.py, exports.py, batching.py, release documentation and regression tests.
+No dependency changes. No patient samples or deployment secrets are included.
+CBC, blood-gas, laboratory, recurring-order and respiratory parsers are unchanged.
+Preserve your existing Secrets, encryption key, token and private data repository.
