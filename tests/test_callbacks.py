@@ -125,7 +125,8 @@ def test_all_save_is_atomic_on_local_conflict(app):
     changed['fields']['Diagnoses']='Other session'
     ss['vault']=save_sheet_in(ss['vault'],changed)
     app.save_all_rooms(None)
-    assert 'P4102' not in ss['vault']['rooms']
+    assert ss['vault']['rooms']['P4102']['fields']['Diagnoses']=='Draft one'
+    assert ss['notice'][0]=='error'
     assert ss['vault']['rooms']['P4104']['fields']['Diagnoses']=='Other session'
 
 

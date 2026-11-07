@@ -130,7 +130,7 @@ def positive_names(data: dict) -> list[str]:
 
 def viral_text(data: dict) -> str:
     names = positive_names(data)
-    return "Positive: " + ", ".join(names) if names else ""
+    return "Rapid Viral Panel: " + ", ".join(names) if names else ""
 
 
 @dataclass

@@ -59,7 +59,7 @@ def test_supplied_pattern_one_combined_positive_nine_retained_rows():
     snapshot = data()
     assert len(snapshot['rows']) == 9
     assert positive_names(snapshot) == ['Rhinovirus/enterovirus']
-    assert viral_text(snapshot) == 'Positive: Rhinovirus/enterovirus'
+    assert viral_text(snapshot) == 'Rapid Viral Panel: Rhinovirus/enterovirus'
     row = snapshot['rows'][1]
     assert (row['component'], row['result'], row['date']) == ('HUMRHINENRNA', 'Detected (A)', '01/01/2026')
     assert 'Adenovirus' not in viral_text(snapshot)
@@ -98,7 +98,7 @@ def test_empty_or_no_result_panels_are_valid_empty_snapshots(body):
 
 def test_unknown_positive_kept_as_original_code_not_invented_species():
     r = parse_viral_panel('NEW_LOCAL_COMPONENT\tPositive (A)\t01/01/2026')
-    assert not r.error and viral_text(r.data) == 'Positive: NEW_LOCAL_COMPONENT' and r.issues
+    assert not r.error and viral_text(r.data) == 'Rapid Viral Panel: NEW_LOCAL_COMPONENT' and r.issues
     assert display_name('SARSRNA') == 'SARSRNA'
 
 
@@ -111,7 +111,7 @@ def test_literal_display_aliases(code,label):
 
 def test_multiple_positives_are_listed_once_in_source_order():
     snapshot = data(SAMPLE + '\nRESPSYNVRNA\tDetected (A)\t01/02/2026\nHUMRHINENRNA\tDetected (A)\t01/01/2026')
-    assert viral_text(snapshot) == 'Positive: Rhinovirus/enterovirus, RSV'
+    assert viral_text(snapshot) == 'Rapid Viral Panel: Rhinovirus/enterovirus, RSV'
     assert len(snapshot['rows']) == 11
 
 
@@ -144,18 +144,18 @@ def test_conflicting_latest_results_not_guessed(dates):
 
 def test_older_conflict_does_not_override_a_clear_newer_result():
     s = data('RESPSYNVRNA\tPositive\t01/01/2026\nRESPSYNVRNA\tNegative\t01/01/2026\nRESPSYNVRNA\tDetected\t01/02/2026')
-    assert viral_text(s) == 'Positive: RSV'
+    assert viral_text(s) == 'Rapid Viral Panel: RSV'
 
 
 @pytest.mark.parametrize('row', ['HUMRHINENRNA  Detected (A)  01/01/2026',
     'HUMRHINENRNA Detected (A) 01/01/2026', '\tHUMRHINENRNA\tDetected (A)\t01/01/2026\t ',
     'HUMRHINENRNA\tDetected (A)\t01/01/2026'])
 def test_supported_paste_whitespace(row):
-    assert viral_text(data(row)) == 'Positive: Rhinovirus/enterovirus'
+    assert viral_text(data(row)) == 'Rapid Viral Panel: Rhinovirus/enterovirus'
 
 
 def test_multiword_component_uses_tab_columns():
-    assert viral_text(data('Human Rhinovirus/Enterovirus\tDetected (A)\t01/01/2026')) == 'Positive: Rhinovirus/enterovirus'
+    assert viral_text(data('Human Rhinovirus/Enterovirus\tDetected (A)\t01/01/2026')) == 'Rapid Viral Panel: Rhinovirus/enterovirus'
 
 
 @pytest.mark.parametrize('row', ['HUMRHINENRNA\tDetected\t02/30/2026',
@@ -174,7 +174,7 @@ def test_o_only_import_and_reimport_replace_not_append():
     s = imp(block('o', SAMPLE))
     again = imp(block('o', SAMPLE), s)
     assert len(again['viral_panel']['rows']) == 9
-    assert fields_with_medications(again)['Diagnoses'].count('Positive:') == 1
+    assert fields_with_medications(again)['Diagnoses'].count('Rapid Viral Panel:') == 1
 
 
 def test_omitted_o_preserves_panel_and_unrelated_notes():
@@ -187,7 +187,7 @@ def test_omitted_o_preserves_panel_and_unrelated_notes():
 def test_empty_or_negative_new_o_clears_old_positive(text):
     s = imp(block('o',SAMPLE));updated = imp(text,s)
     assert not viral_text(updated['viral_panel'])
-    assert 'Positive:' not in handoff_text(updated)
+    assert 'Rapid Viral Panel:' not in handoff_text(updated)
     assert fields_with_medications(updated)['Diagnoses'] == 'Dosing weight: none'
 
 
@@ -201,16 +201,16 @@ def test_invalid_o_blocks_atomic_import_and_preserves_original():
 def test_summary_prints_below_weights_in_patient_column_only():
     s=imp(block('a','Diagnoses:\n1. Synthetic diagnosis')+'\n'+block('i','NUTRITION:\n01/01/26\t12 kg (Z= -0.2)*\nDosing Weight: 11 kg')+'\n'+block('o',SAMPLE))
     f=fields_with_medications(s)
-    assert f['Diagnoses']=='Synthetic diagnosis\n----\nWeight: 12 kg\nZ-score: -0.2\nDosing weight: 11 kg\n----\nPositive: Rhinovirus/enterovirus'
+    assert f['Diagnoses']=='Synthetic diagnosis\n----\nWeight: 12 kg\nZ-score: -0.2\nDosing weight: 11 kg\n----\nRapid Viral Panel: Rhinovirus/enterovirus'
     assert not f['Infectious Disease'] and not f['Lab Results / Trends']
     text=patient_column(s,f)
-    assert text.index('Weight:') < text.index('Positive:')
+    assert text.index('Weight:') < text.index('Rapid Viral Panel:')
 
 
 def test_pdf_html_text_positive_only_and_no_o_dates_or_flags():
     s = imp(block('o',SAMPLE))
     for text in (handoff_text(s), handoff_html(s), '\n'.join(p.extract_text() for p in PdfReader(BytesIO(handoff_pdf(s))).pages)):
-        assert 'Rhinovirus/enterovirus' in text and 'Positive:' in text
+        assert 'Rhinovirus/enterovirus' in text and 'Rapid Viral Panel:' in text
         for omitted in ['Not Detected','ADENOVIRDNA','01/01/2026','Detected (A)']:
             assert omitted not in text
 
@@ -263,7 +263,7 @@ def test_latest_hidden_positive_stays_retained_and_can_be_restored():
     s=data();s['rows'][1]['include']=False
     assert not viral_text(s) and len(s['rows'])==9
     s['rows'][1]['include']=True
-    assert viral_text(s)=='Positive: Rhinovirus/enterovirus'
+    assert viral_text(s)=='Rapid Viral Panel: Rhinovirus/enterovirus'
 
 
 def test_callbacks_import_edit_exclude_restore_save(app):
@@ -275,7 +275,7 @@ def test_callbacks_import_edit_exclude_restore_save(app):
     assert not viral_text(ss['drafts']['P4102']['viral_panel'])
     ss['viral_hide']=True;app.viral_row_change('P4102',row['id'],'include','viral_hide')
     app.save_room(None)
-    assert viral_text(ss['vault']['rooms']['P4102']['viral_panel'])=='Positive: Rhinovirus/enterovirus'
+    assert viral_text(ss['vault']['rooms']['P4102']['viral_panel'])=='Rapid Viral Panel: Rhinovirus/enterovirus'
     assert ss['vault']['rooms']['P4102']['viral_panel']==ss['drafts']['P4102']['viral_panel']
 
 

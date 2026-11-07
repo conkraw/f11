@@ -41,7 +41,7 @@ def equip(app,monkeypatch):
     st.tabs=lambda names:[Panel(st) for _ in names]
     st.button=lambda *a,**k:False
     st.form_submit_button=lambda *a,**k:False
-    st.download_button=lambda label,data,*a,**k:downloads.append((label,data))
+    st.download_button=lambda label,data,*a,**k:downloads.append((label,data() if callable(data) else data))
     def multiselect(label,options,**kwargs):
         key=kwargs.get('key')
         if key:

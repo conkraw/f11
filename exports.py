@@ -6,9 +6,16 @@ Long content continues onto additional landscape pages instead of being clipped.
 from __future__ import annotations
 from html import escape
 from io import BytesIO
+from copy import deepcopy
+from datetime import datetime
+import time
 import re
 from models import SYSTEMS, fields_with_medications, validate_sheet
 from lab_layout import laboratory_flowables, laboratory_html, LabRow
+from cultures import cultures_text
+from viral import viral_text
+from microbiology_display import culture_markup, viral_markup
+from print_time import eastern_print_time, PRINT_TIME_SCRIPT
 
 COLUMNS = (("PATIENT", None), ("NEURO", "Neurologic"), ("RESP", "Respiratory"),
            ("CARDIAC", "Cardiovascular"), ("FEN / GI", "FEN / GI"),
@@ -18,9 +25,9 @@ BOTTOM = ("Other Medications", "Lab Results / Trends", "Goals / Follow-up")
 ACCESS_FIELDS = ("Airway", "Last Intubation", "Access", "Drains / Tubes")
 
 
-def handoff_text(sheet: dict) -> str:
+def handoff_text(sheet: dict, printed_at: datetime | None = None) -> str:
     fields = fields_with_medications(sheet)
-    parts = ["PICU HANDOFF", "Room: " + sheet["room"], "Handoff reference: " + sheet["id"][:8],
+    parts = ["Print prepared: " + eastern_print_time(printed_at), "PICU HANDOFF", "Room: " + sheet["room"], "Handoff reference: " + sheet["id"][:8],
              "Saved (UTC): " + (sheet["updated_at"] or "Unsaved draft"),
              "Confirm patient identity in Epic. A room is not a patient identifier."]
     for section in SYSTEMS:
@@ -40,10 +47,36 @@ def patient_column(sheet: dict, fields: dict) -> str:
     return "\n\n".join(lines)
 
 
-def handoff_html(sheet: dict) -> str:
+def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
+    """Bold only generated microorganism names, never arbitrary source markup."""
+    text = fields[section]
+    if section == "Diagnoses":
+        plain = viral_text(sheet["viral_panel"])
+        if plain and text.endswith(plain):
+            return esc(text[:-len(plain)]) + viral_markup(sheet["viral_panel"], esc)
+    if section == "Infectious Disease":
+        plain = cultures_text(sheet["cultures"])
+        if plain:
+            index = text.find(plain)
+            if index >= 0:
+                return esc(text[:index]) + culture_markup(sheet["cultures"], esc) + esc(text[index+len(plain):])
+    return esc(text)
+
+
+def patient_markup(sheet: dict, fields: dict, esc=escape) -> str:
+    lines = [esc("Room: " + sheet["room"])]
+    if fields["Demographics / Weight"].strip():
+        lines.append(field_markup(sheet, fields, "Demographics / Weight", esc).strip())
+    if fields["Diagnoses"].strip():
+        heading = "Diagnoses:\n" if sheet["fields"]["Diagnoses"].strip() else ""
+        lines.append(heading + field_markup(sheet, fields, "Diagnoses", esc).strip())
+    return "\n\n".join(lines)
+
+
+def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
     fields = fields_with_medications(sheet, include_lab_text=False)
     headers = ''.join('<th>' + escape(label) + '</th>' for label, _ in COLUMNS)
-    cells = ''.join('<td><div class="content">' + escape(patient_column(sheet, fields) if section is None else fields[section]) + '</div></td>' for _, section in COLUMNS)
+    cells = ''.join('<td><div class="content">' + (patient_markup(sheet, fields) if section is None else field_markup(sheet, fields, section)) + '</div></td>' for _, section in COLUMNS)
     cols = ''.join(f'<col style="width:{w*100:.1f}%">' for w in WIDTHS)
     bands = []
     for key in BOTTOM:
@@ -66,10 +99,10 @@ table{border-collapse:collapse;width:100%;table-layout:fixed}th{font-size:8pt;te
 footer{font:6.1pt/1.2 Arial,sans-serif;margin-top:4px}
 @page{size:letter landscape;margin:.25in}
 @media print{body{margin:0;padding:0;background:white}main{width:100%;min-height:0;padding:0;margin:0}.systems td{height:auto}thead{display:table-header-group}footer{font-size:6.1pt}.band{break-inside:auto}}
-</style></head><body><main><div class="meta"><span>PICU HANDOFF | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | Saved (UTC): ' + escape(sheet['updated_at'] or 'Unsaved draft') + '''</span></div>
+</style></head><body><main><div class="meta"><span><span data-print-label>Print prepared: </span><span data-print-time>''' + escape(eastern_print_time(printed_at)) + '''</span> | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | PICU HANDOFF' + '''</span></div>
 <table class="systems"><colgroup>''' + cols + '</colgroup><thead><tr>' + headers + '</tr></thead><tbody><tr>' + cells + '</tr></tbody></table>' + ''.join(bands) + '<table class="access"><tbody><tr>' + access + '''</tr></tbody></table>
 <footer>Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted. Infusion rates reflect the source Last Rate, not a live feed.</footer>
-</main></body></html>'''
+</main>''' + PRINT_TIME_SCRIPT + '</body></html>'
 
 
 def _pdf_text(text: str) -> str:
@@ -79,7 +112,7 @@ def _pdf_text(text: str) -> str:
     return text
 
 
-def handoffs_pdf(sheets: list[dict]) -> bytes:
+def handoffs_pdf(sheets: list[dict], printed_at: datetime | None = None) -> bytes:
     """One landscape document. Each room starts on a new page, in memory only."""
     from reportlab.lib.pagesizes import landscape, letter
     from reportlab.pdfgen import canvas
@@ -94,14 +127,15 @@ def handoffs_pdf(sheets: list[dict]) -> bytes:
     c = canvas.Canvas(output, pagesize=(width, height), pageCompression=1)
     c.setTitle("PICU handoffs")
     c.setAuthor("")
+    stamp = eastern_print_time(printed_at)
     for position, sheet in enumerate(sheets, 1):
-        _draw_sheet(c, sheet, width, height, position, len(sheets))
+        _draw_sheet(c, sheet, width, height, position, len(sheets), stamp)
     c.save()
     return output.getvalue()
 
 
-def handoff_pdf(sheet: dict) -> bytes:
-    return handoffs_pdf([sheet])
+def handoff_pdf(sheet: dict, printed_at: datetime | None = None) -> bytes:
+    return handoffs_pdf([sheet], printed_at)
 
 
 # Print layout is independent of persisted handoff content or encryption schema.
@@ -134,13 +168,13 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
                            leading=font_size+1, splitLongWords=True, spaceAfter=0,
                            allowWidows=1, allowOrphans=1)
 
-    def paragraphs(text):
+    def paragraphs(text, rich=False):
         if not text.strip():
             return []
-        return [Paragraph(_clinical_markup(line) if line else '&#160;', style)
+        return [Paragraph((line if rich else _clinical_markup(line)) if line else '&#160;', style)
                 for line in text.split('\n')]
 
-    columns = [paragraphs(patient_column(sheet, fields) if section is None else fields[section])
+    columns = [paragraphs(patient_markup(sheet, fields, _clinical_markup) if section is None else field_markup(sheet, fields, section, _clinical_markup), rich=True)
                for _, section in COLUMNS]
     band_items = [(name, fields[name]) for name in BOTTOM]
     extra = '\n'.join(name + ': ' + fields[name] for name in ('Skin / Wounds', 'Tasks', 'Other')
@@ -186,7 +220,8 @@ def print_layout_info(sheet: dict) -> dict:
     return {'font_size': plan['font_size'], 'fits_one_page': fits}
 
 
-def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, count: int = 1) -> None:
+def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, count: int = 1, print_stamp: str | None = None) -> None:
+    print_stamp = print_stamp or eastern_print_time()
     plan, _ = _select_pdf_plan(sheet, width, height)
     margin = PRINT_MARGIN
     total_width = plan['width']
@@ -243,7 +278,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         if page > 150:
             raise ValueError('The handoff is too long to export safely. Shorten it or export text.')
         c.setFont('Helvetica', 7)
-        c.drawString(margin, height-margin-5, 'PICU HANDOFF | Room ' + sheet['room'] + (' | Continued' if page > 1 else ''))
+        c.drawString(margin, height-margin-5, 'Print prepared: ' + print_stamp + ' | Room ' + sheet['room'] + (' | Continued' if page > 1 else ''))
         c.drawRightString(width-margin, height-margin-5,
                          'Sheet ' + str(position) + '/' + str(count) + ' | Reference ' + sheet['id'][:8] + ' | Page ' + str(page))
         plan.update(columns=queues, bands=bands, access=access)
@@ -314,12 +349,14 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
             break
 
 
-def handoffs_html(sheets: list[dict]) -> str:
+def handoffs_html(sheets: list[dict], printed_at: datetime | None = None) -> str:
     if not sheets or len(sheets) > 100:
         raise ValueError("Select between 1 and 100 handoffs to print.")
     if len({s["room"] for s in sheets}) != len(sheets):
         raise ValueError("A room cannot be included twice in one print packet.")
-    docs = [handoff_html(sheet) for sheet in sheets]
+    from datetime import timezone
+    printed_at = printed_at or datetime.now(timezone.utc)
+    docs = [handoff_html(sheet, printed_at) for sheet in sheets]
     head = docs[0].split("</head>", 1)[0]
     head += """<style>
 main{margin-bottom:24px}.printbar{font:15px Arial,sans-serif;max-width:11in;margin:0 auto 18px}
@@ -327,4 +364,33 @@ main{margin-bottom:24px}.printbar{font:15px Arial,sans-serif;max-width:11in;marg
 @media print{.printbar{display:none}main{break-after:page;margin:0}main:last-child{break-after:auto}}
 </style></head>"""
     pages = ["<main>" + doc.split("<main>", 1)[1].split("</main>", 1)[0] + "</main>" for doc in docs]
-    return head + '<body><div class="printbar"><button onclick="window.print()">Print all handoffs</button> Landscape Letter. Each room starts on a new page.</div>' + "".join(pages) + "</body></html>"
+    return head + '<body><div class="printbar"><button onclick="window.print()">Print all handoffs</button> Landscape Letter. Each room starts on a new page.</div>' + "".join(pages) + PRINT_TIME_SCRIPT + "</body></html>"
+
+
+def download_payload(sheets: list[dict], kind: str, expires_at: float | None = None):
+    """Return a zero-argument generator for Streamlit >=1.52 downloads.
+
+    A private snapshot is captured on render, not a shared cache. The timestamp
+    is generated on the click, not when the UI was last opened. No Streamlit
+    session data is accessed from the download worker thread.
+    """
+    if kind not in ("pdf", "html", "text"):
+        raise ValueError("Unknown handoff download format.")
+    if kind == "text" and len(sheets) != 1:
+        raise ValueError("Text export expects one handoff.")
+    snapshot = deepcopy(sheets)
+    for sheet in snapshot:
+        validate_sheet(sheet)
+
+    def generate():
+        if expires_at is not None and time.monotonic() >= expires_at:
+            raise ValueError("The session expired. Sign in and prepare a new download.")
+        try:
+            if kind == "pdf":
+                return handoffs_pdf(snapshot)
+            if kind == "html":
+                return handoffs_html(snapshot).encode("utf-8")
+            return handoff_text(snapshot[0]).encode("utf-8")
+        except Exception:
+            raise ValueError("The print file could not be generated. Refresh the app and try again.") from None
+    return generate

@@ -1,18 +1,12 @@
-PICU Handoff 6.9 - complete application, not a patch
+PICU Handoff 6.10: complete package
 
-1. Save open work and extract PICU69.zip.
-2. Open PICU_Handoff_v6_9_Lab_Placement and upload its contents to the existing
-   application code repository. Replace matching files and keep app.py at the root.
-3. Keep all Streamlit Secrets, the password, encryption key, token and private
-   data repository unchanged. Do not rerun create_secrets.py or the notebook.
-4. Restart the deployment.
-5. Sidebar: Version 6.9 | Coags below hepatic, CRP/procalcitonin in ID
+Replace matching application files with the contents of this folder.
+Keep app.py at the repository root. Include requirements.txt.
+New modules: microbiology_display.py, print_time.py.
 
-Runtime changes: labs.py, lab_layout.py and the version/help text in app.py.
-No new runtime modules, dependencies or storage schema changes. All other
-runtime modules match Version 6.8.
+Sidebar: Version 6.10 | Room autosave and clean printing
 
-Existing imported results move to their corrected display locations on export
-without re-pasting. Manual clinical notes are not altered. Coagulation, including
-Anti-Xa (HEPLMW), appears directly below Hepatic in the bottom lab band. CRP and
-procalcitonin stay in ID, below temperature.
+Do not replace deployment Secrets or regenerate the encryption key.
+No saved-data schema change. Existing records and settings stay compatible.
+Streamlit minimum: 1.52. New timezone dependency: tzdata.
+All other previous features are included. No direct GitHub code edits were made.

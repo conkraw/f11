@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.9: coagulation below hepatic labs, inflammatory markers in ID."""
+"""PICU SmartPhrase v6.10: clean workspace, room autosave and print formatting."""
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
@@ -6,7 +6,7 @@ import time
 
 import streamlit as st
 from cryptography.fernet import Fernet
-from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, handoffs_html, print_layout_info
+from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, handoffs_html, print_layout_info, download_payload
 from github_store import GitHubConfig, GitHubVault, StorageError
 from models import (MAX_FIELD, SYSTEMS, ValidationError, new_sheet, new_vault,
                     normalize_room, save_sheet_in, validate_vault, validate_sheet,
@@ -26,6 +26,7 @@ from observations import NEURO_SECTIONS, validate_neuro, validate_nutrition, for
 from demographics import validate_dosing_weight, validate_admission_date, demographic_weight_text
 from cultures import validate_cultures, cultures_text, compact_groups, category_for
 from viral import validate_viral_panel, viral_text
+from microbiology_display import culture_markup, viral_markup
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title="PICU Handoff", layout="wide", initial_sidebar_state="expanded")
@@ -84,7 +85,136 @@ def set_editor(room: str, sheet: dict) -> None:
     st.session_state.pop("import_result", None)
 
 
-def open_room() -> None:
+def editor_snapshot(room: str) -> dict:
+    """Capture current widget values before a room callback clears widgets.
+
+    Streamlit can deliver a blurred text edit and a room change in one event.
+    Read only widget keys belonging to the outgoing sheet. Validate the whole
+    candidate before any save or switch. No pasted source text enters storage.
+    """
+    ss = st.session_state
+    sheet = deepcopy(ss["drafts"][room])
+    for section in SYSTEMS:
+        key = edit_key(sheet, section)
+        if key in ss:
+            sheet["fields"][section] = ss[key]
+    for row in sheet["medications"]:
+        prefix = "med_draft_" + row["id"] + "_"
+        for field in ("name", "dose", "route", "frequency", "last_rate", "rate_time", "section", "custom_text", "include"):
+            if prefix + field in ss:
+                row[field] = ss[prefix + field]
+    for group, prefix, fields in (
+        (sheet["labs"]["rows"], "lab_", ("value", "date", "include")),
+        (sheet["viral_panel"]["rows"], "viral_", ("name", "result", "date", "include")),
+        (sheet["cultures"]["rows"], "culture_", ("date", "specimen", "organisms", "include")),
+    ):
+        for row in group:
+            for field in fields:
+                key = prefix + row["id"] + "_" + field
+                if key in ss:
+                    value = ss[key]
+                    if field == "organisms":
+                        value = [line.strip() for line in value.splitlines() if line.strip()]
+                    row[field] = value
+    for index, row in enumerate(sheet["vitals"]):
+        key = "vital_" + sheet["id"] + "_" + str(index)
+        for field, widget in (("value", key), ("include", key + "_include")):
+            if widget in ss:
+                row[field] = ss[widget]
+    for source, rows in sheet["neuro_vitals"].items():
+        for index, row in enumerate(rows):
+            key = "neuro_" + sheet["id"] + "_" + source + "_" + str(index)
+            for field, widget in (("value", key), ("include", key + "_include")):
+                if widget in ss:
+                    row[field] = ss[widget]
+    if sheet["nutrition"] is not None:
+        for field in ("weight", "z_score", "include"):
+            key = "weight_" + sheet["id"] + "_" + field
+            if key in ss:
+                value = ss[key]
+                sheet["nutrition"][field] = value.strip() if isinstance(value, str) else value
+    for field in ("admission_date", "dosing_weight"):
+        key = "demo_" + sheet["id"] + "_" + field
+        if key in ss:
+            sheet[field] = ss[key].strip()
+    if sheet["ventilation"] is not None:
+        for index, label in enumerate(LABELS):
+            key = "vent_" + sheet["id"] + "_" + str(index)
+            if key not in ss:
+                continue
+            value = ss[key].strip()
+            if index == 0:
+                sheet["ventilation"]["mode"] = value
+            elif value:
+                sheet["ventilation"]["values"][label] = value
+            else:
+                sheet["ventilation"]["values"].pop(label, None)
+    for device in sheet["noninvasive"]:
+        for index, label in enumerate(DEVICE_FIELDS[device["device"]]):
+            key = "niv_" + sheet["id"] + "_" + device["device"] + "_" + str(index)
+            if key in ss:
+                value = ss[key].strip()
+                if value:
+                    device["values"][label] = value
+                else:
+                    device["values"].pop(label, None)
+    validate_sheet(sheet)
+    return sheet
+
+
+def autosave_before_room_change(store: GitHubVault | None) -> bool:
+    ss = st.session_state
+    room = ss.get("current_room")
+    if not room or room not in ss.get("drafts", {}):
+        return True
+    try:
+        draft = editor_snapshot(room)
+    except (ValueError, TypeError, KeyError) as exc:
+        note("The current room was not saved or changed. Correct the highlighted editor value before switching rooms. " + str(exc), "error")
+        return False
+    # Keep the original draft and all widgets until the write is confirmed.
+    # A retry captures the same values, including pending mapping changes.
+    prior = ss["drafts"][room]
+    if draft == ss["vault"]["rooms"].get(room):
+        return True
+    if ss.get("base_sheets", {}).get(room) != ss["vault"]["rooms"].get(room):
+        note("Autosave was blocked because the saved room changed. You are still in the current room and your edits are kept. Reload the archive and compare before saving.", "error")
+        return False
+    try:
+        candidate = deepcopy(ss["vault"])
+        rules = candidate["settings"]["medication_mappings"]
+        changed_rules = False
+        old_rows = {row["id"]: row for row in prior["medications"]}
+        for row in draft["medications"]:
+            old = old_rows.get(row["id"])
+            if old is not None and old["section"] != row["section"]:
+                name, match = rule_for_inline_mapping(row["name"], rules)
+                rules = upsert_rule(rules, name, row["section"], match)
+                changed_rules = True
+        if changed_rules:
+            candidate["settings"]["medication_mappings"] = rules
+            draft["medications"] = remap(draft["medications"], rules, candidate["settings"]["medication_visibility"])
+        candidate = save_sheet_in(candidate, draft)
+        commit(candidate, store)
+    except (StorageError, ValidationError, ValueError) as exc:
+        note("Autosave failed. You are still in the current room and your edits are kept. " + str(exc), "error")
+        return False
+    except Exception:
+        # A custom storage implementation must not cause a silent room switch.
+        note("Autosave was not confirmed. You are still in the current room and your edits are kept. Check the connection and retry.", "error")
+        return False
+    saved = deepcopy(candidate["rooms"][room])
+    ss["drafts"][room] = saved
+    ss.setdefault("base_sheets", {})[room] = deepcopy(saved)
+    if changed_rules:
+        reapply_open_mappings()
+    note("Previous room automatically saved to encrypted GitHub." if store else
+         "Previous room saved in this session only. GitHub storage is not enabled.",
+         "success" if store else "info")
+    return True
+
+
+def open_room(store: GitHubVault | None = None) -> None:
     if not require_session():
         return
     ss = st.session_state
@@ -96,6 +226,13 @@ def open_room() -> None:
         room = normalize_room(value)
     except ValidationError as exc:
         note(str(exc), "error")
+        return
+    old_room = ss.get("current_room")
+    if room == old_room:
+        ss["room_choice"] = room
+        return
+    if not autosave_before_room_change(store):
+        ss["room_choice"] = old_room or "Choose a room"
         return
     ss["current_room"] = room
     ss["room_choice"] = room
@@ -110,13 +247,20 @@ def open_room() -> None:
         ss.pop("import_result", None)
 
 
-def room_changed() -> None:
-    if st.session_state.get("room_choice") not in ("Choose a room", "Other room"):
-        open_room()
+def room_changed(store: GitHubVault | None = None) -> None:
+    if not require_session():
+        return
+    ss = st.session_state
+    if ss.get("room_choice") in ("Choose a room", "Other room"):
+        # Selecting Other hides the current editor too, so save before that.
+        if not autosave_before_room_change(store):
+            ss["room_choice"] = ss.get("current_room", "Choose a room")
+        return
+    open_room(store)
 
 
 def update_field(room: str, section: str, key: str) -> None:
-    if require_session():
+    if require_session() and room == st.session_state.get("current_room") and key in st.session_state:
         st.session_state["drafts"][room]["fields"][section] = st.session_state[key]
 
 
@@ -224,10 +368,13 @@ def viral_row_change(room: str, row_id: str, field: str, key: str) -> None:
 
 
 def viral_editor(sheet: dict) -> None:
-    st.subheader("Respiratory viral panel")
+    st.subheader("Rapid Viral Panel")
     data = sheet["viral_panel"]
     summary = viral_text(data)
-    st.text(summary or "No positive viral results selected for the handoff.")
+    if summary:
+        st.markdown('<div style="white-space:pre-wrap">' + viral_markup(data) + '</div>', unsafe_allow_html=True)
+    else:
+        st.caption("No positive viral results selected for the handoff.")
     st.caption("Only explicit Detected / Positive results print below a separator in the patient column. Source dates stay here, not on the compact summary. A newer negative or unresolved result does not reuse an older positive.")
     if not data["rows"]:
         st.caption("Paste a paired O block headed Respiratory Viral Panel to add results.")
@@ -381,7 +528,7 @@ def cultures_editor(sheet: dict) -> None:
     data = sheet["cultures"]
     text = cultures_text(data)
     if text:
-        st.text(text)
+        st.markdown('<div style="white-space:pre-wrap">' + culture_markup(data) + '</div>', unsafe_allow_html=True)
     else:
         st.caption("No culture results selected. Paste an F block to import them.")
     for message in data["notes"]:
@@ -630,7 +777,7 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
 
 
 def ventilation_change(room: str, label: str, key: str) -> None:
-    if not require_session():
+    if not require_session() or room != st.session_state.get("current_room") or key not in st.session_state:
         return
     ss = st.session_state
     old = ss["drafts"][room]["ventilation"]
@@ -754,12 +901,12 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.9 | Coags below hepatic, CRP/procalcitonin in ID")
+        st.caption("Version 6.10 | Room autosave and clean printing")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
         st.button("Log out", on_click=clear_session)
-        st.caption("Save handoffs before logout. Medication mappings save when you change their destination.")
+        st.caption("Room changes automatically save the current handoff. Use Save before logout. Medication mappings save immediately.")
         if not app.get("clinical_use_approved", False):
             st.caption("Use synthetic data unless your hosting and storage have institutional approval. See the setup guide.")
     if "notice" in st.session_state:
@@ -895,10 +1042,10 @@ def handoff_page(store: GitHubVault | None) -> None:
     choices = list(dict.fromkeys(settings["rooms"] + list(ss["vault"]["rooms"]) + list(ss.get("drafts", {}))))
     if "room_choice" not in ss:
         ss["room_choice"] = ss.get("current_room", "Choose a room")
-    st.selectbox("Room", ["Choose a room"] + choices + ["Other room"], key="room_choice", on_change=room_changed)
+    st.selectbox("Room", ["Choose a room"] + choices + ["Other room"], key="room_choice", on_change=room_changed, args=(store,))
     if ss.get("room_choice") == "Other room":
         st.text_input("Other room number", key="other_room", max_chars=16)
-        st.button("Open room", on_click=open_room)
+        st.button("Open room", on_click=open_room, args=(store,))
         st.info("Enter the other room number and click Open room.")
         return
     if ss.get("room_choice") == "Choose a room":
@@ -911,7 +1058,7 @@ def handoff_page(store: GitHubVault | None) -> None:
     sheet = ss["drafts"][room]
     st.subheader("Room " + room)
     saved = ss["vault"]["rooms"].get(room)
-    st.caption("Saved" if saved == sheet else "Unsaved handoff changes")
+    st.caption("Saved" if saved == sheet else "Changes will save automatically when you change rooms")
     if ss.get("base_sheets", {}).get(room) != saved:
         st.warning("A newer saved handoff exists for this room. Reload it before saving your edits.")
     top1, top2 = st.columns(2)
@@ -923,19 +1070,8 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
     paste_tab, meds_tab, labs_tab, cultures_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Edit handoff", "Preview / print"])
     with paste_tab:
-        st.caption("Paste the full SmartPhrase or only the paired sections you are updating. A/B import diagnoses and medications, C/D respiratory support, E vital signs, F cultures, G labs, I measured/dosing weight and Z-score, K/L/M neurologic observations N admission date and O positive respiratory viral results. Omitted sections and separate notes stay unchanged.")
-        left, right = st.columns(2)
-        left.button("Load cultures / ADS example", on_click=load_cultures_sample)
-        left.button("Load compact / PN example", on_click=load_compact_sample)
-        left.button("Load neuro / weight example", on_click=load_neuro_sample)
-        left.button("Load observed-Vt example", on_click=load_observed_sample)
-        left.button("Load synthetic example", on_click=load_sample)
-        st.button("Load demographics / labs example", on_click=load_demographics_sample)
-        st.button("Load viral-positive example", on_click=load_viral_sample)
-        left.button("Load labs / vitals example", on_click=load_labs_sample)
-        left.button("Load medication-taper example", on_click=load_taper_sample)
-        left.button("Load nasal-cannula example", on_click=load_niv_sample)
-        right.button("Clear pasted text", on_click=clear_paste)
+        st.caption("Paste your SmartPhrase and click Create / update handoff. Imported results and edits save automatically before you change rooms.")
+        st.button("Clear pasted text", on_click=clear_paste)
         with st.form("parse_smartphrase"):
             st.text_area("SmartPhrase text", key="paste", height=240, max_chars=MAX_PASTE)
             st.form_submit_button("Create / update handoff", on_click=create_handoff, type="primary")
@@ -983,12 +1119,12 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.text(respiratory_text(sheet) + "\n-----")
                     st.caption("Vital signs print first, then support settings. Edit support under Paste / create.")
                 if section == "Diagnoses" and viral_text(sheet["viral_panel"]):
-                    st.text("----\n" + viral_text(sheet["viral_panel"]))
+                    st.markdown('<div style="white-space:pre-wrap">----\n' + viral_markup(sheet["viral_panel"]) + '</div>', unsafe_allow_html=True)
                     st.caption("Positive O-block results print below the demographics / weight information. Edit under Labs / Vitals.")
                 st.text_area("Notes: " + section, key=key, height=100, max_chars=MAX_FIELD,
                              on_change=update_field, args=(room, section, key))
                 if section == "Infectious Disease" and cultures_text(sheet["cultures"]):
-                    st.text("------\n" + cultures_text(sheet["cultures"]))
+                    st.markdown('<div style="white-space:pre-wrap">------\n' + culture_markup(sheet["cultures"]) + '</div>', unsafe_allow_html=True)
                     st.caption("Edit imported specimens and results in Cultures. Temperature stays first in the printed ID column.")
                 for row in sheet["medications"]:
                     if visible(row) and row["section"] == section:
@@ -998,16 +1134,23 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.caption("Edit measured weight, Z-score, dosing weight and admission date in Labs / Vitals.")
     with preview_tab:
         import streamlit.components.v1 as components
-        st.caption("Compact landscape Letter. CBC/BMP keep their dated trees. Other lab groups print horizontally. The PDF fits one page when space permits, without cutting off content.")
+        st.caption("Compact landscape. The upper-left stamp uses Eastern time. PDFs are stamped when downloaded. Printable HTML refreshes its stamp when printed.")
         components.html(handoff_html(sheet), height=650, scrolling=True)
         try:
             layout = print_layout_info(sheet)
             st.caption(("Fits on one PDF page" if layout["fits_one_page"] else "Needs continuation pages to keep all content") + " | Body text: " + str(layout["font_size"]) + " pt. HTML pagination can differ.")
-            st.download_button("Download this handoff (PDF)", handoff_pdf(sheet), "handoff.pdf", "application/pdf")
+            st.download_button("Download this handoff (PDF)", download_payload([sheet], "pdf", download_deadline()), "handoff.pdf", "application/pdf", key="download_single_pdf", on_click="ignore")
         except (ValueError, ImportError):
             st.error("PDF export could not be created. Confirm requirements.txt is installed or use HTML.")
-        st.download_button("Download printable handoff (HTML)", handoffs_html([sheet]).encode("utf-8"), "handoff.html", "text/html")
-        st.download_button("Download handoff text", handoff_text(sheet).encode("utf-8"), "handoff.txt", "text/plain")
+        st.download_button("Download printable handoff (HTML)", download_payload([sheet], "html", download_deadline()), "handoff.html", "text/html", key="download_single_html", on_click="ignore")
+        st.download_button("Download handoff text", download_payload([sheet], "text", download_deadline()), "handoff.txt", "text/plain", key="download_single_text", on_click="ignore")
+
+
+
+def download_deadline() -> float:
+    ss = st.session_state
+    return min(ss.get("last_activity", time.monotonic()) + ss.get("idle_seconds", 900),
+               ss.get("login_at", time.monotonic()) + 8 * 3600)
 
 
 def print_all_page(store: GitHubVault | None) -> None:
@@ -1032,10 +1175,10 @@ def print_all_page(store: GitHubVault | None) -> None:
     unsaved = sum(sheet != ss["vault"]["rooms"].get(sheet["room"]) for sheet in selected_sheets)
     st.caption(str(len(selected_sheets)) + " handoffs selected. " + str(unsaved) + " include unsaved draft changes. Each room starts on a new page.")
     try:
-        st.download_button("Download all selected handoffs (PDF)", handoffs_pdf(selected_sheets), "all_handoffs.pdf", "application/pdf", type="primary")
+        st.download_button("Download all selected handoffs (PDF)", download_payload(selected_sheets, "pdf", download_deadline()), "all_handoffs.pdf", "application/pdf", type="primary", key="download_all_pdf", on_click="ignore")
     except (ValueError, ImportError):
         st.error("The combined PDF could not be created. Use HTML or check the export requirements.")
-    st.download_button("Download all selected handoffs (printable HTML)", handoffs_html(selected_sheets).encode("utf-8"), "all_handoffs.html", "text/html")
+    st.download_button("Download all selected handoffs (printable HTML)", download_payload(selected_sheets, "html", download_deadline()), "all_handoffs.html", "text/html", key="download_all_html", on_click="ignore")
     st.caption("Compact PDF is preferred for printing. Each room starts on its own page. Exceptionally long handoffs continue rather than losing content. Downloads are not encrypted.")
     for sheet in selected_sheets:
         st.text("Room " + sheet["room"] + (" | draft" if sheet != ss["vault"]["rooms"].get(sheet["room"]) else " | saved"))

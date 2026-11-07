@@ -338,7 +338,9 @@ def test_support_changes_cannot_leak_between_rooms(app):
     ss['niv_test']='18 cmH20'
     app.noninvasive_change('P4102','BiPAP','IPAP','niv_test')
     app.remove_support_device('P4102','HFNC')
+    saved['updated_at']=ss['drafts']['P4102']['updated_at']  # Room switch now autosaves.
     assert ss['drafts']['P4102']==saved
+    assert ss['vault']['rooms']['P4102']==saved
     assert not ss['drafts']['P4104']['noninvasive']
 
 
