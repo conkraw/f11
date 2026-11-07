@@ -15,7 +15,7 @@ SYSTEMS = LEGACY_SYSTEMS + ("Other Medications", "Lab Results / Trends", "Goals 
 from medications import validate_medication, validate_rules, format_medication, validate_visibility, visible
 from ventilation import validate_ventilation, format_ventilation
 from noninvasive import validate_noninvasive, format_noninvasive
-from labs import empty_labs, validate_labs, labs_text, lactate_text, id_labs_text
+from labs import empty_labs, validate_labs, labs_text, lactate_text, id_labs_text, theophylline_text
 from vitals import validate_vitals, text_by_system
 from observations import empty_neuro, validate_neuro, neuro_rows, validate_nutrition, format_nutrition
 
@@ -323,6 +323,9 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
     result["Neurologic"] = neuro_body(sheet["fields"]["Neurologic"], sheet["medications"])
     result["Cardiovascular"] = cardiovascular_body(sheet["fields"]["Cardiovascular"], sheet["medications"])
     result["Hematology"] = hematology_body(sheet["fields"]["Hematology"], sheet["medications"])
+    theophylline = theophylline_text(sheet["labs"])
+    if theophylline:
+        result["Respiratory"] = theophylline + ("\n-----\n" + result["Respiratory"] if result["Respiratory"].strip() else "")
     vent = respiratory_text(sheet)
     if vent:
         result["Respiratory"] = vent + "\n-----" + ("\n" + result["Respiratory"] if result["Respiratory"].strip() else "")

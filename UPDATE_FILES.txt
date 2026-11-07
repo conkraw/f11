@@ -1,14 +1,13 @@
-PICU Handoff Version 6.17: full-package update
+PICU Handoff Version 6.18: full-package update
 
-Upload all supplied contents together. Keep app.py at the repository root.
-New runtime file: medication_groups.py
-Updated runtime files: app.py, models.py, medications.py, infusions.py,
-fen_gi.py, exports.py, importing.py and error_store.py.
-Documentation, synthetic examples and regression tests are also updated.
+Upload the complete supplied folder contents together. Keep app.py at the root.
+Updated runtime files: app.py, labs.py, models.py and error_store.py.
+No new runtime modules. Theophylline routing and display use the existing G lab
+snapshot. Original rows and editing controls are retained.
 
-Keep all existing deployment Secrets and the original encryption key.
-Do not run create_secrets.py or Generate_Secrets.ipynb for this update.
-No new dependencies are required. The first successful save uses schema 17.
-Do not mix old and new runtime files or downgrade after saving schema 17.
+Added documentation, synthetic example/preview and tests/test_theophylline_resp.py.
+No production secrets, user handoffs or pasted patient examples are included.
+Keep the existing deployment Secrets, encryption key and private data archive.
+Do not run the secrets generator. No dependency or schema change is required.
 
-Sidebar: Version 6.17 | Medication groups, CV infusions and calcium
+Sidebar: Version 6.18 | Theophylline level in Respiratory

@@ -1,23 +1,34 @@
-# PICU Handoff 6.17: Medication groups, CV infusions and calcium
+# PICU Handoff 6.18: Theophylline level in Respiratory
 
 Complete ZIP update. No direct repository changes were made.
 
 ## Installation
 
-Save open work, extract PICU617.zip, and open PICU_Handoff_v6_17_Medication_Groups.
+Save open work, extract PICU618.zip, and open PICU_Handoff_v6_18_Theophylline.
 Copy all contents into the existing app-code repository, replacing matching
-files. Keep app.py at the root. Include the new medication_groups.py. Restart
-the deployment and refresh each team member's browser session.
-
-Keep the existing Streamlit Secrets, password, encryption key, token, private
+files. Keep app.py at the root. Restart the deployment and refresh the browser.
+Keep the current Streamlit Secrets, password, encryption key, token, private
 data repository, mappings and hidden-medication rules. Do not run the secrets
-generator. No new dependencies are needed. Schema 17 adds one empty reusable
-medication_groups setting when opening an older archive. All previous settings
-and room fields, including Version 6.16 import warnings, are preserved. The next
-successful save writes schema 17. Do not mix files or downgrade only part of the
-application after saving with the new version.
+generator. No new dependencies or schema changes are required. Schema 17 remains.
 
-Sidebar: Version 6.17 | Medication groups, CV infusions and calcium
+Sidebar: Version 6.18 | Theophylline level in Respiratory
+
+## Theophylline level
+
+THEOPH in the G / LABS block is now shown once in RESP as Theophylline level,
+using the latest included source result. It appears after respiratory vitals
+and support settings, before notes and medications. Its date, optional time,
+flags and any supplied units are retained. Missing data stays missing, without
+inferred units, reference ranges or dose changes.
+
+Older rows remain editable and excludable in Labs / Vitals. Existing stored
+THEOPH rows also use this placement without reimporting. A new G block replaces
+all G labs, so include the other results needed when repasting G. Omitted G
+keeps the prior snapshot. Existing error-recovery warnings are unchanged.
+
+See THEOPHYLLINE_UPDATE.md for ordering and import details. The complete prior
+functionality remains included. The CBC, blood-gas, medication, vital-sign,
+ventilation and recurring-order parsers are unchanged.
 
 ## Automatic display groups
 

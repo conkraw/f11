@@ -44,6 +44,7 @@ ALIASES = {
     'TBILI': 'BILITOT', 'TOTAL BILIRUBIN': 'BILITOT',
     'DIRECT BILIRUBIN': 'BILIDIR', 'DBILI': 'BILIDIR',
     'APTT': 'PTT', 'FIBRINOGEN': 'FIB', 'PROCALCITONIN': 'PROCAL',
+    'THEOPHYLLINE': 'THEOPH', 'THEOPHYLLINE LEVEL': 'THEOPH',
     'PHART': 'PHA', 'PHARTERIAL': 'PHA', 'PCO2ART': 'PCO2A',
     'PO2A': 'PO2ART', 'HCO3ART': 'HCO3A', 'BICARBART': 'HCO3A',
     'PHVEN': 'PHV', 'PCO2VEN': 'PCO2V', 'PO2V': 'PO2VEN',
@@ -114,6 +115,8 @@ def panel_for(component: str, source_panel: str = 'Other labs') -> str:
     key = canonical(component)
     if is_lactate(component):
         return 'Lactate'
+    if key == 'THEOPH':
+        return 'Respiratory drug levels'
     for group, components in PANELS.items():
         if key in components:
             return group
@@ -213,6 +216,8 @@ def result_cards(data: dict, include_id_panels: bool = True, blood_gas: dict | N
     from cbc import cbc_cards, cbc_component
     cards = cbc_cards(data, cbc)
     consumed = {key for key in groups if cbc_component(key)}
+    # Theophylline is displayed once in RESP, not again in the bottom lab area.
+    consumed.add('THEOPH')
     for name, components, count, kind in (('BMP', BMP, 2, 'bmp'),):
         if not any(key in groups for key in components):
             continue
@@ -255,6 +260,20 @@ def lactate_text(data: dict) -> str:
             row = rows[0]
             lines.append(row['component'] + ': ' + row['value'] + (' [' + row['date'] + ']' if row['date'] else ''))
     return '\n'.join(lines)
+
+
+def theophylline_text(data: dict) -> str:
+    """Latest included THEOPH result for RESP, without changing source records.
+
+    Use the existing laboratory date/time and same-day ordering rules. Do not
+    infer units, a therapeutic range, a missing result, or a medication dose.
+    Original rows remain available for editing and exclusion in Labs / Vitals.
+    """
+    rows = ordered_components(data).get('THEOPH', [])
+    if not rows:
+        return ''
+    row = rows[0]
+    return 'Theophylline level: ' + row['value'] + ' [' + row['date'] + ']'
 
 
 def display_component(component: str) -> str:

@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.17: medication subgroups, CV infusions and calcium."""
+"""PICU SmartPhrase v6.18: latest THEOPH level in the respiratory column."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -24,7 +24,7 @@ from importing import import_sections, SUPPORTED_SECTIONS
 from batching import available_handoffs
 from parser import MAX_PASTE, SECTION_NAMES
 from security import valid_password_hash, verify_password
-from labs import validate_labs, lactate_text, id_labs_text
+from labs import validate_labs, lactate_text, id_labs_text, theophylline_text
 from cbc import validate_cbc, cbc_summary, cbc_selection_issues
 from recurring_orders import validate_orders, selected_orders, orders_text, order_line, recurring_frequency
 from blood_gases import FIELDS as GAS_FIELDS, validate_gases, latest_sample, gas_summary, legacy_gases
@@ -810,11 +810,13 @@ def labs_vitals_editor(sheet: dict) -> None:
     st.subheader("Laboratory results")
     st.caption("Q supplies the two latest CBC columns. BMP and older G-only CBCs retain per-component selection. Other tests show the latest result per component. Only one latest gas is printed, labeled VEN, ART or CAP. The P table keeps specimen and column values together. Dates and source flags are preserved. No collection times or same-draw groupings are invented.")
     components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}.lab-summary{font:14px/1.3 sans-serif;overflow-wrap:anywhere;margin:3px 0}.lab-full{grid-column:1/-1}</style>' + laboratory_html(sheet["labs"], blood_gas=sheet["blood_gas"], cbc=sheet["cbc"]), height=490, scrolling=True)
+    if theophylline_text(sheet["labs"]):
+        st.text("Respiratory: " + theophylline_text(sheet["labs"]))
     if lactate_text(sheet["labs"]):
         st.text("Cardiovascular: " + lactate_text(sheet["labs"]))
     if id_labs_text(sheet["labs"]):
         st.text("Infectious Disease:\n" + id_labs_text(sheet["labs"]))
-    st.caption("Glucose is in the BMP tree. Mg and phosphorus are below it. Albumin stays in Hepatic. Coagulation, including Anti-Xa (HEPLMW), is immediately below Hepatic in the lab results. CRP and procalcitonin (PROCAL) remain in ID below temperature.")
+    st.caption("Glucose is in the BMP tree. Mg and phosphorus are below it. Albumin stays in Hepatic. Coagulation, including Anti-Xa (HEPLMW), is immediately below Hepatic in the lab results. CRP and procalcitonin (PROCAL) remain in ID below temperature. The latest THEOPH result prints as Theophylline level in Respiratory, below support settings and above medications.")
     with st.expander("Edit retained laboratory rows (" + str(len(sheet["labs"]["rows"])) + ")"):
         for row in sheet["labs"]["rows"]:
             st.text(row["component"] + " | " + row["value"] + " | " + row["date"])
@@ -1174,7 +1176,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.17 | Medication groups, CV infusions and calcium")
+        st.caption("Version 6.18 | Theophylline level in Respiratory")
         page = st.radio("Workspace", ["Handoff", "Print all", "Admin", "Import errors"], key="page")
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1442,6 +1444,9 @@ def handoff_page(store: GitHubVault | None) -> None:
                 if section == "Respiratory" and respiratory_text(sheet):
                     st.text(respiratory_text(sheet) + "\n-----")
                     st.caption("Vital signs print first, then support settings. Edit support under Paste / create.")
+                if section == "Respiratory" and theophylline_text(sheet["labs"]):
+                    st.text(theophylline_text(sheet["labs"]) + "\n-----")
+                    st.caption("Latest included THEOPH result. Edit or exclude its original row in Labs / Vitals.")
                 if section == "Diagnoses" and viral_text(sheet["viral_panel"]):
                     st.markdown('<div style="white-space:pre-wrap">----\n' + viral_markup(sheet["viral_panel"]) + '</div>', unsafe_allow_html=True)
                     st.caption("Positive O-block results print below the demographics / weight information. Edit under Labs / Vitals.")
