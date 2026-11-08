@@ -15,13 +15,15 @@ from feeds import feeds_text
 from diet import diet_text
 from medication_groups import group_for as special_group, GROUP_SECTIONS
 
-MODES = ("auto", "prophylaxis", "bowel", "diuretic", "other")
-MODE_LABELS = {"auto": "Automatic", "prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "other": "No GI grouping"}
-GROUP_NAMES = {"prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics"}
+MODES = ("auto", "prophylaxis", "bowel", "diuretic", "antiemetic", "other")
+MODE_LABELS = {"auto": "Automatic", "prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "antiemetic": "Antiemetics", "other": "No GI grouping"}
+GROUP_NAMES = {"prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "antiemetic": "Antiemetics"}
 
 
 def automatic_group(row: dict) -> str:
     name = match_name(row.get("name", ""))
+    if re.match(r"^(?:ondansetron|zofran)\b", name):
+        return "antiemetic"
     if re.match(r"^(?:bumetanide|chlorothiazide|furosemide)\b", name):
         return "diuretic"
     if re.match(r"^(?:famotidine|omeprazole|pantoprazole)\b", name):
@@ -59,7 +61,7 @@ def validate_gi_rules(rules: list[dict]) -> None:
         for key in ("name", "route", "frequency"):
             if not isinstance(rule[key], str) or len(rule[key]) > 4000 or any(c in rule[key] for c in "\n\r\t"):
                 raise ValueError("A FEN/GI display rule contains invalid text.")
-        if not rule["name"] or rule["mode"] not in ("prophylaxis", "bowel", "diuretic", "other"):
+        if not rule["name"] or rule["mode"] not in ("prophylaxis", "bowel", "diuretic", "antiemetic", "other"):
             raise ValueError("A FEN/GI display rule has an invalid choice.")
         key = (rule["name"], rule["route"], rule["frequency"])
         if key in seen:

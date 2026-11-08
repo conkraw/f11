@@ -1,48 +1,76 @@
-# Version 6.32 validation report
+# Version 6.33 validation report
 
 ## Automated checks
 
-2,702 tests passed with python -m pytest -q.
-The 2,661-case preceding suite was retained and 41 regression cases were added.
-One existing UI expectation was updated because the room caption intentionally
-now contains Sex as well as Age. Save timestamps and status positions remain
-unchanged. One older CBC assertion was narrowed to WBC: 999 rather than the
-substring 999 anywhere in the output, which could match a randomly generated
-record ID. No CBC implementation was changed. The full suite is rerun from
-an extracted delivery ZIP.
+The original v6.32 package was extracted and its unmodified suite passed:
+2,702 tests. The v6.33 suite has 2,791 tests, including 89 new synthetic
+regression cases. The full suite passed after the changes and is rerun from
+the extracted delivery ZIP before delivery.
 
-New coverage includes the exact combined Age: 6 y.o. Sex: female format,
-separate lines, next-line values, tabs, nonbreaking spaces, reversed label order,
-metadata appended to a diagnosis, custom diagnosis destinations, preservation
-of actual diagnosis text and wrapping, partial imports, conflicting/invalid
-values, absence of demographic inference from prose, archive round trips,
-old embedded-text correction on reimport, and all printed/exported header paths.
+Historical assertions of the current upgraded archive schema were changed
+from 24 to 25. Two parametrized expectations for a continuous dose-rate range
+without Last Admin now require UNK rather than emphasizing that order range.
+No existing clinical-result parser assertions were removed.
 
-Epic y.o./m.o./w.o./d.o. abbreviations are validated without manufacturing an
-exact month from a whole-year age. Existing BMI age gates are tested for these
-forms, including the 24-month boundary.
+New coverage includes:
 
-## Compatibility
+- Named nitroprusside, nicardipine and norepinephrine orders and name variants.
+- Numeric Last Admin priority for other continuous orders, with original Dose
+  and Last Rate fields retained unchanged.
+- Distinct units, decimal precision, zero rates, unsupported values and ranges.
+- Stopped, Paused, Held, Not given, Not administered, and Discontinued events.
+- No interpretation of a stopped administration as order discontinuation.
+- Missing rates, Rate Verify/New Bag events, PN volumes/lipid masses, invalid
+  timestamps, and multiple events in one cell.
+- PRN and intermittent doses remaining separate from continuous-rate handling.
+- Custom handoff wording precedence and HTML escaping.
+- No raw provider names or administration free text in the stored new fields.
+- EN-space clipboard columns, blank topical doses, PN And connectors, and
+  ambiguous single-rate boundaries that are not assigned by guesswork.
+- Automatic ondansetron/Zofran Antiemetics grouping, scheduled and PRN orders,
+  start/hold labels, exclusions, hidden rows, and remembered manual choices.
+- Text, HTML, PDF, multi-room output, editor validation, room-switch autosave,
+  optional-field preservation, encrypted round trips and archive migration.
 
-Archive schema remains 24. Storage, encryption, clinical result parsers,
-medication mapping logic, saves, and clear-all behavior are unchanged.
-Existing records are not automatically rewritten at load. Re-paste affected
-text and use Create / update handoff to replace the older embedded Age/Sex
-wording with structured demographics. Save only through the existing controls.
+## Supplied source check
 
-Runtime modules changed: app.py, anthropometrics.py, parser.py, importing.py,
-exports.py, error_store.py, user_guide.py. No dependencies were added.
+The exact pasted medication block, with EN-space column separators, parsed
+all 31 medication rows without import errors. The nitroprusside row retained
+its ordered 0.1-6 mcg/kg/min (Dosing Weight), its 2.52 mL/hr Last Rate, and the
+sanitized Last Admin rate 6 mcg/kg/min with timestamp 11/08/26 1016. The rendered
+handoff selected the latter value, without changing any supplied number.
+The source paste is outside the delivery directory and is not bundled.
+
+## Archive compatibility
+
+A separate process running the original v6.32 code created a synthetic
+schema-24 encrypted archive. V6.33 opened it with the same key and preserved
+every original room field, medication row, setting and save timestamp. Only
+the schema value became 25. Re-encryption and decryption also passed. The
+old row did not acquire a fabricated Last Admin rate. Historical raw Last
+Admin data cannot be recovered, so affected B sections must be re-pasted.
+
+Source schema advances to 25 to prevent an older application from treating
+new medication fields/group choices as its own schema. No encryption or
+storage-backend module, password generator, dependency, CBC, gas, vital-sign,
+demographic, feeding, device or laboratory parser was changed.
+
+Updated runtime files: app.py, medications.py, infusions.py, fen_gi.py,
+models.py, exports.py (footer text), error_store.py (version string).
+New runtime files: infusion_rates.py, medication_columns.py.
 
 ## Printed check
 
-The synthetic preview has one landscape page using 7.2-point body text.
-Its actual application-generated PDF was rendered to an image and inspected.
-The patient column begins with Room: P4201, Age: 6 y.o., Sex: Female, followed
-by Admission and Diagnoses. Age and Sex each print once. No clipping was seen.
+The application-generated synthetic landscape preview has one page with
+7.2-point body text. It includes Last Admin rate emphasis in CV Infusions,
+Neurologic Infusions and DVT Prophylaxis, plus Antiemetics in FEN/GI. The PDF
+was rendered to an image and visually inspected. No clipped text was seen.
+No medication was removed to make the example fit.
 
 ## Limits
 
-Tests use synthetic data and simulated Streamlit/GitHub interfaces.
-No live Streamlit deployment, private repository, or clinical environment was
-tested. No live GitHub changes were made. This is a parsing/layout change,
-not clinical validation. No patient source text, keys, or secrets are bundled.
+The test interfaces simulate Streamlit callbacks and GitHub responses. The
+live deployment, private repository, Epic connection and bedside pump were
+not tested. These are parsing/display changes, not clinical validation or
+authorization to use the handoff as a medication administration source.
+A pasted Last Admin value is a chart snapshot, not a current live rate.

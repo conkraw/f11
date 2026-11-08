@@ -1,6 +1,7 @@
 """Parse Epic medication table rows, never infer a dose or therapeutic system.
 
-TAB boundaries are authoritative. Providers and Last Admin are never retained.
+TAB boundaries are authoritative. Providers and raw Last Admin are never retained.
+Sanitized numeric Last Admin rates/status/times are kept for continuous infusions.
 Mapping rules match medication-name prefixes/exact names, not patient doses.
 Epic Followed by / And connectors stay on the next separate order, outside table columns.
 Start/hold annotations stay in the displayed name but do not prevent drug mapping.
@@ -10,6 +11,9 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 import re
 import uuid
+from infusion_rates import (ADMIN_FIELDS, continuous_order, parse_last_admin, validate_admin_fields,
+                            administration_display, admin_display_text, show_recorded_pump_rate, requested_titration)
+from medication_columns import split_medication_columns
 
 DESTINATIONS = ("Neurologic", "Respiratory", "Cardiovascular", "FEN / GI", "Hematology",
                 "Infectious Disease", "Labs", "Skin / Wounds", "Other Medications")
@@ -116,11 +120,12 @@ def upsert_rule(rules: list[dict], name: str, destination: str, match: str = "pr
 
 
 def validate_medication(row: dict) -> None:
-    if not isinstance(row, dict) or not FIELDS.issubset(row) or set(row) - FIELDS - {"infusion_mode", "gi_mode", "group_mode"}:
+    if not isinstance(row, dict) or not FIELDS.issubset(row) or set(row) - FIELDS - {"infusion_mode", "gi_mode", "group_mode"} - set(ADMIN_FIELDS):
         raise ValueError("A medication entry has an invalid structure.")
+    validate_admin_fields(row)
     if row.get("infusion_mode", "auto") not in ("auto", "infusion", "other"):
         raise ValueError("Choose a valid infusion display setting.")
-    if row.get("gi_mode", "auto") not in ("auto", "prophylaxis", "bowel", "diuretic", "other"):
+    if row.get("gi_mode", "auto") not in ("auto", "prophylaxis", "bowel", "diuretic", "antiemetic", "other"):
         raise ValueError("Choose a valid FEN/GI display setting.")
     if row.get("group_mode", "auto") not in ("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic", "other"):
         raise ValueError("Choose a valid medication group.")
@@ -147,12 +152,16 @@ def format_medication(row: dict) -> str:
     duplicate_dose = bool(normalized_dose and normalized_title.endswith(normalized_dose)
                           and (start == 0 or normalized_title[start-1].isspace()
                                or normalized_title[start-1] in "(="))
-    if dose and not duplicate_dose:
+    admin_view = administration_display(row)
+    if admin_view:
+        text += " | " + admin_display_text(row)
+    elif dose and not duplicate_dose:
         text += " | Dose: " + dose
     continuous = bool(re.search(r"\bcontinuous\b", row["frequency"], re.I))
     # A pump rate on an intermittent medication is not a replacement for its dose.
-    if continuous and row["last_rate"]:
-        if normalized(dose) != normalized(row["last_rate"]):
+    if continuous and row["last_rate"] and show_recorded_pump_rate(row):
+        primary_rate = admin_view[1] if admin_view else dose
+        if normalized(primary_rate) != normalized(row["last_rate"]):
             text += " @ " + row["last_rate"]
     if row["route"].strip():
         text += " | " + row["route"].strip()
@@ -183,7 +192,9 @@ def parse_medications(block: str, rules: list[dict] | None = None, visibility: l
 
     The standard table is Medication, Dose, Route, Frequency, Provider,
     Last Rate, Last Admin. Tabs preserve blank dose/rate cells. A malformed
-    or tab-less row stops the import, rather than guessing medication boundaries.
+    row stops the import, rather than guessing medication boundaries. Explicit
+    EN-space clipboard columns are supported only with unambiguous route and
+    frequency anchors. Ordinary space-separated prose is not treated as a table.
     Standalone Followed by and And connectors belong to the next separate order. START
     ON labels are preserved as source text, never compared with the server clock.
     """
@@ -284,7 +295,8 @@ def parse_medications(block: str, rules: list[dict] | None = None, visibility: l
         result.error = "Too many medication rows. Paste one patient at a time."
         return result
     for index, chunk in enumerate(chunks, 1):
-        cols = [clean(c) for c in chunk.split('\t')]
+        source_cols, clipboard_warnings = split_medication_columns(chunk)
+        cols = [clean(c) for c in source_cols]
         while len(cols) > 7 and not cols[-1]:
             cols.pop()
         # A clearly labelled ADS Override Pull can legitimately be a name-only
@@ -306,7 +318,7 @@ def parse_medications(block: str, rules: list[dict] | None = None, visibility: l
             result.issues.append(f"Medication row {index}: name, route, or frequency is missing. Check the original table.")
             result.error = "At least one medication row is incomplete. Nothing has been applied."
             continue
-        warnings = []
+        warnings = list(clipboard_warnings)
         if override_pull:
             warnings.append("ADS Override Pull: retained as a separate source entry. Blank dose, route or frequency are not inferred. Hide this exact entry if it should not print.")
         rate, rate_time = '', ''
@@ -328,13 +340,21 @@ def parse_medications(block: str, rules: list[dict] | None = None, visibility: l
             else:
                 warnings.append("Dose was blank in the source. No dose has been inferred.")
         if continuous and rate:
-            warnings.append("The displayed infusion rate comes from Last Rate, not a live pump feed.")
+            warnings.append("The pump-rate entry comes from Last Rate, not a live pump feed.")
             if re.match(r'^0(?:\.0+)?\s', rate):
                 warnings.append("The last recorded rate is zero. This does not establish that the order was discontinued.")
         row = {"id": uuid.uuid4().hex, "name": name, "dose": dose, "route": route,
                "frequency": frequency, "last_rate": rate, "rate_time": rate_time,
                "section": destination_for(name, rules), "custom_text": "", "include": True,
                "warnings": warnings, "hidden": hidden_for(name, visibility or [])}
+        if continuous_order(row):
+            row.update(parse_last_admin(_last_admin))
+            if row["last_admin_status"] == "rate":
+                warnings.append("The displayed dose-rate is the documented Last Admin rate, not a live pump reading. The ordered Dose remains in the editor.")
+            elif row["last_admin_status"] in ("stopped", "paused", "held", "not_given", "not_administered", "discontinued"):
+                warnings.append("Last Admin records a non-running or not-given event. The order is retained, but its older pump rate is not shown as current.")
+            elif requested_titration(row):
+                warnings.append("No unambiguous numeric rate was available in Last Admin. The handoff shows UNK rather than using an ordered titration range.")
         validate_medication(row)
         result.rows.append(row)
     if not result.rows and not result.error and not result.empty_confirmed:

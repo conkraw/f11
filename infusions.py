@@ -12,6 +12,7 @@ from html import escape
 import re
 from medications import normalized, match_name, visible, format_medication
 from output_text import medication_output
+from infusion_rates import administration_display, show_recorded_pump_rate
 from fen_gi import effective_section
 from medication_groups import group_for as special_group, GROUP_NAMES
 
@@ -111,10 +112,10 @@ def apply_infusion_rules(rows: list[dict], rules: list[dict]) -> list[dict]:
 
 
 def infusion_entry(row: dict, rich: bool = False, esc=escape, handoff_only: bool = False) -> str:
-    """Keep the entire formulation. Emphasize the explicit ordered dose, not strength."""
+    """Emphasize documented Last Admin rate when available, without altering Dose."""
     if handoff_only:
         row = deepcopy(row)
-        for field in ("name", "dose", "route", "frequency", "last_rate", "custom_text"):
+        for field in ("name", "dose", "route", "frequency", "last_rate", "custom_text", "last_admin_rate"):
             row[field] = medication_output(row.get(field, ""))
     encode = esc if rich else lambda v: v
     bold = lambda v: '<b>' + encode(v) + '</b>' if rich else v
@@ -125,14 +126,22 @@ def infusion_entry(row: dict, rich: bool = False, esc=escape, handoff_only: bool
     lines = [bold(row['name'].strip())]
     dose = row['dose'].strip()
     rate = row['last_rate'].strip()
-    if dose:
+    admin = administration_display(row)
+    if admin:
+        label, value, stamp = admin
+        text = label + ': ' + value
+        primary = '<b><u>' + encode(text) + '</u></b>' if rich else text
+        if stamp:
+            primary += ' [' + encode(stamp) + ']'
+        lines.append(primary)
+    elif dose:
         lines.append('<b><u>' + encode('Dose: ' + dose) + '</u></b>' if rich else 'Dose: ' + dose)
-    if rate:
+    if rate and show_recorded_pump_rate(row):
         text = 'Recorded rate: ' + rate
         # Explicit infusion choice also enables rate display with a blank frequency.
-        if not dose:
+        if not dose and not admin:
             lines.append('<b><u>' + encode(text) + '</u></b>' if rich else text)
-        elif normalized(dose) != normalized(rate):
+        elif normalized(admin[1] if admin else dose) != normalized(rate):
             lines.append(encode(text))
     details = ' | '.join(v.strip() for v in (row['route'], row['frequency']) if v.strip())
     if details:

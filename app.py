@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.30: lab windows and clinician-reviewed problem suggestions."""
+"""PICU SmartPhrase v6.33: documented infusion rates and Antiemetics."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -17,6 +17,7 @@ from import_review import review_summary, diagnostic_text, SECTIONS as REVIEW_SE
 from models import (MAX_FIELD, SYSTEMS, ValidationError, new_sheet, new_vault,
                     normalize_room, save_sheet_in, validate_vault, validate_sheet,
                     upgrade_vault, fields_with_medications, respiratory_text, automatic_vitals, SCHEMA_VERSION, DEFAULT_ROOMS, section_label)
+from infusion_rates import ADMIN_FIELDS, ADMIN_STATUSES, ADMIN_STATUS_LABELS, continuous_order, merge_admin_edits
 from medications import (DESTINATIONS, format_medication, suggested_key, upsert_rule,
                          remap, rule_for_inline_mapping, validate_medication, visible, hidden_for, set_visibility_rule)
 from ventilation import LABELS, format_ventilation, validate_ventilation
@@ -149,6 +150,7 @@ def editor_snapshot(room: str) -> dict:
                 if field == "section" and ss[prefix + field] == old_effective:
                     continue  # The automatic FEN/GI label is not a changed saved mapping.
                 row[field] = ss[prefix + field]
+        merge_admin_edits(row, {field: ss[prefix + field] for field in ADMIN_FIELDS if prefix + field in ss})
         if row.get("gi_mode", "auto") != old_gi_mode and row.get("gi_mode", "auto") not in ("auto", "other"):
             row["group_mode"] = "auto"
         if infusion_key(row) != old_signature and row.get("infusion_mode", "auto") == old_mode:
@@ -1080,9 +1082,12 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
     original = next((r for r in rows if r["id"] == row_id), None)
     if original is None:
         return
-    old_value = original.get(field, "auto") if field in ("infusion_mode", "gi_mode", "group_mode") else original[field]
+    old_value = original.get(field, "auto") if field in ("infusion_mode", "gi_mode", "group_mode") else original.get(field, "unavailable" if field == "last_admin_status" else "")
     edited = deepcopy(original)
-    edited[field] = ss[widget_key]
+    if field in ADMIN_FIELDS:
+        merge_admin_edits(edited, {field: ss[widget_key]})
+    else:
+        edited[field] = ss[widget_key]
     if field == "section":
         old_value = effective_section(original)
     try:
@@ -1142,6 +1147,10 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
             if field == "dose":
                 ss.pop("med_draft_" + row_id + "_section", None)
             original.update(edited)
+            if field in ADMIN_FIELDS:
+                for peer in ADMIN_FIELDS:
+                    if peer != field:
+                        ss.pop("med_draft_" + row_id + "_" + peer, None)
     except (ValueError, ValidationError, StorageError) as exc:
         # Do not claim a remembered mapping or move orders after a rejected save.
         ss[widget_key] = old_value
@@ -1291,7 +1300,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.32 | Age and sex below Room")
+        st.caption("Version 6.33 | Last Admin infusion rates and Antiemetics")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1360,7 +1369,7 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
             def widget(field: str, label: str, kind: str = "text"):
                 key = prefix + field
                 if key not in st.session_state:
-                    st.session_state[key] = row[field]
+                    st.session_state[key] = row.get(field, "unavailable" if field == "last_admin_status" else "")
                 args = (room, row["id"], field, key, store)
                 if kind == "check":
                     st.checkbox(label, key=key, on_change=medication_row_change, args=args)
@@ -1378,7 +1387,20 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
                 widget("route", "Route")
                 widget("last_rate", "Last recorded rate")
             widget("rate_time", "Rate timestamp")
+            if continuous_order(row) or any(key in row for key in ADMIN_FIELDS):
+                st.caption("Last Admin supplies the displayed infusion dose-rate. Dose above remains the original order. Changes here apply only to this handoff, not Epic.")
+                widget("last_admin_rate", "Last Admin rate")
+                widget("last_admin_time", "Last Admin timestamp")
+                key = prefix + "last_admin_status"
+                if key not in st.session_state:
+                    st.session_state[key] = row.get("last_admin_status", "unavailable")
+                st.selectbox("Last Admin status", ADMIN_STATUSES, key=key,
+                             format_func=lambda value: ADMIN_STATUS_LABELS[value],
+                             on_change=medication_row_change,
+                             args=(room, row["id"], "last_admin_status", key, store))
             widget("custom_text", "Custom handoff wording", "area")
+            if row.get("custom_text", "").strip() and continuous_order(row):
+                st.caption("Custom handoff wording overrides the automatic infusion summary, including its Last Admin rate. Recheck or clear custom wording after a rate change.")
             name, match = rule_for_inline_mapping(row["name"], st.session_state["vault"]["settings"]["medication_mappings"])
             st.caption("Changing the system remembers this rule: " + name + " [" + match + "].")
             for warning in row["warnings"]:
@@ -1611,7 +1633,7 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.caption("Edit imported specimens and results in Cultures. Temperature stays first in the printed ID column.")
                 if section == "FEN / GI":
                     st.markdown('<div style="white-space:pre-wrap">' + fen_gi_body("", sheet["medications"], None, True) + "</div>", unsafe_allow_html=True)
-                    st.caption("Printed order: Intake/Output/Net, GI prophylaxis, Bowel Regimen, Diuretics, then separate notes and remaining FEN/GI medications.")
+                    st.caption("Printed order: Intake/Output/Net, GI prophylaxis, Bowel Regimen, Diuretics, Antiemetics, then separate notes and remaining FEN/GI medications.")
                 elif section in INFUSION_SECTIONS:
                     render_body = {"Neurologic": neuro_body, "Cardiovascular": cardiovascular_body, "Hematology": hematology_body, "Respiratory": respiratory_body}[section]
                     st.markdown('<div style="white-space:pre-wrap">' + render_body("", sheet["medications"], True) + '</div>', unsafe_allow_html=True)
@@ -2373,7 +2395,7 @@ def update_gi_admin(rule_key: tuple, key: str, store: GitHubVault | None) -> Non
 
 def gi_admin(store: GitHubVault | None) -> None:
     with st.expander("FEN/GI display choices", expanded=False):
-        st.caption("Automatic GI prophylaxis: famotidine, omeprazole, pantoprazole. Automatic Bowel Regimen: docusate, lactulose, polyethylene glycol, glycerin suppositories, sennosides. Diuretics: bumetanide, chlorothiazide, furosemide. These are display groups, not inferred indications.")
+        st.caption("Automatic GI prophylaxis: famotidine, omeprazole, pantoprazole. Automatic Bowel Regimen: docusate, lactulose, polyethylene glycol, glycerin suppositories, sennosides. Diuretics: bumetanide, chlorothiazide, furosemide. Antiemetics: ondansetron (Zofran). These are display groups, not inferred indications.")
         st.caption("To override a default, use a medication's FEN/GI display control. Choosing another system turns off its automatic GI grouping. The original order and hidden-medication choice stay intact.")
         rules = st.session_state["vault"]["settings"]["medication_gi_groups"]
         for index, rule in enumerate(rules):

@@ -599,7 +599,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         access = updated_access
         c.setFont('Helvetica', 6.1)
         c.drawString(margin, margin+6, 'Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted.')
-        c.drawRightString(width-margin, margin-2, 'Last Rate is a recorded source value, not a live pump feed.')
+        c.drawRightString(width-margin, margin-2, 'Infusion rates are recorded values, not a live pump feed.')
         c.showPage()
         if not any(queues) and not any(q for _, q in bands) and not any(q for _, q in access):
             return page

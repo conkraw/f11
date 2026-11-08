@@ -1,11 +1,12 @@
-COMPLETE VERSION 6.32 PACKAGE
-Replace matching files, keeping app.py at the root.
-Changed runtime modules: app.py, anthropometrics.py, parser.py, importing.py,
-exports.py, error_store.py, user_guide.py.
-No new dependency or archive schema change.
-Keep both passwords, encryption key, token, medication mappings, private data
-repository, and your existing public CDC BMI reference CSV unchanged.
-Do not rerun the setup generators.
-Re-paste the affected SmartPhrase after updating, then Create / update handoff
-and Save handoff, to correct previously stored diagnosis text.
-Read AGE_SEX_UPDATE.md and TEST_REPORT.md.
+COMPLETE VERSION 6.33 PACKAGE
+Replace matching files and keep app.py at the root.
+New modules: infusion_rates.py, medication_columns.py.
+Updated modules: app.py, medications.py, infusions.py, fen_gi.py, models.py,
+exports.py, error_store.py.
+No new Python dependencies. Encrypted archive schema 25 automatically accepts
+and upgrades schema 24. Do not downgrade after saving with this version.
+Keep both passwords, encryption key, GitHub token, mappings, private storage,
+and existing public CDC BMI reference data. Do not rerun generators.
+Re-paste the complete B section or full SmartPhrase to capture Last Admin,
+then Create / update handoff and Save handoff.
+Read INFUSION_RATES_UPDATE.md and TEST_REPORT.md.

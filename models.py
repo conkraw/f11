@@ -37,7 +37,7 @@ from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 from problem_review import validate_review, empty_review
 from lab_windows import cardiac_labs_summary, theophylline_summary, id_summary, laboratory_data
 from anthropometrics import empty_anthropometrics, validate_anthropometrics, measurements_text
@@ -188,13 +188,18 @@ def apply_diagnoses(sheet: dict, diagnosis_text: str, destination: str, append: 
 
 
 def upgrade_vault(vault: dict) -> dict:
-    """Migrate schemas 1-22 without replacing keys, notes or saved mappings."""
+    """Migrate schemas 1-24 without replacing keys, notes or saved mappings."""
     if not isinstance(vault, dict):
         raise ValidationError("The encrypted archive has an invalid structure.")
     version = vault.get("schema")
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
+    if version == 24:
+        candidate = deepcopy(vault)
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     if version == 23:
         candidate = deepcopy(vault)
         candidate["schema"] = SCHEMA_VERSION
