@@ -130,3 +130,10 @@ Pacemaker:
 Atrial Rate (beats/min) and/or Ventricular Rate (beats/min). Do not replace
 this source definition with an example patient result.]
 wwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Diet:
+[Insert your Epic diet-order SmartLink. X imports diet types and NPO exceptions.
+PN and label-only orders are omitted here. T remains the source of feed rates.]
+xxxxxxxxxxxxxxxxxxxxxxxxxxxx

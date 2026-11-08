@@ -215,7 +215,7 @@ def test_original_fields_encrypted_without_schema_or_key_change():
     before = deepcopy(vault)
     key = generate_key()
     reopened = open_vault(seal_vault(vault, key), key)
-    assert SCHEMA_VERSION ==21
+    assert SCHEMA_VERSION ==22
     assert reopened == before
     assert 'Theophylline level:' in fields_with_medications(reopened['rooms']['P4102'])['Respiratory']
 

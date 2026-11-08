@@ -135,7 +135,7 @@ def test_existing_schema_two_preserved_with_new_field():
     old['rooms']['P4102']['fields']['Respiratory']='Old manual note'
     old['settings']['medication_mappings']=upsert_rule([],'acetaminophen','Neurologic')
     migrated=upgrade_vault(old)
-    assert migrated['schema']==21 and old['schema']==2
+    assert migrated['schema']==22 and old['schema']==2
     assert migrated['rooms']['P4102']['fields']['Respiratory']=='Old manual note'
     assert migrated['settings']['medication_mappings']==old['settings']['medication_mappings']
     assert migrated['rooms']['P4102']['ventilation'] is None

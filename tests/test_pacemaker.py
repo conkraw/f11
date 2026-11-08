@@ -167,10 +167,10 @@ def test_pacer_only_room_in_print_all_and_no_cross_room_mix():
 
 def test_schema20_migration_preserves_all_prior_data():
     v=save_sheet_in(new_vault(),new_sheet('P4102'));v['schema']=20
-    v['rooms']['P4102'].pop('pacemaker');before=deepcopy(v)
+    v['rooms']['P4102'].pop('pacemaker');v['rooms']['P4102'].pop("diet", None);before=deepcopy(v)
     m=upgrade_vault(v)
-    assert m['schema']==SCHEMA_VERSION==21 and v==before
-    assert m['rooms']['P4102']==dict(before['rooms']['P4102'],pacemaker=None)
+    assert m['schema']==SCHEMA_VERSION==22 and v==before
+    assert m['rooms']['P4102']==dict(before['rooms']['P4102'],pacemaker=None,diet=None)
     assert m['settings']==v['settings'] and m['reset_generation']==v['reset_generation']
 
 
@@ -228,11 +228,11 @@ def test_session20_migration_keeps_saved_and_unsaved_notes(app):
     app.save_room(None)
     ss['vault']['schema']=20
     for sheet in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):
-        sheet.pop('pacemaker')
+        sheet.pop('pacemaker');sheet.pop("diet", None)
     ss['drafts']['P4102']['fields']['Cardiovascular']='Unsaved synthetic note'
     old_saved=ss['vault']['rooms']['P4102']['updated_at']
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==21
+    assert ss['vault']['schema']==22
     assert ss['drafts']['P4102']['pacemaker'] is None
     assert ss['drafts']['P4102']['fields']['Cardiovascular']=='Unsaved synthetic note'
     assert ss['vault']['rooms']['P4102']['updated_at']==old_saved

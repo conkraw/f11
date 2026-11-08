@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.27: W-section pacemaker mode and rate."""
+"""PICU SmartPhrase v6.28: diet summary and earliest/latest lactate."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -46,6 +46,7 @@ from microbiology_display import culture_markup, viral_markup
 from pacemaker import (validate_pacemaker, format_pacemaker, pacemaker_text,
                        EDIT_FIELDS as PACER_FIELDS, STATUSES as PACER_STATUSES, normalize_mode, normalize_rate)
 from devices import validate_devices, EDIT_FIELDS as DEVICE_EDIT_FIELDS, device_line, devices_markup, evd_text
+from diet import validate_diet, diet_text, diet_for_output, diet_failed
 from feeds import METHODS as FEED_METHODS, validate_feeds, feeds_text, feeds_for_output
 from fluid_balance import FIELDS as IO_FIELDS, META_FIELDS as IO_META_FIELDS, validate_balance, balance_text, empty_balance
 from fen_gi import (MODES as GI_MODES, MODE_LABELS as GI_MODE_LABELS, GROUP_NAMES,
@@ -106,7 +107,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_", "diet_")):
             st.session_state.pop(key, None)
 
 
@@ -173,6 +174,12 @@ def editor_snapshot(room: str) -> dict:
                         if value != row["rate"]:
                             row["rate_source"] = "manual" if value else "unknown"
                     row[field] = value.strip() if isinstance(value, str) else value
+    for row in (sheet["diet"] or {}).get("rows", []):
+        for field in ("text", "include"):
+            key = "diet_" + row["id"] + "_" + field
+            if key in ss:
+                value = ss[key]
+                row[field] = value.strip() if isinstance(value, str) else value
     for source in ("devices", "neuro_devices"):
         for row in (sheet[source] or {}).get("rows", []):
             for field in DEVICE_EDIT_FIELDS:
@@ -858,6 +865,7 @@ def labs_vitals_editor(sheet: dict) -> None:
         st.text("Respiratory: " + theophylline_text(sheet["labs"]))
     if lactate_text(sheet["labs"]):
         st.text("Cardiovascular: " + lactate_text(sheet["labs"]))
+        st.caption("Lactate shows the earliest and latest usable results in the pasted G section across all aliases, not the entire chart. Original codes, dates, flags and supplied units remain. Same-date ties follow source order when times are missing.")
     if id_labs_text(sheet["labs"]):
         st.text("Infectious Disease:\n" + id_labs_text(sheet["labs"]))
     st.caption("Glucose is in the BMP tree. Mg and phosphorus are below it. Albumin stays in Hepatic. Coagulation, including Anti-Xa (HEPLMW), is immediately below Hepatic in the lab results. CRP and procalcitonin (PROCAL) remain in ID below temperature. The latest THEOPH result prints as Theophylline level in Respiratory, below support settings and above medications.")
@@ -1233,7 +1241,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.27 | Pacemaker mode and rate")
+        st.caption("Version 6.28 | Diet and lactate results")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1519,6 +1527,7 @@ def handoff_page(store: GitHubVault | None) -> None:
                     pacemaker_editor(sheet)
                 if section == "FEN / GI":
                     intake_output_editor(sheet)
+                    diet_editor(sheet)
                     feeds_editor(sheet)
                 if section == "Labs" and orders_text(sheet["recurring_orders"]):
                     st.text(orders_text(sheet["recurring_orders"]) + "\n-----")
@@ -2078,6 +2087,49 @@ def intake_output_editor(sheet: dict) -> None:
     st.caption("Values are copied from S. Missing values are not zero. Net is not recalculated.")
 
 
+def diet_row_change(room: str, row_id: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room") or field not in ("text", "include"):
+        return
+    ss = st.session_state
+    original = next((r for r in (ss["drafts"][room]["diet"] or {}).get("rows", []) if r["id"] == row_id), None)
+    if original is None or key not in ss:
+        return
+    candidate = deepcopy(original)
+    value = ss[key]
+    candidate[field] = value.strip() if isinstance(value, str) else value
+    try:
+        validate_diet({"rows": [candidate]})
+        original.update(candidate)
+    except ValueError as exc:
+        ss[key] = original[field]
+        note(str(exc), "error")
+
+
+def diet_editor(sheet: dict) -> None:
+    data = sheet["diet"]
+    if data is None:
+        return
+    if diet_failed(sheet):
+        st.warning("X was not updated. Retained diet information is hidden until reviewed or reimported.")
+    elif diet_text(data):
+        st.text(diet_text(data))
+    with st.expander("Edit diet / review source", expanded=False):
+        st.caption("X supplies diet type. PN, label printing and other non-diet items are omitted. Tube-feed rates still come from T. Review multiple listed diets against Epic.")
+        if not data["rows"]:
+            st.caption("No diet order was included in the last X section.")
+        for row in data["rows"]:
+            st.text("Source: " + row["source"])
+            for field, label in (("text", "Diet summary"), ("include", "Include diet on handoff")):
+                key = "diet_" + row["id"] + "_" + field
+                if key not in st.session_state:
+                    st.session_state[key] = row[field]
+                args = (sheet["room"], row["id"], field, key)
+                if field == "include":
+                    st.checkbox(label, key=key, on_change=diet_row_change, args=args)
+                else:
+                    st.text_input(label, key=key, max_chars=500, on_change=diet_row_change, args=args)
+
+
 def feed_row_change(room: str, row_id: str, field: str, key: str) -> None:
     if not require_session() or room != st.session_state.get("current_room") or key not in st.session_state:
         return
@@ -2328,11 +2380,12 @@ def import_review_editor(sheet: dict) -> None:
         return
     st.warning(summary)
     with st.expander("Review skipped or incomplete imports", expanded=False):
-        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed orders, feeds, device and pacemaker imports are retained for review but hidden from print. Do not treat skipped values as refreshed.")
+        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed orders, diet, feeds, device and pacemaker imports are retained for review but hidden from print. Do not treat skipped values as refreshed.")
         for section, items in sheet["import_warnings"].items():
             for item in items:
                 st.text(diagnostic_text(item))
             label = ("Use retained orders after checking Epic" if section == 'r' else
+                     "Use retained diet after checking Epic" if section == "x" and any(i["action"] == "diet_hidden" for i in items) else
                      "Use retained feeds after checking Epic" if section == 't' and any(i['action'] == 'feeds_hidden' for i in items) else
                      "Use retained pacemaker settings after checking Epic" if section == "w" and any(i["action"] == "pacemaker_hidden" for i in items) else
                      "Use retained devices after checking Epic" if section in ('u', 'v') and any(i['action'].endswith('_hidden') for i in items) else

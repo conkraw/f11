@@ -12,6 +12,7 @@ from medications import match_name, normalized, visible, format_medication
 from output_text import medication_output
 from fluid_balance import balance_text
 from feeds import feeds_text
+from diet import diet_text
 from medication_groups import group_for as special_group, GROUP_SECTIONS
 
 MODES = ("auto", "prophylaxis", "bowel", "diuretic", "other")
@@ -93,7 +94,7 @@ def apply_gi_rules(rows: list[dict], rules: list[dict]) -> list[dict]:
     return result
 
 
-def fen_gi_body(notes: str, rows: list[dict], intake_output: dict | None, rich: bool = False, esc=escape, feeds: dict | None = None, feeds_failed: bool = False) -> str:
+def fen_gi_body(notes: str, rows: list[dict], intake_output: dict | None, rich: bool = False, esc=escape, feeds: dict | None = None, feeds_failed: bool = False, diet: dict | None = None, diet_failed: bool = False) -> str:
     """Totals, then feeds.  Each visible order appears exactly once, without changing doses."""
     encode = esc if rich else lambda s: s
     meds = [r for r in rows if visible(r) and effective_section(r) == "FEN / GI"]
@@ -101,6 +102,11 @@ def fen_gi_body(notes: str, rows: list[dict], intake_output: dict | None, rich: 
     totals = balance_text(intake_output)
     if totals:
         sections.append(encode(totals))
+    diet_summary = diet_text(diet, rich, esc)
+    if diet_failed:
+        diet_summary = ("<b>Diet:</b>" if rich else "Diet:") + " Not updated. Review needed."
+    if diet_summary:
+        sections.append(diet_summary)
     feeding = feeds_text(feeds, rich, esc)
     if feeds_failed:
         feeding = ("<b>Feeds:</b>" if rich else "Feeds:") + "\nNot updated. Review needed."

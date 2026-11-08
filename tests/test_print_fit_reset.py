@@ -177,11 +177,11 @@ def test_old_download_generator_revoked_on_logout(app):
 
 def test_v17_encrypted_migration_preserves_every_prior_setting_and_sheet():
     v=new_vault();v.pop('reset_generation');v['schema']=17
-    v['rooms']['P4102']=new_sheet('P4102');v['rooms']['P4102'].pop('feeds');v['rooms']['P4102'].pop("devices", None);v['rooms']['P4102'].pop("neuro_devices", None);v['rooms']['P4102'].pop("pacemaker", None);v['rooms']['P4102']['fields']['Other']='Do not alter'
+    v['rooms']['P4102']=new_sheet('P4102');v['rooms']['P4102'].pop('feeds');v['rooms']['P4102'].pop("devices", None);v['rooms']['P4102'].pop("neuro_devices", None);v['rooms']['P4102'].pop("pacemaker", None);v['rooms']['P4102'].pop("diet", None);v['rooms']['P4102']['fields']['Other']='Do not alter'
     before=deepcopy(v);key=generate_key();data=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     out=open_vault(data,key)
-    assert out['rooms']=={room: dict(sheet, feeds=None,devices=None,neuro_devices=None,pacemaker=None) for room, sheet in v['rooms'].items()} and out['settings']==v['settings'] and v==before
-    assert out['schema']==21 and out['reset_generation']==''
+    assert out['rooms']=={room: dict(sheet, feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None) for room, sheet in v['rooms'].items()} and out['settings']==v['settings'] and v==before
+    assert out['schema']==22 and out['reset_generation']==''
     assert open_vault(seal_vault(out,key),key)==out
 
 

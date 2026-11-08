@@ -243,7 +243,7 @@ def test_cbc_only_room_print_all_and_cleared_q_not_counted_as_content():
 
 
 def test_schema12_upgrade_preserves_old_gases_rows_mappings_and_fields():
-    sheet=new_sheet('P4102');sheet.pop("feeds", None);sheet.pop("devices", None);sheet.pop("neuro_devices", None);sheet.pop("pacemaker", None);sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop('recurring_orders');sheet.pop('cbc')
+    sheet=new_sheet('P4102');sheet.pop("feeds", None);sheet.pop("devices", None);sheet.pop("neuro_devices", None);sheet.pop("pacemaker", None);sheet.pop("diet", None);sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop('recurring_orders');sheet.pop('cbc')
     sheet['blood_gas']=parse_gases('Lab\tUnits\t01/06/26 0900\nPH ART\t\t7.40').data
     sheet['fields']['Neurologic']='Preserved separate note'
     old=new_vault();old['schema']=12;old.pop("reset_generation", None);old["settings"].pop("medication_groups", None);old["settings"].pop("medication_gi_groups", None);old['rooms']['P4102']=sheet
@@ -251,8 +251,8 @@ def test_schema12_upgrade_preserves_old_gases_rows_mappings_and_fields():
     key=Fernet.generate_key().decode()
     cipher=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     new=open_vault(cipher,key)
-    assert old==before and new['schema']==SCHEMA_VERSION==21
-    assert new['rooms']['P4102']==dict(sheet,cbc=None,recurring_orders=None,intake_output=None,import_warnings={},feeds=None,devices=None,neuro_devices=None,pacemaker=None)
+    assert old==before and new['schema']==SCHEMA_VERSION==22
+    assert new['rooms']['P4102']==dict(sheet,cbc=None,recurring_orders=None,intake_output=None,import_warnings={},feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None)
     assert new['settings']==dict(old['settings'], medication_gi_groups=[], medication_groups=[])
     assert open_vault(seal_vault(new,key),key)==new
 

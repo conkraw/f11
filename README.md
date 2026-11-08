@@ -1,3 +1,16 @@
+# Version 6.28: diet summary and lactate endpoints
+
+This is the complete application update. Upload all folder contents to the code
+repository, with app.py at its root. Keep the existing Streamlit Secrets, app
+password, Admin password, encryption key, GitHub token and private data archive.
+Do not run either secrets/password generator again. No new dependencies.
+
+Read DIET_LACTATE_UPDATE.md for behavior and limits.
+
+The notes below are historical.
+
+---
+
 # PICU Handoff 6.27: Pacemaker mode and rate
 
 Complete ZIP update. Read PACEMAKER_UPDATE.md or START_HERE.html first.

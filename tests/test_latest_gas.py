@@ -251,14 +251,14 @@ def test_gas_only_room_in_print_all_and_empty_p_not_blank_patient():
 
 
 def test_schema11_migration_preserves_old_fields_mapping_infusion_and_notes():
-    s=imported();s.pop("feeds", None);s.pop("devices", None);s.pop("neuro_devices", None);s.pop("pacemaker", None);s.pop("import_warnings", None);s.pop("intake_output", None);s.pop("recurring_orders", None);s.pop("cbc", None);s.pop('blood_gas')
+    s=imported();s.pop("feeds", None);s.pop("devices", None);s.pop("neuro_devices", None);s.pop("pacemaker", None);s.pop("diet", None);s.pop("import_warnings", None);s.pop("intake_output", None);s.pop("recurring_orders", None);s.pop("cbc", None);s.pop('blood_gas')
     old=new_vault();old['schema']=11;old.pop("reset_generation", None);old["settings"].pop("medication_groups", None);old["settings"].pop("medication_gi_groups", None);old['rooms']['P4102']=s
     old['settings']['medication_mappings']=[{'name':'test','match':'prefix','destination':'Neurologic'}]
     before=deepcopy(old)
     updated=upgrade_vault(old)
-    assert old==before and updated['schema']==21
+    assert old==before and updated['schema']==22
     assert updated['settings']==dict(old['settings'], medication_gi_groups=[], medication_groups=[])
-    assert updated['rooms']['P4102']==dict(s,blood_gas=None,cbc=None,recurring_orders=None,intake_output=None,import_warnings={},feeds=None,devices=None,neuro_devices=None,pacemaker=None)
+    assert updated['rooms']['P4102']==dict(s,blood_gas=None,cbc=None,recurring_orders=None,intake_output=None,import_warnings={},feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None)
     key=Fernet.generate_key().decode()
     token=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     assert open_vault(token,key)==updated
@@ -338,9 +338,9 @@ def test_session11_upgrade_keeps_unsaved_gas_independent_notes(app):
     ss['drafts']['P4102']['fields']['Neurologic']='UNSAVED sentinel'
     ss['vault']['schema']=11;ss['vault'].pop("reset_generation", None);ss['vault']["settings"].pop("medication_groups", None);ss['vault']["settings"].pop("medication_gi_groups", None)
     for sheet in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):
-        sheet.pop("feeds", None);sheet.pop("devices", None);sheet.pop("neuro_devices", None);sheet.pop("pacemaker", None);sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop("recurring_orders", None);sheet.pop("cbc", None);sheet.pop('blood_gas')
+        sheet.pop("feeds", None);sheet.pop("devices", None);sheet.pop("neuro_devices", None);sheet.pop("pacemaker", None);sheet.pop("diet", None);sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop("recurring_orders", None);sheet.pop("cbc", None);sheet.pop('blood_gas')
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==21
+    assert ss['vault']['schema']==22
     assert ss['drafts']['P4102']['blood_gas'] is None
     assert ss['drafts']['P4102']['fields']['Neurologic']=='UNSAVED sentinel'
 

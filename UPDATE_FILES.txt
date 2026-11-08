@@ -1,15 +1,6 @@
-Version 6.27 is a COMPLETE ZIP, not a patch. Upload all contents.
+Version 6.28 complete update
 
-Changed runtime modules:
-app.py
-batching.py
-error_store.py
-exports.py
-import_review.py
-importing.py
-models.py
-pacemaker.py
-parser.py
-
-Keep all Secrets and both passwords unchanged. Include pacemaker.py.
-Schema 20 migrates to 21 without changing old fields. Do not downgrade after saving.
+Replace the full application folder contents, keeping app.py at repository root.
+New runtime file: diet.py
+Preserve all private Secrets and the existing data repository.
+Read DIET_LACTATE_UPDATE.md. No new dependencies.

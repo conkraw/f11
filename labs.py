@@ -66,7 +66,7 @@ def canonical(component: str) -> str:
 
 def is_lactate(component: str) -> bool:
     key = canonical(component)
-    return bool(re.fullmatch(r'(?:LACTATE|LACTIC(?: ACID)?)(?:[ _,-]+(?:ARTERIAL|VENOUS|PLASMA|BLOOD|WHOLE BLOOD|POC))*', key))
+    return key in ('LACWB', 'LAC') or bool(re.fullmatch(r'(?:LACTATE|LACTIC(?: ACID)?)(?:[ _,-]+(?:ARTERIAL|VENOUS|PLASMA|BLOOD|WHOLE BLOOD|POC))*', key))
 
 
 def date_parts(value: str) -> tuple[datetime, bool]:
@@ -253,12 +253,63 @@ def result_cards(data: dict, include_id_panels: bool = True, blood_gas: dict | N
     return cards
 
 
+def is_numeric_lactate(value: str) -> bool:
+    """Select measured results only, not specimen rejection or pending messages.
+
+    Preserve the source value verbatim. Units are neither assumed nor converted.
+    """
+    return bool(re.fullmatch(
+        r"[<>≤≥]?\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)"
+        r"(?:\s*(?:mmol/L|mEq/L|mg/dL|mg/L|mmol/l|umol/L|µmol/L))?"
+        r"(?:\s*(?:\*|\((?:H|L|HH|LL|A|C|CRIT|HIGH|LOW)\)))*",
+        value.strip(), re.I))
+
+
+def lactate_endpoints(data: dict) -> tuple[dict | None, dict | None, bool]:
+    """Earliest/latest usable result ACROSS all documented lactate aliases.
+
+    Dates are compared before source order. Within a day use times only when
+    all candidate rows have them, otherwise retain Epic's newest-first order.
+    No claim is made about the entire hospital course outside the pasted data.
+    """
+    candidates = [r for r in data['rows']
+                  if r['include'] and is_lactate(r['component'])
+                  and is_numeric_lactate(r['value'])]
+    days = defaultdict(list)
+    for row in candidates:
+        days[date_parts(row['date'])[0].date()].append(row)
+    ordered = []
+    uncertain_days = set()
+    for day in sorted(days, reverse=True):
+        same_day = days[day]
+        if all(date_parts(r['date'])[1] for r in same_day):
+            same_day = sorted(same_day, key=lambda r: date_parts(r['date'])[0], reverse=True)
+            # A tie can still contain different simultaneous specimen values.
+            keys = [date_parts(r['date'])[0] for r in same_day]
+            if len(keys) != len(set(keys)) and len({(r['component'], r['value']) for r in same_day}) > 1:
+                uncertain_days.add(day)
+        elif len(same_day) > 1:
+            uncertain_days.add(day)
+        ordered.extend(same_day)
+    if not ordered:
+        return None, None, False
+    latest, earliest = ordered[0], ordered[-1]
+    uncertain = any(date_parts(r['date'])[0].date() in uncertain_days for r in (earliest, latest))
+    return earliest, latest, uncertain
+
+
 def lactate_text(data: dict) -> str:
-    lines = []
-    for key, rows in ordered_components(data).items():
-        if is_lactate(key):
-            row = rows[0]
-            lines.append(row['component'] + ': ' + row['value'] + (' [' + row['date'] + ']' if row['date'] else ''))
+    earliest, latest, uncertain = lactate_endpoints(data)
+    if latest is None:
+        return ''
+    def line(label: str, row: dict) -> str:
+        # Source code is retained because different assays may use different units.
+        return label + ': ' + row['value'] + ' [' + row['date'] + '; ' + row['component'] + ']'
+    if earliest['id'] == latest['id']:
+        return line('Lactate (only result)', latest)
+    lines = [line('Lactate earliest', earliest), line('Lactate latest', latest)]
+    if uncertain:
+        lines.append('Same-date order follows source; timing unverified.')
     return '\n'.join(lines)
 
 

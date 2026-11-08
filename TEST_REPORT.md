@@ -1,21 +1,47 @@
-# Version 6.27 validation
+# Version 6.28 validation
 
-The complete suite contains 2,229 automated checks: 2,164 inherited checks and 65 new pacemaker checks. Historical migration fixtures and expected current-schema assertions were adjusted for the added pacemaker snapshot. No inherited tests were removed. The full suite is rerun from the extracted delivery ZIP.
+The original Version 6.27 package passed all 2,229 inherited tests before edits.
+The updated suite passed 2,324 tests: 2,229 inherited tests plus 95 diet/lactate
+checks. Existing migration fixture shapes and current-schema expectations were
+updated for the new diet field. Lactate output assertions were updated for the
+requested endpoints. No inherited tests were removed or skipped.
 
-The new tests cover the supplied tab-separated W pattern, AAI/AAIR/AOO and VVI/VVIR/VOO mode-to-rate pairing, colon/space variants, missing modes or rates, generic-rate fallback, conflicting rates, distinct dual-chamber rates, explicit No/Off/Standby values, and the distinction between pacing rate, heart rate and output in milliamps. Missing required values remain UNK. No capture or clinical-indication inference is made.
+Tests cover adult/pediatric regular and liquid diets, NPO with exceptions,
+tube-feeding types, PN/TPN/PPN and label exclusion, inactive order exclusion,
+multiple-order warnings, duplicated summaries, missing/empty X, independent
+partial updates, failed-X hiding, manual corrections, HTML escaping, room
+switch autosave, output inclusion, and encrypted storage.
 
-Integration checks cover independent W updates, empty-W clearing, omission preserving prior settings, failed-W hiding without cancelling unrelated sections, patient-free error reports, manual editing, include/exclude, pending widget edits during room autosave, session migration, new-patient clearing, encrypted round trips and single/batch export. HTML is escaped, and mode/rate are verified in PDF text.
+Lactate tests cover all requested aliases, cross-alias date selection, explicit
+time sorting, same-date ambiguity, numeric and flagged results, zero, supplied
+units, comparisons, rejected samples, nonnumeric values, exclusions, empty
+snapshots, and preservation of source records. Nothing is averaged or converted.
+The earliest result is only the earliest in the pasted G snapshot.
 
-The supplied W excerpt produces Pacemaker: AAI at 140 bpm. With a synthetic full-handoff baseline, every other imported snapshot was compared against actual Version 6.26 output and remained unchanged.
+Eight supplied X-section excerpts and four supplied lactate-row patterns were
+checked separately. Original complete patient documents are not included in
+this package, and are not claimed to have been tested end-to-end in this update.
 
-A synthetic encrypted archive was generated using the actual original Version 6.26 code, then decrypted with Version 6.27 and the same key. Every prior field, setting, reset generation and saved timestamp remained unchanged. The new pacemaker field initialized to null. A second encrypted round trip passed.
+A synthetic archive was generated with the actual original Version 6.27 code,
+encrypted, and opened with Version 6.28 using the same key. Every prior room
+field, setting, saved timestamp and reset generation was preserved. The only
+new snapshot is diet=null and the schema changes from 21 to 22. A second
+same-key encrypted round trip passed.
 
-The synthetic landscape PDF was rendered and visually checked. It fits on one page. The pacing line is bold under cardiovascular vitals and above lactate/CV Infusions. The numeric rate and bpm stay together on a printed line. The original auto-fit and overflow behavior remains.
+Three synthetic landscape preview pages were rendered and visually inspected.
+Each room fits on one page. Diet appears below intake/output and before feeds.
+Lactate appears in Cardiovascular after vital signs/pacing, before CV Infusions.
+The two values retain their individual dates and original component codes.
 
-The following prior runtime modules are byte-for-byte unchanged:
+Unchanged runtime modules, byte-for-byte compared with the delivered 6.27 ZIP:
 
-admin_access.py, blood_gases.py, cbc.py, create_secrets.py, cultures.py, demographics.py, devices.py, feeds.py, fen_gi.py, fluid_balance.py, github_store.py, guide_store.py, handoff_reset.py, infusions.py, lab_layout.py, labs.py, medication_groups.py, medications.py, microbiology_display.py, noninvasive.py, observations.py, output_text.py, print_time.py, recurring_orders.py, save_status.py, security.py, set_admin_password.py, user_guide.py, ventilation.py, viral.py, vitals.py.
+admin_access.py, blood_gases.py, cbc.py, create_secrets.py, cultures.py, demographics.py, devices.py, feeds.py, fluid_balance.py, github_store.py, guide_store.py, handoff_reset.py, infusions.py, lab_layout.py, medication_groups.py, medications.py, microbiology_display.py, noninvasive.py, observations.py, output_text.py, pacemaker.py, print_time.py, recurring_orders.py, save_status.py, security.py, set_admin_password.py, user_guide.py, ventilation.py, viral.py, vitals.py.
 
-Each packaged file is listed in SHA256SUMS.txt. The archive is checked for corruption and read back against its source files. Neither real patient source files nor deployment secrets are packaged in this update.
+The delivery ZIP is read back and verified with SHA256SUMS.txt. The full test
+suite is also rerun from an independent extraction of that ZIP. No deployment
+secrets, encryption keys, real patient input files or new font files are added.
 
-Limits: UI tests use Streamlit widget stubs, not the live hosted app. GitHub tests use synthetic data and mocked requests. No live deployment, authenticated private storage, or real bedside pacemaker was tested. The parser copies documented fields and cannot determine whether pacing is currently capturing or whether the pasted settings are current.
+Limits: UI tests use Streamlit widget stubs. GitHub tests use mocked responses.
+The live Streamlit deployment and authenticated private repository were not
+accessed or tested. Missing collection times, stale orders and clinical context
+still require source review. The app does not make treatment decisions.

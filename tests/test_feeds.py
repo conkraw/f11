@@ -294,13 +294,13 @@ def test_two_room_print_all_keeps_feeds_separate_and_page_fit_works():
 def test_old18_migration_preserves_every_original_field_settings_and_generation():
     v=save_sheet_in(new_vault(),new_sheet('P4102'));v['schema']=18
     v['reset_generation']='e'*32
-    v['rooms']['P4102'].pop('feeds');v['rooms']['P4102'].pop("devices", None);v['rooms']['P4102'].pop("neuro_devices", None);v['rooms']['P4102'].pop("pacemaker", None)
+    v['rooms']['P4102'].pop('feeds');v['rooms']['P4102'].pop("devices", None);v['rooms']['P4102'].pop("neuro_devices", None);v['rooms']['P4102'].pop("pacemaker", None);v['rooms']['P4102'].pop("diet", None)
     before=deepcopy(v);key=generate_key()
     old_token=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     new=open_vault(old_token,key)
-    assert v==before and new['schema']==SCHEMA_VERSION==21
+    assert v==before and new['schema']==SCHEMA_VERSION==22
     assert new['settings']==before['settings'] and new['reset_generation']==before['reset_generation']
-    assert new['rooms']['P4102']==dict(before['rooms']['P4102'],feeds=None,devices=None,neuro_devices=None,pacemaker=None)
+    assert new['rooms']['P4102']==dict(before['rooms']['P4102'],feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None)
     assert open_vault(seal_vault(new,key),key)==new
 
 
@@ -312,10 +312,10 @@ def test_invalid_old18_is_not_silently_rewritten():
 def test_session18_migration_preserves_unsaved_feeds_unrelated_fields(app):
     open_room(app);app.save_room(None);ss=app.st.session_state
     ss['vault']['schema']=18;ss['vault']['reset_generation']='f'*32
-    for sheet in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):sheet.pop('feeds');sheet.pop("devices", None);sheet.pop("neuro_devices", None);sheet.pop("pacemaker", None)
+    for sheet in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):sheet.pop('feeds');sheet.pop("devices", None);sheet.pop("neuro_devices", None);sheet.pop("pacemaker", None);sheet.pop("diet", None)
     ss['drafts']['P4102']['fields']['FEN / GI']='Unsaved note'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==21 and ss['vault']['reset_generation']=='f'*32
+    assert ss['vault']['schema']==22 and ss['vault']['reset_generation']=='f'*32
     assert ss['drafts']['P4102']['feeds'] is None and ss['drafts']['P4102']['fields']['FEN / GI']=='Unsaved note'
 
 

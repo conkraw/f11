@@ -19,6 +19,7 @@ from medications import visible, format_medication
 from output_text import medication_output
 from fen_gi import effective_section, fen_gi_body
 from feeds import feeds_for_output
+from diet import diet_for_output, diet_failed
 from devices import devices_text, devices_markup
 from pacemaker import pacemaker_text
 from lab_layout import laboratory_flowables, laboratory_html, LabRow
@@ -82,7 +83,7 @@ def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
     """Escape source text while emphasizing generated headings, names and doses."""
     text = fields[section]
     if section == "FEN / GI":
-        return fen_gi_body(sheet["fields"][section], sheet["medications"], sheet["intake_output"], True, esc, feeds=feeds_for_output(sheet), feeds_failed=any(i["action"] == "feeds_hidden" for i in sheet["import_warnings"].get("t", [])))
+        return fen_gi_body(sheet["fields"][section], sheet["medications"], sheet["intake_output"], True, esc, feeds=feeds_for_output(sheet), feeds_failed=any(i["action"] == "feeds_hidden" for i in sheet["import_warnings"].get("t", [])), diet=diet_for_output(sheet), diet_failed=diet_failed(sheet))
     if section in INFUSION_SECTIONS:
         body = render_body_blocks(system_body_blocks(section, sheet["fields"][section], sheet["medications"]), True, esc)
         prefix = esc(infusion_section_prefix(sheet, section, bool(body.strip())))
