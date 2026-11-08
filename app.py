@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.24: per-device feeds in FEN/GI."""
+"""PICU SmartPhrase v6.25: ETCO2 and CVP in their vital-sign groups."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -1213,7 +1213,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.24 | Feeds in FEN/GI")
+        st.caption("Version 6.25 | ETCO2 and CVP in vitals")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)

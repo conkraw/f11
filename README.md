@@ -1,3 +1,26 @@
+# PICU Handoff 6.25: ETCO2 and CVP in vital signs
+
+Complete ZIP update. Start with ETCO2_CVP_UPDATE.md or START_HERE.html.
+
+ETCO2 goes to respiratory vitals. CVP goes to cardiovascular vitals. Epic
+Avg/Min/Max summaries show the recorded Min-to-Max range with supplied units.
+No data recorded is ignored without blocking the remaining vital signs.
+Single labeled values remain supported. Missing and extreme values are not
+invented or corrected.
+
+Upload the complete folder contents with app.py at the root. Keep all current
+Secrets and both passwords. No new dependencies or storage migration are needed.
+Re-paste the full SmartPhrase or complete E block to import the new values.
+The existing clinical parsers outside vitals.py are unchanged.
+
+See TEST_REPORT.md for executed checks. Previously published team guides and
+SmartPhrase text stay in the existing encrypted store.
+
+# Earlier release notes
+
+The installation and behavior notes below are historical. Use the Version 6.25
+instructions above for this package.
+
 # PICU Handoff 6.24: feeds in FEN/GI
 
 This is a complete ZIP update. Read FEEDS_UPDATE.md or START_HERE.html first.

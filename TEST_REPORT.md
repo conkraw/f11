@@ -1,51 +1,51 @@
-# Validation report: Version 6.24
+# Validation report: Version 6.25
 
-## Executed checks
+## Executed tests
 
-The unmodified Version 6.23 delivery ZIP passed its existing 1,892 tests in this
-build environment before changes. Version 6.24 passed 1,994 tests with:
+The unmodified Version 6.24 ZIP passed all 1,994 existing tests in this build
+environment. Version 6.25 passes 2,061 tests with:
 
-```
-PYTHONPATH=.:tests pytest -q --disable-warnings
-```
+    PYTHONPATH=.:tests pytest -q --disable-warnings
 
-The 102 added tests cover explicit tube methods, hourly rates qualified by the
-source label, removed lines, per-device matching, no cross-tube rate inheritance,
-backup hourly rates, volume-only intake, unknowns, zero and decimal rates,
-conflicts, duplicate lines, partial-section recovery, source escaping, encrypted
-round trips, session upgrades, unblurred edits during room autosave, exclusion
-and restoration, Print all, clear-all, and FEN/GI output order.
+The 67 new cases exercise summary parsing, pressure units, reordered statistics,
+aliases, case/Unicode/whitespace variants, missing data, single values, zeros,
+negative CVP, extremes above 100, conflicting bounds and units, editor controls,
+room-change autosave, other rooms, encrypted round trips, PDF/HTML/text and
+Print all. No existing test assertion was weakened or skipped.
 
-Historical migration fixtures were updated to omit the new feeds field when
-constructing an older schema and to expect the new feeds=None default afterward.
-Existing clinical behavior assertions were retained. No test is skipped.
+Both supplied E-block excerpts were separately reproduced against the original
+6.24 code. Each was rejected by the old colon-only parser on No data recorded.
+The new code imports all six previous vital rows unchanged and the new monitor
+range. The ETCO2 example preserves 37 to 177 mmHg. The CVP example preserves
+8 to 25 mmHg. The absent monitor in each sample is not invented. These were
+E-block checks, not a claim that the complete patient files were retested.
+The patient source files are not included in this package.
 
-The four supplied T-section excerpts were independently checked. They produce:
-NJ with its explicit rate, PEG with its explicit rate and removed tube entries
-excluded, separate NJ and GT entries with an unknown GT rate, and a jejunostomy
-entry with UNK because its backup is volume-only. The supplied patient sources
-are not included in the delivery folder or used as the preview records.
+Only vitals.py contains a clinical behavior change. app.py changes its version
+identification and error_store.py changes the technical app version. All other
+previous runtime Python modules are byte-for-byte unchanged. Dependencies and
+schema 19 are unchanged.
 
-A separate process using the unmodified Version 6.23 code created an encrypted
-schema-18 archive with 23 synthetic rooms. Version 6.24 opened it using the same
-key. Every original room field, save timestamp, setting and reset generation was
-unchanged. Formatted preexisting fields were identical, and a new encrypted
-round trip retained the migrated content.
+A separate process running the original 6.24 code created an encrypted archive
+with synthetic records. Version 6.25 opened it with the same key. Every stored
+field, setting, room, reset generation and timestamp was unchanged, and the
+existing formatted handoffs were identical. Re-encryption also round-tripped.
 
-The synthetic three-room PDF was rendered at 140 dpi and each page was visually
-inspected. Feeds appears beneath totals when present, and above medication
-subgroups and notes. The primary-rate, backup-rate and UNK examples each fit on
-one landscape page. The source backup volume does not print as an hourly rate.
+The new synthetic PDF was rendered and visually inspected. It fits on one
+landscape page. ETCO2 appears above respiratory support and medication groups.
+CVP appears above CV Infusions. There was no clipped text or overlap.
+
+The complete release ZIP is integrity/hash checked, extracted again, and its
+full test suite rerun before delivery.
 
 ## Limits
 
-Streamlit UI tests use a widget stub. GitHub tests use mocked responses. The
-hosted browser application, real team concurrency and authenticated private data
-repository were not exercised. The feeding display is a summary of supplied
-records, not verification that all unremoved devices are in current use.
+Streamlit interface tests use a widget stub. GitHub tests use mocked responses.
+The hosted browser application, real team concurrency and authenticated private
+storage were not tested. No live repository was accessed or changed.
 
-No source method, formula or rate is reconstructed from other sections. Intake
-volume is not treated as an hourly rate. Unknowns and review warnings require
-comparison with Epic before clinical use.
-
-Existing dependencies are unchanged. No live repository was read or modified.
+This is extraction of documented values, not verification of bedside validity.
+Recorded extremes are not clipped or replaced. Summary averages are omitted,
+and values are not calculated from another field, specimen, room, or section.
+An ambiguous summary keeps the existing E section with a review warning under
+the established section-recovery behavior. Re-paste and verify against Epic.

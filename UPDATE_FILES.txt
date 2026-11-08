@@ -1,23 +1,23 @@
-Version 6.24: complete package, not a patch
+PICU Handoff 6.25 - complete ZIP update
 
-Extract PICU624.zip. Open PICU_Handoff_v6_24_Feeds and upload its CONTENTS into the
-existing application code repository, replacing matching files. Keep app.py at
-the repository root. Include the new feeds.py file and all supplied Python files.
+Replace all matching files from this folder in your code repository.
+Keep app.py at the root. No direct GitHub changes were made.
 
-Preserve all Streamlit Secrets, app/Admin passwords, encryption key, GitHub token,
-private data repository and saved settings. Do not rerun the generators.
-No new dependencies are needed. Restart the deployment and refresh the browser.
+Changed runtime files:
+  vitals.py: ETCO2/CVP summary recognition, routing, missing-data handling
+  app.py: version label only
+  error_store.py: technical report app version only
 
-Sidebar: Version 6.24 | Feeds in FEN/GI
+Added:
+  ETCO2_CVP_UPDATE.md
+  tests/test_etco2_cvp.py
+  examples/synthetic_etco2_cvp.txt
+  examples/etco2_cvp_preview.pdf
+  examples/etco2_cvp_preview.html
 
-Paste the complete SmartPhrase or paired T section. Click Create / update handoff,
-then review Edit handoff > FEN / GI > Edit feeds / review source. Feeds appears
-below Intake/Output/Net. Save normally or change rooms to trigger autosave.
+Updated: README.md, START_HERE.html, TEST_REPORT.md, SHA256SUMS.txt.
+All previous application files, examples and tests are included.
 
-Keep explicit hourly units in a backup rate. Back Up Feed Intake containing only
-mL is a volume, not a rate, and results in UNK unless another hourly rate exists.
-
-Schema 18 migrates to 19 on save. Existing fields and timestamps are preserved.
-Do not downgrade after saving. Installing this update does not clear handoffs.
-
-See FEEDS_UPDATE.md and TEST_REPORT.md for details and testing limitations.
+Keep all existing secrets, encryption key, both passwords and the private data
+repository. Do not run the setup generators again. Dependencies and storage
+format are unchanged. Re-paste the complete E block after installation.
