@@ -143,7 +143,7 @@ def _pdf_text(text: str) -> str:
     return text
 
 
-def handoffs_pdf(sheets: list[dict], printed_at: datetime | None = None) -> bytes:
+def handoffs_pdf(sheets: list[dict], printed_at: datetime | None = None, *, target_pages: int = 1) -> bytes:
     """One landscape document. Each room starts on a new page, in memory only."""
     from reportlab.lib.pagesizes import landscape, letter
     from reportlab.pdfgen import canvas
@@ -160,13 +160,13 @@ def handoffs_pdf(sheets: list[dict], printed_at: datetime | None = None) -> byte
     c.setAuthor("")
     stamp = eastern_print_time(printed_at)
     for position, sheet in enumerate(sheets, 1):
-        _draw_sheet(c, sheet, width, height, position, len(sheets), stamp)
+        _draw_sheet(c, sheet, width, height, position, len(sheets), stamp, target_pages=target_pages)
     c.save()
     return output.getvalue()
 
 
-def handoff_pdf(sheet: dict, printed_at: datetime | None = None) -> bytes:
-    return handoffs_pdf([sheet], printed_at)
+def handoff_pdf(sheet: dict, printed_at: datetime | None = None, *, target_pages: int = 1) -> bytes:
+    return handoffs_pdf([sheet], printed_at, target_pages=target_pages)
 
 
 # Print layout is independent of persisted handoff content or encryption schema.
@@ -189,14 +189,14 @@ def _clinical_markup(text: str) -> str:
     return re.sub(r"\b(SBS|RASS)\s+([+-]?\d+(?:\.\d+)?)", r"\1&#160;\2", value)
 
 
-def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
+def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: bool = False) -> dict:
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph, Spacer
     fields = fields_with_medications(sheet, include_lab_text=False)
     total_width = page_width - 2 * PRINT_MARGIN
     widths = [total_width * value for value in WIDTHS]
     style = ParagraphStyle('compact-clinical', fontName='Times-Roman', fontSize=font_size,
-                           leading=font_size+1, splitLongWords=True, spaceAfter=0,
+                           leading=font_size + (0.25 if tight else 1), splitLongWords=True, spaceAfter=0,
                            allowWidows=1, allowOrphans=1)
 
     def paragraphs(text, rich=False):
@@ -255,44 +255,169 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float) -> dict:
     banner = Paragraph(escape(review), ParagraphStyle('review', fontName='Helvetica-Bold', fontSize=7, leading=8)) if review else None
     review_height = banner.wrap(total_width, 10000)[1] + 4 if banner else 0
     return {'review_banner': banner, 'review_height': review_height,
-            'font_size': font_size, 'leading': font_size+1, 'width': total_width,
+            'font_size': font_size, 'leading': style.leading, 'width': total_width,
+            'tight': tight, 'balanced': False, 'cell_padding': 2.0 if tight else 3.0,
+            'band_label': 8.5 if tight else BAND_LABEL_HEIGHT,
+            'band_padding': 3.5 if tight else BAND_PADDING,
+            'empty_band': 10.0 if tight else 15.0,
+            'access_min': 20.0 if tight else 24.0,
             'widths': widths, 'columns': columns, 'bands': bands, 'access': access}
 
 
 def _plan_heights(plan: dict) -> tuple[float, list[float], float]:
     width = plan['width']
-    main = max(20, max((_queue_height(q, w-6) for q, w in zip(plan['columns'], plan['widths'])), default=0)+6)
-    bands = [max(15, _queue_height(q, width-6) + BAND_LABEL_HEIGHT + BAND_PADDING)
+    pad = plan['cell_padding']
+    main = max(20, max((_queue_height(q, w-2*pad) for q, w in zip(plan['columns'], plan['widths'])), default=0)+2*pad)
+    bands = [max(plan['empty_band'], _queue_height(q, width-6) + plan['band_label'] + plan['band_padding'])
              for _, q in plan['bands']]
-    access = max(24, max((_queue_height(q, width/4-6) for _, q in plan['access']), default=0)+14)
+    access = max(plan['access_min'], max((_queue_height(q, width/4-6) for _, q in plan['access']), default=0)+14)
     return main, bands, access
 
 
-def _select_pdf_plan(sheet: dict, width: float, height: float) -> tuple[dict, bool]:
-    # Meta line 16 pt, column headings 12 pt, footer 18 pt, plus both margins.
-    available = height - 2 * PRINT_MARGIN - 46
-    original = None
-    for size in PRINT_FONT_SIZES:
+def _balanced_plan(plan: dict) -> dict:
+    """Bounded column reallocation. Only widths change, never clinical content.
+
+    Fit is measured by actual Paragraph.wrap calls. Preserve the column order,
+    keep a useful minimum for headings, and never make a column wider than 25%.
+    Widths are selected afresh per patient, not shared between patients.
+    """
+    total = plan['width']
+    pad = plan['cell_padding']
+    original = list(plan['widths'])
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    minima = [max(55.0, w * .72, stringWidth(label, 'Times-Bold', 8)+6)
+              for w, (label, _) in zip(original, COLUMNS)]
+    maxima = [min(total * .25, w * 1.75) for w in original]
+    queues = plan['columns']
+    cache = {}
+    def height(i, w):
+        key = (i, round(w, 3))
+        if key not in cache:
+            cache[key] = _queue_height(queues[i], w-2*pad)
+        return cache[key]
+    def required(target):
+        widths = []
+        for i, (low, high) in enumerate(zip(minima, maxima)):
+            if height(i, high) > target + .01:
+                return None
+            if height(i, low) <= target + .01:
+                widths.append(low)
+                continue
+            for _ in range(10):
+                middle = (low + high) / 2
+                if height(i, middle) <= target + .01:
+                    high = middle
+                else:
+                    low = middle
+            widths.append(high)
+        return widths if sum(widths) <= total + .001 else None
+    top = max((height(i, w) for i, w in enumerate(original)), default=0)
+    lo, hi = 0., top
+    best = original
+    for _ in range(13):
+        middle = (lo+hi)/2
+        result = required(middle)
+        if result is None:
+            lo = middle
+        else:
+            best, hi = result, middle
+    # Return surplus first to the original proportions, then evenly within caps.
+    spare = total-sum(best)
+    for bounds in (original, maxima):
+        capacities = [max(0., limit-w) for limit, w in zip(bounds, best)]
+        capacity = sum(capacities)
+        if capacity and spare > 1e-6:
+            used = min(spare, capacity)
+            best = [w+used*c/capacity for w,c in zip(best, capacities)]
+            spare -= used
+    best[-1] += total-sum(best)
+    # Never accept reallocation that increases the tallest column.
+    if max((height(i, w) for i, w in enumerate(best)), default=0) < top - .01:
+        plan['widths'] = best
+        plan['balanced'] = True
+    return plan
+
+
+def _fits_one(plan: dict, height: float) -> bool:
+    main, bands, access = _plan_heights(plan)
+    available = height - 2*PRINT_MARGIN - 46 - plan['review_height']
+    return main + sum(bands) + access <= available + .01
+
+
+def _measure_pdf_plan(sheet: dict, plan: dict, width: float, height: float) -> int:
+    from reportlab.pdfgen import canvas
+    probe = canvas.Canvas(BytesIO(), pagesize=(width, height), pageCompression=1)
+    return _draw_sheet(probe, sheet, width, height, print_stamp='01/01/2026 12:00:00 PM EST',
+                       plan=deepcopy(plan))
+
+
+def _select_pdf_plan(sheet: dict, width: float, height: float, target_pages: int = 1) -> tuple[dict, bool]:
+    if type(target_pages) is not int or target_pages not in (1, 2):
+        raise ValueError('Choose a one-page or two-page print target.')
+    original = _make_pdf_plan(sheet, width, PRINT_FONT_SIZES[0])
+    # Keep already-fitting sheets exactly as before. A two-page target allows
+    # the largest existing print size when it already meets that target.
+    baseline_pages = 1 if _fits_one(original, height) else _measure_pdf_plan(sheet, original, width, height)
+    if baseline_pages <= target_pages:
+        original['pages'] = baseline_pages
+        original['target_pages'] = target_pages
+        return original, baseline_pages == 1
+    plans = [original]
+    # Existing bounded font reduction is still tried first for one-page output.
+    for size in PRINT_FONT_SIZES[1:]:
         plan = _make_pdf_plan(sheet, width, size)
-        if original is None:
-            original = plan
-        main, bands, access = _plan_heights(plan)
-        if main + sum(bands) + access <= available - plan['review_height'] + .01:
+        plans.append(plan)
+        if _fits_one(plan, height):
+            plan.update(pages=1, target_pages=target_pages)
             return plan, True
-    # Do not leave a multi-page handoff needlessly tiny when a single page is
-    # impossible. Revert to the default compact size and keep every item.
-    return original, False
+    # Then tighten layout, without reducing body text below 6.5 pt.
+    for size in PRINT_FONT_SIZES:
+        plan = _make_pdf_plan(sheet, width, size, tight=True)
+        plans.append(plan)
+        if _fits_one(plan, height):
+            plan.update(pages=1, target_pages=target_pages)
+            return plan, True
+        balanced = _balanced_plan(_make_pdf_plan(sheet, width, size, tight=True))
+        if balanced['balanced']:
+            plans.append(balanced)
+            if _fits_one(balanced, height):
+                balanced.update(pages=1, target_pages=target_pages)
+                return balanced, True
+    # Count rendered continuation pages, not characters. If one page is not
+    # possible, prefer the largest font that fits two. Never crop to the target.
+    measured = []
+    for plan in plans:
+        pages = baseline_pages if plan is original else _measure_pdf_plan(sheet, plan, width, height)
+        plan.update(pages=pages, target_pages=target_pages)
+        measured.append(plan)
+    best = min(measured, key=lambda p: (p['pages'], -p['font_size'], p['tight'], p['balanced']))
+    return best, best['pages'] == 1
 
 
 def print_layout_info(sheet: dict) -> dict:
-    """Patient-free layout status for UI/tests. No source content is returned."""
+    """Legacy compact status. New UI uses the full render-verified report."""
     plan, fits = _select_pdf_plan(sheet, 792, 612)
     return {'font_size': plan['font_size'], 'fits_one_page': fits}
 
 
-def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, count: int = 1, print_stamp: str | None = None) -> None:
+def print_fit_report(sheet: dict, target_pages: int = 1) -> dict:
+    """Private in-memory preflight using exactly the PDF renderer's layout."""
+    validate_sheet(sheet)
+    plan, fits = _select_pdf_plan(sheet, 792, 612, target_pages)
+    pages = _measure_pdf_plan(sheet, plan, 792, 612)
+    return {'page_count': pages, 'font_size': plan['font_size'],
+            'fits_one_page': pages == 1, 'target_pages': target_pages,
+            'target_met': pages <= target_pages,
+            'tight_spacing': plan['tight'], 'balanced_columns': plan['balanced']}
+
+
+def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, count: int = 1, print_stamp: str | None = None, *, target_pages: int = 1, plan: dict | None = None) -> int:
     print_stamp = print_stamp or eastern_print_time()
-    plan, _ = _select_pdf_plan(sheet, width, height)
+    if plan is None:
+        plan, _ = _select_pdf_plan(sheet, width, height, target_pages)
+    pad = plan["cell_padding"]
+    label_height = plan["band_label"]
+    band_padding = plan["band_padding"]
     margin = PRINT_MARGIN
     total_width = plan['width']
     widths = plan['widths']
@@ -328,15 +453,15 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
 
     def minimum_band(queue):
         if not queue:
-            return 15.0
-        minimum = BAND_LABEL_HEIGHT+BAND_PADDING+2*leading
+            return plan['empty_band']
+        minimum = label_height+band_padding+2*leading
         # A fishbone row must fit intact. Reserve its preceding short note too,
         # so a large Other Medications band cannot starve the lab row forever.
         before = 0.0
         for item in queue:
             h = item.wrap(total_width-6, 100000)[1]
             if isinstance(item, LabRow):
-                return min(195, max(minimum, before+h+BAND_LABEL_HEIGHT+BAND_PADDING))
+                return min(195, max(minimum, before+h+label_height+band_padding))
             before += h
             if before > 30:
                 break
@@ -368,7 +493,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
             access_height = min(54, access_need)
             minimums = [minimum_band(q) for _, q in bands]
             main_cap = max(24, body_height-access_height-sum(minimums))
-            main_height = min(main_need, main_cap, 250)
+            main_height = min(main_need, main_cap)
             remaining_height = body_height-main_height-access_height
             band_heights = []
             for index, wanted in enumerate(band_needs):
@@ -391,7 +516,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         x = margin
         for w, q in zip(widths, queues):
             c.rect(x, y-main_height, w, main_height)
-            updated.append(draw_queue(q, x+3, y-3, w-6, main_height-6))
+            updated.append(draw_queue(q, x+pad, y-pad, w-2*pad, main_height-2*pad))
             x += w
         queues = updated
         y -= main_height
@@ -400,8 +525,8 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
             c.rect(margin, y-bh, total_width, bh)
             c.setFont('Times-Bold', 7.5)
             c.drawString(margin+3, y-8, label + (':' if page == 1 else ' (continued):'))
-            rest = draw_queue(queue, margin+3, y-BAND_LABEL_HEIGHT-2,
-                              total_width-6, bh-BAND_LABEL_HEIGHT-BAND_PADDING)
+            rest = draw_queue(queue, margin+3, y-label_height-2,
+                              total_width-6, bh-label_height-band_padding)
             updated_bands.append((label, rest))
             y -= bh
         bands = updated_bands
@@ -420,7 +545,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         c.drawRightString(width-margin, margin-2, 'Last Rate is a recorded source value, not a live pump feed.')
         c.showPage()
         if not any(queues) and not any(q for _, q in bands) and not any(q for _, q in access):
-            break
+            return page
 
 
 def handoffs_html(sheets: list[dict], printed_at: datetime | None = None) -> str:
@@ -441,7 +566,7 @@ main{margin-bottom:24px}.printbar{font:15px Arial,sans-serif;max-width:11in;marg
     return head + '<body><div class="printbar"><button onclick="window.print()">Print all handoffs</button> Landscape Letter. Each room starts on a new page.</div>' + "".join(pages) + PRINT_TIME_SCRIPT + "</body></html>"
 
 
-def download_payload(sheets: list[dict], kind: str, expires_at: float | None = None):
+def download_payload(sheets: list[dict], kind: str, expires_at: float | None = None, *, target_pages: int = 1, cancelled=None):
     """Return a zero-argument generator for Streamlit >=1.52 downloads.
 
     A private snapshot is captured on render, not a shared cache. The timestamp
@@ -457,11 +582,13 @@ def download_payload(sheets: list[dict], kind: str, expires_at: float | None = N
         validate_sheet(sheet)
 
     def generate():
+        if cancelled is not None and cancelled.is_set():
+            raise ValueError("This download was cleared. Prepare a new handoff download.")
         if expires_at is not None and time.monotonic() >= expires_at:
             raise ValueError("The session expired. Sign in and prepare a new download.")
         try:
             if kind == "pdf":
-                return handoffs_pdf(snapshot)
+                return handoffs_pdf(snapshot, target_pages=target_pages)
             if kind == "html":
                 return handoffs_html(snapshot).encode("utf-8")
             return handoff_text(snapshot[0]).encode("utf-8")

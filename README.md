@@ -1,4 +1,16 @@
-# PICU Handoff 6.22: user guide and protected Admin
+# PICU Handoff 6.23: auto-fit printing and clear all
+
+This is the complete app update. Start with PRINT_RESET_UPDATE.md.
+
+- PDF preflight reports the rendered page count for every selected room.
+- The default target is one page, with a two-page target available.
+- Tighter spacing and bounded column widths help crowded handoffs fit, without clipping data.
+- Admin has a one-click shared reset that clears handoffs and deletes custom rooms.
+- Medication rules, hidden choices, instructions, SmartPhrase, passwords and error reports are preserved.
+
+Upload the full folder contents with app.py at the root. Preserve all existing Secrets. No new dependencies. Installing the update does not clear data. Schema 18 adds a reset generation to protect against old drafts being restored after a shared reset.
+
+# Earlier setup reference: the user guide and protected Admin
 
 Complete ZIP update based on 6.21. No direct repository changes are made.
 

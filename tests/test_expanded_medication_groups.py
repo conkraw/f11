@@ -226,7 +226,7 @@ def test_calcium_ca_latest_and_preceding_next_to_mag_phos():
 
 
 def test_schema16_upgrade_preserves_every_field_and_import_warning():
-    v=new_vault();v['schema']=16;v['settings'].pop('medication_groups')
+    v=new_vault();v['schema']=16;v.pop("reset_generation", None);v['settings'].pop('medication_groups')
     s=example_sheet()
     # Produce a real review marker through the existing recovery path.
     res=import_sections(s,'rrrrrrrr\nOrders Placed This Encounter\n• XR chest 1 view\nTiming: Recurring (Daily)\nNumber of Occurrences: BAD\nrrrrrrrr',v['settings'])
@@ -234,7 +234,7 @@ def test_schema16_upgrade_preserves_every_field_and_import_warning():
     v['rooms'][s['room']]=res.sheet;before=deepcopy(v)
     key=Fernet.generate_key().decode();encrypted=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     upgraded=open_vault(encrypted,key)
-    assert upgraded['schema']==SCHEMA_VERSION==17
+    assert upgraded['schema']==SCHEMA_VERSION==18
     assert upgraded['rooms']==before['rooms']
     assert upgraded['settings']==dict(before['settings'],medication_groups=[])
     assert v==before

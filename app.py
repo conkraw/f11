@@ -1,15 +1,16 @@
-"""PICU SmartPhrase v6.22: team user guide, reusable source and separate Admin unlock."""
+"""PICU SmartPhrase v6.23: automatic print fit and an Admin census reset."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
 from pathlib import Path
 import time
 import json
+from threading import Event
 from datetime import datetime, timezone
 
 import streamlit as st
 from cryptography.fernet import Fernet
-from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, handoffs_html, print_layout_info, download_payload
+from exports import handoff_html, handoff_text, handoff_pdf, handoffs_pdf, handoffs_html, print_layout_info, print_fit_report, download_payload
 from github_store import GitHubConfig, GitHubVault, StorageError
 from error_store import ErrorJournal, new_error_event
 from import_review import review_summary, diagnostic_text, SECTIONS as REVIEW_SECTIONS
@@ -22,6 +23,7 @@ from ventilation import LABELS, format_ventilation, validate_ventilation
 from noninvasive import DEVICE_FIELDS, format_noninvasive, validate_noninvasive
 from importing import import_sections, SUPPORTED_SECTIONS
 from batching import available_handoffs
+from handoff_reset import cleared_vault, census_was_reset
 from save_status import (room_save_status, saved_time_text, latest_saved_time,
                          most_recent_save_caption, save_status_table)
 from parser import MAX_PASTE, SECTION_NAMES
@@ -61,6 +63,9 @@ def note(text: str, kind: str = "info") -> None:
 
 
 def clear_session() -> None:
+    old = st.session_state.get("download_revocation")
+    if old is not None:
+        old.set()
     st.session_state.clear()
 
 
@@ -1154,8 +1159,13 @@ def reload_archive(store: GitHubVault | None) -> None:
         return
     try:
         fresh, sha = store.load()
+        was_reset = census_was_reset(st.session_state["vault"], fresh)
         st.session_state.update(vault=fresh, vault_sha=sha)
-        note("Saved archive reloaded. Open drafts were kept.")
+        if was_reset:
+            discard_all_handoff_state()
+            note("An administrator cleared the handoffs. The archive is reloaded and older open drafts were discarded so they cannot be saved back.", "warning")
+        else:
+            note("Saved archive reloaded. Open drafts were kept.")
     except (StorageError, ValidationError) as exc:
         note(str(exc), "error")
 
@@ -1188,7 +1198,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.22 | User guide and protected Admin")
+        st.caption("Version 6.23 | Auto-fit printing and clear all handoffs")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1514,13 +1524,13 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.caption("Compact landscape. The upper-left stamp uses Eastern time. PDFs are stamped when downloaded. Printable HTML refreshes its stamp when printed.")
         components.html(handoff_html(sheet), height=650, scrolling=True)
         try:
-            layout = print_layout_info(sheet)
-            st.caption(("Fits on one PDF page" if layout["fits_one_page"] else "Needs continuation pages to keep all content") + " | Body text: " + str(layout["font_size"]) + " pt. HTML pagination can differ.")
-            st.download_button("Download this handoff (PDF)", download_payload([sheet], "pdf", download_deadline()), "handoff.pdf", "application/pdf", key="download_single_pdf", on_click="ignore")
+            target = print_target_control("room_print_target")
+            render_print_fit([sheet], target)
+            st.download_button("Download this handoff (PDF)", download_payload([sheet], "pdf", download_deadline(), target_pages=target, cancelled=download_revocation()), "handoff.pdf", "application/pdf", key="download_single_pdf", on_click="ignore")
         except (ValueError, ImportError):
             st.error("PDF export could not be created. Confirm requirements.txt is installed or use HTML.")
-        st.download_button("Download printable handoff (HTML)", download_payload([sheet], "html", download_deadline()), "handoff.html", "text/html", key="download_single_html", on_click="ignore")
-        st.download_button("Download handoff text", download_payload([sheet], "text", download_deadline()), "handoff.txt", "text/plain", key="download_single_text", on_click="ignore")
+        st.download_button("Download printable handoff (HTML)", download_payload([sheet], "html", download_deadline(), cancelled=download_revocation()), "handoff.html", "text/html", key="download_single_html", on_click="ignore")
+        st.download_button("Download handoff text", download_payload([sheet], "text", download_deadline(), cancelled=download_revocation()), "handoff.txt", "text/plain", key="download_single_text", on_click="ignore")
 
 
 
@@ -1530,8 +1540,31 @@ def download_deadline() -> float:
                ss.get("login_at", time.monotonic()) + 8 * 3600)
 
 
+def print_target_control(key: str) -> int:
+    choice = st.selectbox("PDF page target per patient", [1, 2], key=key,
+                          format_func=lambda n: "Auto-fit to 1 page" if n == 1 else "Auto-fit to at most 2 pages")
+    return choice if choice in (1, 2) else 1
+
+
+def render_print_fit(sheets: list[dict], target: int) -> None:
+    rows = []
+    for sheet in sheets:
+        report = print_fit_report(sheet, target)
+        pages = report["page_count"]
+        detail = "Default spacing"
+        if report["tight_spacing"]:
+            detail = "Tighter spacing" + (" / adjusted column widths" if report["balanced_columns"] else "")
+        rows.append("<tr><td>" + escape(sheet["room"]) + "</td><td>" + str(pages) +
+                    "</td><td>" + str(report["font_size"]) + " pt</td><td>" + detail + "</td></tr>")
+        if not report["target_met"]:
+            st.warning("Room " + sheet["room"] + " needs " + str(pages) + " pages. All content is retained rather than cropped or reduced below the font-size limit.")
+    st.markdown("<table><thead><tr><th>Room</th><th>PDF pages</th><th>Body text</th><th>Layout</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>", unsafe_allow_html=True)
+    st.caption("PDF page count is checked using the export renderer. Automatic fitting changes spacing, widths and text size only, down to 6.5 pt. It never drops entries. Browser/HTML printing can paginate differently.")
+
+
 def print_all_page(store: GitHubVault | None) -> None:
     st.title("Print all handoffs")
+    st.caption("To reset the list, open Admin and use Clear all handoffs + delete custom rooms.")
     ss = st.session_state
     ready = available_handoffs(ss["vault"], ss.get("drafts", {}))
     if not ready:
@@ -1558,10 +1591,12 @@ def print_all_page(store: GitHubVault | None) -> None:
     if unsaved:
         st.warning("Some selected handoffs have unsaved changes. Save all open handoffs before printing to store them. Downloading alone does not save.")
     try:
-        st.download_button("Download all selected handoffs (PDF)", download_payload(selected_sheets, "pdf", download_deadline()), "all_handoffs.pdf", "application/pdf", type="primary", key="download_all_pdf", on_click="ignore")
+        target = print_target_control("all_print_target")
+        render_print_fit(selected_sheets, target)
+        st.download_button("Download all selected handoffs (PDF)", download_payload(selected_sheets, "pdf", download_deadline(), target_pages=target, cancelled=download_revocation()), "all_handoffs.pdf", "application/pdf", type="primary", key="download_all_pdf", on_click="ignore")
     except (ValueError, ImportError):
         st.error("The combined PDF could not be created. Use HTML or check the export requirements.")
-    st.download_button("Download all selected handoffs (printable HTML)", download_payload(selected_sheets, "html", download_deadline()), "all_handoffs.html", "text/html", key="download_all_html", on_click="ignore")
+    st.download_button("Download all selected handoffs (printable HTML)", download_payload(selected_sheets, "html", download_deadline(), cancelled=download_revocation()), "all_handoffs.html", "text/html", key="download_all_html", on_click="ignore")
     st.caption("Compact PDF is preferred for printing. Each room starts on its own page. Exceptionally long handoffs continue rather than losing content. Downloads are not encrypted.")
 
 
@@ -1631,6 +1666,61 @@ def save_admin_settings(store: GitHubVault | None) -> None:
         note("Room and diagnosis settings saved.", "success")
     except (ValidationError, StorageError) as exc:
         note(str(exc), "error")
+
+
+def download_revocation() -> Event:
+    ss = st.session_state
+    if "download_revocation" not in ss:
+        ss["download_revocation"] = Event()
+    return ss["download_revocation"]
+
+
+def discard_all_handoff_state() -> None:
+    """Only after a confirmed reset/load. Shared rules and guide remain intact."""
+    ss = st.session_state
+    guard = ss.get("download_revocation")
+    if guard is not None:
+        guard.set()
+    ss["download_revocation"] = Event()
+    discard_editor_widget_values()
+    for key in ("current_room", "other_room", "import_result", "pending", "diagnosis_preview",
+                "medication_pending", "removed_room", "print_rooms", "print_room_options",
+                "custom_room_remove_choice", "room_print_target", "all_print_target"):
+        ss.pop(key, None)
+    ss["drafts"] = {}
+    ss["base_sheets"] = {}
+    ss["paste"] = ""
+    ss["room_choice"] = "Choose a room"
+    ss["admin_rooms"] = "\n".join(ss["vault"]["settings"]["rooms"])
+
+
+def clear_all_handoffs(store: GitHubVault | None) -> None:
+    """Single protected click. No local mutation before GitHub confirms the write."""
+    if not require_admin():
+        return
+    ss = st.session_state
+    try:
+        candidate = cleared_vault(ss["vault"])
+        commit(candidate, store)
+    except (StorageError, ValidationError) as exc:
+        note("Clear all was not confirmed. Your open handoffs were kept. " + str(exc), "error")
+        return
+    except Exception:
+        note("Clear all was not confirmed. Your open handoffs were kept. Reload the saved archive before retrying.", "error")
+        return
+    discard_all_handoff_state()
+    note(("All saved handoffs and this session's drafts were cleared. Custom rooms were deleted. " if store else
+          "Session-only reset: all handoffs in this session were cleared and custom rooms deleted. ") +
+         "Preset rooms, medication rules, hidden rules, instructions and passwords were kept. Other team members should reload the saved archive. Earlier Git history and downloaded files are not erased.",
+         "success" if store else "info")
+
+
+def reset_handoffs_admin(store: GitHubVault | None) -> None:
+    with st.expander("Clear all handoffs and custom rooms", expanded=False):
+        st.warning("One click clears every saved handoff and all open drafts in this session, and deletes custom rooms. This affects the shared handoff archive. Preset rooms remain blank. There is no second confirmation.")
+        st.caption("Medication mappings, hidden-medication rules, infusion groups, the user guide, SmartPhrase, passwords and technical error logs are kept. This does not erase earlier Git history or downloaded copies.")
+        st.button("Clear all handoffs + delete custom rooms", key="clear_all_handoffs_button",
+                  on_click=clear_all_handoffs, args=(store,))
 
 
 def custom_room_names() -> list[str]:
@@ -1793,6 +1883,7 @@ def admin_page(store: GitHubVault | None) -> None:
         return
     st.button("Lock Admin", on_click=lock_admin_page)
     st.caption("Admin locks when you leave this workspace, after 15 minutes without Admin activity, or after one hour. Routine handoffs remain available.")
+    reset_handoffs_admin(store)
     guide_admin(store)
     ss = st.session_state
     settings = ss["vault"]["settings"]

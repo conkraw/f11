@@ -278,12 +278,12 @@ def test_script_markup_is_escaped_in_export():
 def test_all_original_fields_preserved_from_schema_seven():
     sheet=import_text(SAMPLE.read_text())
     vault=save_sheet_in(new_vault(),sheet)
-    vault['schema']=7;vault["settings"].pop("medication_groups", None);vault["settings"].pop("medication_gi_groups", None);vault['settings'].pop('medication_infusions', None)
+    vault['schema']=7;vault.pop("reset_generation", None);vault["settings"].pop("medication_groups", None);vault["settings"].pop("medication_gi_groups", None);vault['settings'].pop('medication_infusions', None)
     for row in vault['rooms'].values():
         row.pop("import_warnings", None);row.pop("intake_output", None);row.pop("recurring_orders", None);row.pop("cbc", None);row.pop('blood_gas', None);row.pop('cultures');row.pop('dosing_weight');row.pop('viral_panel', None);row.pop('admission_date')
     before=deepcopy(vault)
     changed=upgrade_vault(vault)
-    assert changed['schema']==SCHEMA_VERSION==17 and vault==before
+    assert changed['schema']==SCHEMA_VERSION==18 and vault==before
     assert changed['settings']==dict(before['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
     for key,value in before['rooms']['P4102'].items():assert changed['rooms']['P4102'][key]==value
     assert changed['rooms']['P4102']['cultures']==empty_cultures()
@@ -361,11 +361,11 @@ def test_update_clears_culture_widget_keys(app):
 def test_current_session_migration_preserves_unsaved_notes(app):
     open_room(app);app.load_cultures_sample();app.create_handoff();app.save_room(None)
     ss=app.st.session_state
-    ss['vault']['schema']=7;ss['vault']["settings"].pop("medication_groups", None);ss['vault']["settings"].pop("medication_gi_groups", None);ss['vault']['settings'].pop('medication_infusions', None)
+    ss['vault']['schema']=7;ss['vault'].pop("reset_generation", None);ss['vault']["settings"].pop("medication_groups", None);ss['vault']["settings"].pop("medication_gi_groups", None);ss['vault']['settings'].pop('medication_infusions', None)
     for sheet in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):
         sheet.pop('cultures');sheet.pop('dosing_weight');sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop("recurring_orders", None);sheet.pop("cbc", None);sheet.pop('blood_gas', None);sheet.pop('viral_panel', None);sheet.pop('admission_date')
     ss['drafts']['P4102']['fields']['Neurologic']='Unsaved note'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==17
+    assert ss['vault']['schema']==18
     assert ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved note'
     assert ss['drafts']['P4102']['cultures']==empty_cultures()

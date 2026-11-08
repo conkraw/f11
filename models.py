@@ -33,7 +33,7 @@ from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 def section_label(section: str) -> str:
@@ -71,7 +71,7 @@ def new_sheet(room: str) -> dict:
 
 
 def new_vault() -> dict:
-    return {"schema": SCHEMA_VERSION, "settings": {"diagnoses_destination": "Diagnoses", "rooms": list(DEFAULT_ROOMS), "medication_mappings": [], "medication_visibility": [], "medication_infusions": [], "medication_gi_groups": [], "medication_groups": []}, "rooms": {}}
+    return {"schema": SCHEMA_VERSION, "reset_generation": "", "settings": {"diagnoses_destination": "Diagnoses", "rooms": list(DEFAULT_ROOMS), "medication_mappings": [], "medication_visibility": [], "medication_infusions": [], "medication_gi_groups": [], "medication_groups": []}, "rooms": {}}
 
 
 def validate_sheet(sheet: dict) -> None:
@@ -121,8 +121,10 @@ def validate_sheet(sheet: dict) -> None:
 
 
 def validate_vault(vault: dict) -> None:
-    if not isinstance(vault, dict) or set(vault) != {"schema", "settings", "rooms"} or vault["schema"] != SCHEMA_VERSION:
+    if not isinstance(vault, dict) or set(vault) != {"schema", "reset_generation", "settings", "rooms"} or vault["schema"] != SCHEMA_VERSION:
         raise ValidationError("The encrypted archive has an unsupported structure. It was not overwritten.")
+    if not isinstance(vault["reset_generation"], str) or not re.fullmatch(r"(?:[0-9a-f]{32})?", vault["reset_generation"]):
+        raise ValidationError("The archive reset generation is invalid.")
     settings = vault["settings"]
     if not isinstance(settings, dict) or set(settings) != {"diagnoses_destination", "rooms", "medication_mappings", "medication_visibility", "medication_infusions", "medication_gi_groups", "medication_groups"}:
         raise ValidationError("The saved Admin settings are invalid.")
@@ -172,16 +174,23 @@ def apply_diagnoses(sheet: dict, diagnosis_text: str, destination: str, append: 
 
 
 def upgrade_vault(vault: dict) -> dict:
-    """Migrate schemas 1-16 without replacing keys, notes or saved mappings."""
-    if not isinstance(vault, dict) or set(vault) != {"schema", "settings", "rooms"}:
+    """Migrate schemas 1-17 without replacing keys, notes or saved mappings."""
+    if not isinstance(vault, dict):
         raise ValidationError("The encrypted archive has an invalid structure.")
     version = vault.get("schema")
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
-    if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16):
+    if set(vault) != {"schema", "settings", "rooms"}:
+        raise ValidationError("The previous archive structure is invalid. Nothing was discarded.")
+    if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
         raise ValidationError("The encrypted archive has an unsupported structure. It was not overwritten.")
     candidate = deepcopy(vault)
+    candidate["reset_generation"] = ""
+    if version == 17:
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     settings = candidate["settings"]
     expected_settings = {"diagnoses_destination", "rooms"} | ({"medication_mappings"} if version >= 2 else set())
     if version >= 6:

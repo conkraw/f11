@@ -1,30 +1,12 @@
-Version 6.22: full package, not a patch
+Version 6.23: full package, not a patch
 
-Replace the application folder contents with this complete package.
-Keep app.py at the repository root.
+Extract PICU623.zip, open PICU_Handoff_v6_23_Print_Reset, and upload its CONTENTS to the existing app code repository. Keep app.py at the root. Replace matching files. Add handoff_reset.py. Use the supplied requirements.txt (unchanged from 6.22).
 
-New files:
-  user_guide.py
-  guide_store.py
-  admin_access.py
-  set_admin_password.py
-  Generate_Admin_Password.ipynb
-  ADMIN_SETUP.txt
-  USER_GUIDE.html
-  USER_INSTRUCTIONS.txt
-  tests/test_user_guide_admin.py
+Keep all existing deployment Secrets, app/Admin passwords, encryption key, token and private data repository. Do not rerun any generator. Installing this update does not clear any handoff.
 
-Existing code changed:
-  app.py (guide views and protected Admin callbacks)
-  error_store.py (version label only)
-  tests/test_callbacks.py (test fixture now represents unlocked Admin)
-  tests/test_ui_smoke.py (code-block and guide-loading test support)
+Restart the deployment and refresh the browser. Sidebar:
+Version 6.23 | Auto-fit printing and clear all handoffs
 
-Updated documentation/example secrets and checksum manifest are included.
+Schema 17 archives migrate to 18 without changing existing fields or settings. The next successful save writes schema 18. Do not downgrade files afterward.
 
-Important: add admin_password_hash under the EXISTING [app] section in private
-Secrets. Use only the new Admin helper. Do not rerun the original secrets
-configuration generator or replace the encryption key. No other Secrets change.
-
-Do not upload downloaded handoffs, patient text, private inputs, or notebook
-output containing credentials. This package contains no real deployment secrets.
+Read PRINT_RESET_UPDATE.md for how automatic PDF fitting and the one-click Admin reset behave. The reset deletes custom rooms and shared current handoffs, not medication rules or technical error logs. Prior Git history and downloads are not erased.
