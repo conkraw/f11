@@ -7,7 +7,7 @@ from __future__ import annotations
 
 SECTIONS = {
     'a': 'Diagnoses', 'b': 'Medications', 'cd': 'Respiratory support',
-    'e': 'Vitals', 'f': 'Cultures', 'g': 'Labs', 'i': 'Weight',
+    'e': 'Vitals', 'f': 'Cultures', 'g': 'Labs', 'i': 'Weight / measurements',
     'k': 'Arousal target', 'l': 'WAT', 'm': 'ICP / CPP', 'n': 'Admission',
     'o': 'Viral panel', 'p': 'Blood gas', 'q': 'CBC', 'r': 'Orders',
     's': 'Intake / output', 't': 'Feeds', 'u': 'Devices', 'v': 'Neuro devices', 'w': 'Pacemaker', 'x': 'Diet', 'document': 'Paste',

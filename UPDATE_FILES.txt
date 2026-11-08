@@ -1,10 +1,9 @@
-COMPLETE VERSION 6.34 PACKAGE
+COMPLETE VERSION 6.35 PACKAGE
 Replace matching files and keep app.py at the root.
-Changed runtime modules: anthropometrics.py, problem_review.py, app.py, user_guide.py.
-No new modules, Python dependencies, or archive schema changes.
+Changed runtime modules: anthropometrics.py, import_review.py, app.py.
+No new modules, dependencies, or archive schema changes.
 Keep both passwords, encryption key, GitHub token, mappings, private storage,
 and existing public CDC BMI reference data. Do not rerun generators.
-Re-paste the complete A section or full SmartPhrase to recover previously
-rejected week-old age/sex values. Then Create / update handoff and Save handoff.
-The compact problem labels and starred-CBC thresholds apply to existing results.
-Read AGE_COUNTS_UPDATE.md and TEST_REPORT.md.
+Re-paste the complete I section or full SmartPhrase to repair the weight warning.
+Then Create / update handoff, check the measurements, and Save handoff.
+Read WEIGHT_IMPORT_FIX.md and TEST_REPORT.md.

@@ -68,6 +68,42 @@ def age_bounds(text: str) -> tuple[float, float] | None:
     return None
 
 
+def _clean_height(value: str) -> str:
+    """Use the primary recorded height, accepting Epic's imperial equivalent.
+
+    For example, 114.5 cm (3' 9.08") becomes 114.5 cm. The parenthetical
+    must be an explicitly labelled feet/inches value and agree within the
+    rounding precision of both recorded measurements. No height is derived
+    from weight or BMI, and unrelated parenthetical content is not stripped.
+    """
+    match = re.fullmatch(
+        rf'({NUMBER})\s*(cm|m|in(?:ches)?)(?:\s*\(([^()]*)\))?', value, re.I)
+    if not match or Decimal(match.group(1)) <= 0:
+        raise ValueError('Enter recorded height with a unit, for example 100 cm. An Epic feet/inches equivalent in parentheses is also accepted.')
+    number, unit, alternate = match.groups()
+    unit = unit.lower()
+    if alternate is not None:
+        # Epic copy/paste may use straight quotes, typographic quotes or primes.
+        alternate = alternate.translate(str.maketrans({
+            '\u2032': "'", '\u2018': "'", '\u2019': "'",
+            '\u2033': '"', '\u201c': '"', '\u201d': '"',
+        }))
+        imperial = re.fullmatch(
+            rf"\s*(\d+)\s*(?:'|ft\.?|feet|foot)\s*({NUMBER})\s*(?:\"|in\.?|inch(?:es)?)\s*",
+            alternate, re.I)
+        if not imperial or not 0 <= Decimal(imperial.group(2)) < 12:
+            raise ValueError('The height parenthetical is not a supported feet/inches equivalent. Verify the primary height and units.')
+        feet, inches = imperial.groups()
+        factor = Decimal('100') if unit == 'm' else Decimal('2.54') if unit.startswith('in') else Decimal('1')
+        primary_cm = Decimal(number) * factor
+        alternate_cm = (Decimal(feet) * 12 + Decimal(inches)) * Decimal('2.54')
+        primary_rounding = Decimal(1).scaleb(Decimal(number).as_tuple().exponent) * factor / 2
+        alternate_rounding = Decimal(1).scaleb(Decimal(inches).as_tuple().exponent) * Decimal('2.54') / 2
+        if abs(primary_cm - alternate_cm) > primary_rounding + alternate_rounding:
+            raise ValueError('The primary height and its feet/inches equivalent disagree. Verify the recorded height before importing this section.')
+    return number + ' ' + unit
+
+
 def clean_field(key: str, value: str) -> str:
     value = re.sub(r'\s+', ' ', value.replace('\u00a0', ' ').strip())
     if value.casefold().rstrip('.') in MISSING:
@@ -91,10 +127,7 @@ def clean_field(key: str, value: str) -> str:
             raise ValueError('Enter a positive recorded BMI, such as 17.14 kg/m².')
         return match.group(1) + ' kg/m²'
     if key == 'height':
-        match = re.fullmatch(rf'({NUMBER})\s*(cm|m|in(?:ches)?)', value, re.I)
-        if not match or Decimal(match.group(1)) <= 0:
-            raise ValueError('Enter recorded height with a unit, for example 100 cm.')
-        return match.group(1) + ' ' + match.group(2).lower()
+        return _clean_height(value)
     if key == 'bsa':
         match = re.fullmatch(rf'({NUMBER})\s*(?:m²|m\^?2|sq\.?\s*m|square\s+met(?:er|re)s?|met(?:er|re)s?\s+squared)\.?', value, re.I)
         if not match or not 0 < Decimal(match.group(1)) <= 10:
