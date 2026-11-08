@@ -28,15 +28,16 @@ def ascii_text(s: str) -> str:
     return s
 
 
-def card_plan(card: dict, width: float) -> tuple[float, list]:
+def card_plan(card: dict, width: float, font_size: float = 7.2) -> tuple[float, list]:
     """Return a small vector display list in bottom-origin coordinates."""
     scale = width / 180
+    text_scale = font_size / 7.2
     kind, rows = card['kind'], card['rows']
     plan = []
     def text(x,y,value,size=8,font='Times-Roman',align='left'):
-        plan.append(('text', x*scale, y, ascii_text(value), size, font, align))
+        plan.append(('text', x*scale, y*text_scale, ascii_text(value), size*text_scale, font, align))
     def line(x1,y1,x2,y2):
-        plan.append(('line', x1*scale,y1,x2*scale,y2))
+        plan.append(('line', x1*scale,y1*text_scale,x2*scale,y2*text_scale))
     def node(key,x,y,maxw=48):
         row = rows.get(key)
         label = {'CREATININE':'Cr', 'GLUCOSE':'Glucose', 'NA':'Na', 'CL':'Cl', 'HGB':'Hgb', 'HCT':'Hct', 'PLT':'Plt'}.get(key,key)
@@ -53,8 +54,8 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
     if kind in ('cbc','bmp'):
         main = ('WBC','HGB','HCT','PLT') if kind == 'cbc' else ('NA','K','CL','CO2','BUN','CREATININE','GLUCOSE')
         for key in main:
-            if key in rows and (stringWidth(ascii_text(rows[key]['value']),'Times-Roman',7.2) > 40*scale
-                              or max(stringWidth(part,'Times-Roman',6.1) for part in short_date(rows[key]['date']).split(' '))>42*scale):
+            if key in rows and (stringWidth(ascii_text(rows[key]['value']),'Times-Roman',font_size) > 40*scale
+                              or max(stringWidth(part,'Times-Roman',6.1*text_scale) for part in short_date(rows[key]['date']).split(' '))>42*scale):
                 kind = 'branch'
                 break
     if kind == 'cbc':
@@ -102,36 +103,48 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
     title, _, subtitle = card['title'].partition(' | ')
     text(6,height-10,title,8,'Times-Bold')
     text(6,height-19,subtitle,6.1)
-    return height, plan
+    return height*text_scale, plan
 
 
-def tree_text_fits(card: dict, width: float) -> bool:
+def tree_text_fits(card: dict, width: float, font_size: float = 7.2) -> bool:
     """Reject a vector tree if any text would spill outside its allotted cell."""
     scale = width / 180
+    text_scale = font_size / 7.2
     keys = ('WBC','HGB','HCT','PLT') if card['kind']=='cbc' else ('NA','K','CL','CO2','BUN','CREATININE','GLUCOSE')
     extras = ('MCV','ANC','ALC','NEUTROABS','LYMPHSABS') if card['kind']=='cbc' else ('CALCIUM', 'MG', 'PHOS')
     for key in keys:
         row = card['rows'].get(key)
-        if row and (stringWidth(ascii_text(row['value']), 'Times-Roman', 7.2) > 40*scale
-                    or max(stringWidth(part, 'Times-Roman', 6.1) for part in short_date(row['date']).split(' ')) > 42*scale):
+        if row and (stringWidth(ascii_text(row['value']), 'Times-Roman', font_size) > 40*scale
+                    or max(stringWidth(part, 'Times-Roman', 6.1*text_scale) for part in short_date(row['date']).split(' ')) > 42*scale):
             return False
     for key in extras:
         row = card['rows'].get(key)
         if row:
             text = row['component'] + ': ' + row['value'] + (' [' + short_date(row['date']) + ']' if row['date'] else '')
-            if stringWidth(ascii_text(text), 'Times-Roman', 6.5) > width-12:
+            if stringWidth(ascii_text(text), 'Times-Roman', 6.5*text_scale) > width-12:
                 return False
+    if font_size == 7.2:
+        return True
+    # Labels and card titles must also remain within their allocated area.
+    for kind, *entry in card_plan(card, width, font_size)[1]:
+        if kind != 'text':
+            continue
+        x, y, value, size, font, align = entry
+        length = stringWidth(value, font, size)
+        left = x - length / 2 if align == 'center' else x
+        if left < 0 or left + length > width:
+            return False
     return True
 
 
 class LabRow(Flowable):
     """Up to four dated cards in a single indivisible row."""
-    def __init__(self, cards: list[dict], width: float):
+    def __init__(self, cards: list[dict], width: float, font_size: float = 7.2, columns: int = 4):
         super().__init__()
         self.width=width
-        self.cell_width=width/4
+        self.cell_width=width/columns
         self.cards=cards
-        self.plans=[card_plan(card,self.cell_width-6) for card in cards]
+        self.plans=[card_plan(card,self.cell_width-6,font_size) for card in cards]
         self.height=max((h for h,_ in self.plans),default=0)+6
     def wrap(self, availWidth, availHeight):
         return self.width,self.height
@@ -177,21 +190,33 @@ def horizontal_card_markup(card: dict) -> str:
     return '<b>' + title + ':</b> ' + ' | '.join(values)
 
 
-def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, include_id_panels: bool = False, blood_gas: dict | None = None, cbc: dict | None = None) -> list:
+def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, include_id_panels: bool = False, blood_gas: dict | None = None, cbc: dict | None = None, *, tree_font_size: float | None = None) -> list:
     style = ParagraphStyle('labline', fontName='Times-Roman', fontSize=font_size,
                            leading=font_size + 1, splitLongWords=True,
                            allowWidows=1, allowOrphans=1)
-    note_style = ParagraphStyle('labnote', parent=style, fontSize=6.1, leading=7)
+    tree_size = 7.2 if tree_font_size is None else tree_font_size
+    note_size = 6.1 if tree_font_size is None else 6.1 * tree_size / 7.2
+    note_style = ParagraphStyle('labnote', parent=style, fontSize=note_size, leading=note_size + 0.9)
     cards = result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas, cbc=cbc)
     out = [Paragraph(escape(note_for(cbc)), note_style)] if cards else []
     trees = [card for card in cards if card['kind'] in ('cbc', 'bmp')]
-    for i in range(0, len(trees), 4):
-        row = LabRow(trees[i:i+4], width)
-        if row.height <= 155 and all(tree_text_fits(card, width/4-6) for card in trees[i:i+4]):
+    columns = 4
+    if tree_font_size is not None:
+        # Keep the fishbones at larger sizes by giving each more width when
+        # required. No result or date is abbreviated to fit a small card.
+        for count in (4, 2, 1):
+            columns = count
+            if all(tree_text_fits(card, width/count-6, tree_size) for card in trees):
+                break
+    for i in range(0, len(trees), columns):
+        group = trees[i:i+columns]
+        row = LabRow(group, width, tree_size, columns)
+        max_height = 155 if tree_font_size is None else 300
+        if row.height <= max_height and all(tree_text_fits(card, width/columns-6, tree_size) for card in group):
             out.append(row)
         else:
             # Overlong result text keeps every character in a wrapping line.
-            for card in trees[i:i+4]:
+            for card in group:
                 out.append(Paragraph(horizontal_card_markup(card), style))
     for card in cards:
         if card['kind'] not in ('cbc', 'bmp'):
@@ -201,15 +226,25 @@ def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, inclu
     return out
 
 
-def laboratory_html(data: dict, include_id_panels: bool = False, blood_gas: dict | None = None, cbc: dict | None = None) -> str:
+def laboratory_html(data: dict, include_id_panels: bool = False, blood_gas: dict | None = None, cbc: dict | None = None, *, font_size: float | None = None) -> str:
     cards = result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas, cbc=cbc)
     pieces = ['<div class="labnote">' + escape(note_for(cbc)) + '</div>'] if cards else []
-    pieces.append('<div class="labcards">')
+    size = 7.2 if font_size is None else font_size
+    columns = 4
+    trees = [card for card in cards if card['kind'] in ('cbc', 'bmp')]
+    if font_size is not None:
+        for count in (4, 2, 1):
+            columns = count
+            if all(tree_text_fits(card, 720/count, size) for card in trees):
+                break
+    grid = '' if font_size is None else f' style="grid-template-columns:repeat({columns},minmax(0,1fr))"'
+    pieces.append('<div class="labcards"' + grid + '>')
     for card in cards:
         if card['kind'] not in ('cbc', 'bmp'):
             continue
-        height, plan = card_plan(card, 180)
-        if height > 155 or not tree_text_fits(card, 180):
+        card_width = 720 / columns
+        height, plan = card_plan(card, card_width, size)
+        if height > (155 if font_size is None else 300) or not tree_text_fits(card, card_width, size):
             pieces.append('<div class="lab-summary lab-full">' + horizontal_card_markup(card) + '</div>')
             continue
         body = []
@@ -222,7 +257,7 @@ def laboratory_html(data: dict, include_id_panels: bool = False, blood_gas: dict
                 weight = 'bold' if font == 'Times-Bold' else 'normal'
                 anchor = 'middle' if align == 'center' else 'start'
                 body.append(f'<text x="{x}" y="{height-y}" font-family="Times New Roman,serif" font-size="{size}" font-weight="{weight}" text-anchor="{anchor}">{escape(value)}</text>')
-        pieces.append(f'<svg class="labcard" role="img" aria-label="{escape(card["title"], quote=True)}" viewBox="0 0 180 {height}" xmlns="http://www.w3.org/2000/svg">' + ''.join(body) + '</svg>')
+        pieces.append(f'<svg class="labcard" role="img" aria-label="{escape(card["title"], quote=True)}" viewBox="0 0 {card_width:g} {height}" xmlns="http://www.w3.org/2000/svg">' + ''.join(body) + '</svg>')
     pieces.append('</div>')
     for card in cards:
         if card['kind'] not in ('cbc', 'bmp'):

@@ -67,6 +67,10 @@ Click Save handoff. Confirm the saved status and the Last saved to GitHub date a
 
 Open Print all, select the rooms you need, and click Save all open handoffs. Check each room's saved status and date/time above the download controls. Download all selected handoffs (PDF), open it, and print in landscape. Each room starts on a new page. Downloading or printing alone does not save drafts. The print-preparation time is separate from the last-save time. Handle downloaded and printed sheets according to your team's approved policy, then log out.
 
+## Choose the print font size
+
+In Preview / print or Print all, enter Handoff font size (pt), such as 8, 9 or 10. Leave Allow smaller text to fit the page target unchecked to keep that size, even if an extra page is needed. Check it only to allow automatic reduction down to 6.5 pt. Review each room's PDF page count and actual font size before downloading. No content is removed to meet the page goal. The HTML preview uses your requested size and can paginate differently from the PDF. Your preferences follow you between rooms and Print all for this session only, without changing anyone else's settings.
+
 ## Updating only part of a handoff
 
 Paste a complete pair of dividers around each section you want to update. An omitted section keeps its previous content. An included empty section can clear its automatic content. Separate notes remain separate, so review older notes when updating a handoff. Never combine patients in one paste.

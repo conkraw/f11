@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.35: Epic height formats and nutrition import fix."""
+"""PICU SmartPhrase v6.36: optional font size and render-checked pagination."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -24,6 +24,8 @@ from ventilation import LABELS, format_ventilation, validate_ventilation
 from noninvasive import DEVICE_FIELDS, format_noninvasive, validate_noninvasive
 from importing import import_sections, SUPPORTED_SECTIONS
 from batching import available_handoffs
+from print_options import (preferences as print_preferences, capture_preferences,
+                           MIN_FONT_SIZE, MAX_FONT_SIZE)
 from handoff_reset import cleared_vault, census_was_reset
 from save_status import (room_save_status, saved_time_text, latest_saved_time,
                          most_recent_save_caption, save_status_table)
@@ -1300,7 +1302,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.35 | Weight and height import fix")
+        st.caption("Version 6.36 | Adjustable handoff font size")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1647,14 +1649,14 @@ def handoff_page(store: GitHubVault | None) -> None:
     with preview_tab:
         import streamlit.components.v1 as components
         st.caption("Compact landscape. The upper-left stamp uses Eastern time. PDFs are stamped when downloaded. Printable HTML refreshes its stamp when printed.")
-        components.html(handoff_html(sheet), height=650, scrolling=True)
+        options = print_size_controls("room_print")
+        components.html(handoff_html(sheet, font_size=options["font_size"]), height=650, scrolling=True)
         try:
-            target = print_target_control("room_print_target")
-            render_print_fit([sheet], target)
-            st.download_button("Download this handoff (PDF)", download_payload([sheet], "pdf", download_deadline(), target_pages=target, cancelled=download_revocation()), "handoff.pdf", "application/pdf", key="download_single_pdf", on_click="ignore")
+            render_print_fit([sheet], options["target_pages"], font_size=options["font_size"], auto_fit=options["auto_fit"])
+            st.download_button("Download this handoff (PDF)", download_payload([sheet], "pdf", download_deadline(), **options, cancelled=download_revocation()), "handoff.pdf", "application/pdf", key="download_single_pdf", on_click="ignore")
         except (ValueError, ImportError):
             st.error("PDF export could not be created. Confirm requirements.txt is installed or use HTML.")
-        st.download_button("Download printable handoff (HTML)", download_payload([sheet], "html", download_deadline(), cancelled=download_revocation()), "handoff.html", "text/html", key="download_single_html", on_click="ignore")
+        st.download_button("Download printable handoff (HTML)", download_payload([sheet], "html", download_deadline(), font_size=options["font_size"], cancelled=download_revocation()), "handoff.html", "text/html", key="download_single_html", on_click="ignore")
         st.download_button("Download handoff text", download_payload([sheet], "text", download_deadline(), cancelled=download_revocation()), "handoff.txt", "text/plain", key="download_single_text", on_click="ignore")
 
 
@@ -1671,20 +1673,61 @@ def print_target_control(key: str) -> int:
     return choice if choice in (1, 2) else 1
 
 
-def render_print_fit(sheets: list[dict], target: int) -> None:
+def update_print_preferences(prefix: str) -> None:
+    capture_preferences(st.session_state, prefix)
+
+
+def print_size_controls(prefix: str) -> dict:
+    """Share display preferences across print screens, never across teammates."""
+    saved = print_preferences(st.session_state)
+    # These widgets are instantiated once per run, on only one workspace.
+    # Rehydrate from a non-widget key so Streamlit widget cleanup cannot erase
+    # the chosen values when the user switches rooms or workspaces.
+    for field, value in saved.items():
+        st.session_state[prefix + "_" + field] = value
+    st.number_input(
+        "Handoff font size (pt)", min_value=MIN_FONT_SIZE, max_value=MAX_FONT_SIZE,
+        step=0.1, format="%.1f", key=prefix + "_font_size",
+        help="Type a size such as 8, 9, or 10. This changes the printed body text and laboratory values.",
+        on_change=update_print_preferences, args=(prefix,),
+    )
+    st.checkbox(
+        "Allow smaller text to fit the page target",
+        key=prefix + "_auto_fit", on_change=update_print_preferences, args=(prefix,),
+        help="Off: keep your selected font size, even if more pages are needed. On: allow reduction down to 6.5 pt.",
+    )
+    target = st.selectbox(
+        "PDF page target per patient", [1, 2], key=prefix + "_target_pages",
+        format_func=lambda n: "1 page" if n == 1 else "At most 2 pages",
+        on_change=update_print_preferences, args=(prefix,),
+        help="A layout goal, not a content limit. Extra pages are kept when necessary.",
+    )
+    # Maintain compatibility with the existing page-control session keys.
+    st.session_state[prefix + "_target"] = target
+    st.caption("Your print settings apply to this session only. They follow you between rooms and Print all without changing anyone else's settings.")
+    capture_preferences(st.session_state, prefix)
+    return print_preferences(st.session_state)
+
+
+def render_print_fit(sheets: list[dict], target: int, *, font_size: float | None = None, auto_fit: bool = True) -> None:
     rows = []
     for sheet in sheets:
-        report = print_fit_report(sheet, target)
+        report = print_fit_report(sheet, target, font_size=font_size, auto_fit=auto_fit)
         pages = report["page_count"]
         detail = "Default spacing"
         if report["tight_spacing"]:
             detail = "Tighter spacing" + (" / adjusted column widths" if report["balanced_columns"] else "")
+        if font_size is not None:
+            detail += " / selected size kept" if report["font_size"] == font_size else " / auto-fit reduced text"
         rows.append("<tr><td>" + escape(sheet["room"]) + "</td><td>" + str(pages) +
                     "</td><td>" + str(report["font_size"]) + " pt</td><td>" + detail + "</td></tr>")
         if not report["target_met"]:
-            st.warning("Room " + sheet["room"] + " needs " + str(pages) + " pages. All content is retained rather than cropped or reduced below the font-size limit.")
+            if font_size is not None and not auto_fit:
+                st.warning("Room " + sheet["room"] + " needs " + str(pages) + " pages at " + str(font_size) + " pt. Your chosen size is kept. Lower the size or enable auto-fit to try fewer pages.")
+            else:
+                st.warning("Room " + sheet["room"] + " needs " + str(pages) + " pages. All content is retained rather than cropped or reduced below the font-size limit.")
     st.markdown("<table><thead><tr><th>Room</th><th>PDF pages</th><th>Body text</th><th>Layout</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>", unsafe_allow_html=True)
-    st.caption("PDF page count is checked using the export renderer. Automatic fitting changes spacing, widths and text size only, down to 6.5 pt. It never drops entries. Browser/HTML printing can paginate differently.")
+    st.caption("PDF page counts are checked using the export renderer. Content is never removed to fit. The HTML preview uses your requested size, and browser printing may paginate differently. Use the PDF for the checked layout.")
 
 
 def print_all_page(store: GitHubVault | None) -> None:
@@ -1715,13 +1758,13 @@ def print_all_page(store: GitHubVault | None) -> None:
                "Session-only testing: these save times are not durable GitHub saves.")
     if unsaved:
         st.warning("Some selected handoffs have unsaved changes. Save all open handoffs before printing to store them. Downloading alone does not save.")
+    options = print_size_controls("all_print")
     try:
-        target = print_target_control("all_print_target")
-        render_print_fit(selected_sheets, target)
-        st.download_button("Download all selected handoffs (PDF)", download_payload(selected_sheets, "pdf", download_deadline(), target_pages=target, cancelled=download_revocation()), "all_handoffs.pdf", "application/pdf", type="primary", key="download_all_pdf", on_click="ignore")
+        render_print_fit(selected_sheets, options["target_pages"], font_size=options["font_size"], auto_fit=options["auto_fit"])
+        st.download_button("Download all selected handoffs (PDF)", download_payload(selected_sheets, "pdf", download_deadline(), **options, cancelled=download_revocation()), "all_handoffs.pdf", "application/pdf", type="primary", key="download_all_pdf", on_click="ignore")
     except (ValueError, ImportError):
         st.error("The combined PDF could not be created. Use HTML or check the export requirements.")
-    st.download_button("Download all selected handoffs (printable HTML)", download_payload(selected_sheets, "html", download_deadline(), cancelled=download_revocation()), "all_handoffs.html", "text/html", key="download_all_html", on_click="ignore")
+    st.download_button("Download all selected handoffs (printable HTML)", download_payload(selected_sheets, "html", download_deadline(), font_size=options["font_size"], cancelled=download_revocation()), "all_handoffs.html", "text/html", key="download_all_html", on_click="ignore")
     st.caption("Compact PDF is preferred for printing. Each room starts on its own page. Exceptionally long handoffs continue rather than losing content. Downloads are not encrypted.")
 
 

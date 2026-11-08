@@ -38,7 +38,7 @@ def equip(app,monkeypatch):
         return default
     for name in ['text','caption','info','warning','error','success','title','header','subheader','divider','markdown','code']:
         setattr(st,name,lambda *args,**kwargs:None)
-    for name in ['text_input','text_area','selectbox','radio','checkbox','file_uploader']:
+    for name in ['text_input','text_area','selectbox','radio','checkbox','file_uploader','number_input']:
         setattr(st,name,control)
     st.expander=lambda *a,**k:Panel(st)
     st.form=lambda *a,**k:Panel(st)
