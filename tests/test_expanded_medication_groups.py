@@ -231,12 +231,12 @@ def test_schema16_upgrade_preserves_every_field_and_import_warning():
     # Produce a real review marker through the existing recovery path.
     res=import_sections(s,'rrrrrrrr\nOrders Placed This Encounter\n• XR chest 1 view\nTiming: Recurring (Daily)\nNumber of Occurrences: BAD\nrrrrrrrr',v['settings'])
     assert res.sheet and res.sheet['import_warnings']
-    res.sheet.pop('feeds')
+    res.sheet.pop('feeds');res.sheet.pop("devices", None);res.sheet.pop("neuro_devices", None)
     v['rooms'][s['room']]=res.sheet;before=deepcopy(v)
     key=Fernet.generate_key().decode();encrypted=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     upgraded=open_vault(encrypted,key)
-    assert upgraded['schema']==SCHEMA_VERSION==19
-    assert upgraded['rooms']=={room: dict(sheet, feeds=None) for room, sheet in before['rooms'].items()}
+    assert upgraded['schema']==SCHEMA_VERSION==20
+    assert upgraded['rooms']=={room: dict(sheet, feeds=None,devices=None,neuro_devices=None) for room, sheet in before['rooms'].items()}
     assert upgraded['settings']==dict(before['settings'],medication_groups=[])
     assert v==before
 

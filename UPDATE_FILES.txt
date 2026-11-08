@@ -1,23 +1,15 @@
-PICU Handoff 6.25 - complete ZIP update
+Complete Version 6.26 package. Replace all matching application files, keeping app.py at the root.
 
-Replace all matching files from this folder in your code repository.
-Keep app.py at the root. No direct GitHub changes were made.
+Changed/new runtime files:
+app.py
+batching.py
+devices.py
+error_store.py
+exports.py
+import_review.py
+importing.py
+models.py
+parser.py
 
-Changed runtime files:
-  vitals.py: ETCO2/CVP summary recognition, routing, missing-data handling
-  app.py: version label only
-  error_store.py: technical report app version only
-
-Added:
-  ETCO2_CVP_UPDATE.md
-  tests/test_etco2_cvp.py
-  examples/synthetic_etco2_cvp.txt
-  examples/etco2_cvp_preview.pdf
-  examples/etco2_cvp_preview.html
-
-Updated: README.md, START_HERE.html, TEST_REPORT.md, SHA256SUMS.txt.
-All previous application files, examples and tests are included.
-
-Keep all existing secrets, encryption key, both passwords and the private data
-repository. Do not run the setup generators again. Dependencies and storage
-format are unchanged. Re-paste the complete E block after installation.
+Also replace the included docs, SmartPhrase scaffold and tests. New device examples are synthetic. No dependencies changed. Keep your existing private Secrets and encrypted data repository. Never rerun either setup generator for this update.
+Schema 20 adds devices and neuro_devices. Earlier handoffs migrate with every prior field, setting and timestamp preserved. Do not downgrade after saving.

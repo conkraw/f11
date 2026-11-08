@@ -19,6 +19,7 @@ from medications import visible, format_medication
 from output_text import medication_output
 from fen_gi import effective_section, fen_gi_body
 from feeds import feeds_for_output
+from devices import devices_text, devices_markup
 from lab_layout import laboratory_flowables, laboratory_html, LabRow
 from cultures import cultures_text
 from viral import viral_text
@@ -44,6 +45,8 @@ def handoff_text(sheet: dict, printed_at: datetime | None = None) -> str:
         content = fields[section].strip()
         if content:
             parts.extend(["", section_label(section).upper(), content])
+    if devices_text(sheet):
+        parts.extend(["", "DEVICES", devices_text(sheet)])
     return "\n".join(parts) + "\n"
 
 
@@ -116,7 +119,11 @@ def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
     extra = '\n'.join(k + ': ' + fields[k] for k in ('Skin / Wounds', 'Tasks', 'Other') if fields[k].strip())
     if extra:
         bands.insert(2, '<div class="band"><strong>Additional notes:</strong> <span class="content">' + escape(extra) + '</span></div>')
+    device_summary = devices_markup(sheet)
+    if device_summary:
+        bands.append('<div class="band"><strong>Devices:</strong><div class="content">' + device_summary + '</div></div>')
     access = ''.join('<td><strong>' + escape(key) + ':</strong> <span class="content">' + escape(fields[key]) + '</span></td>' for key in ACCESS_FIELDS)
+    access_table = ('<table class="access"><tbody><tr>' + access + '</tr></tbody></table>') if (not device_summary or any(fields[k].strip() for k in ACCESS_FIELDS)) else ''
     return '''<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>PICU handoff</title>
 <style>
@@ -132,7 +139,7 @@ footer{font:6.1pt/1.2 Arial,sans-serif;margin-top:4px}
 @page{size:letter landscape;margin:.25in}
 @media print{body{margin:0;padding:0;background:white}main{width:100%;min-height:0;padding:0;margin:0}.systems td{height:auto}thead{display:table-header-group}footer{font-size:6.1pt}.band{break-inside:auto}}
 </style></head><body><main><div class="meta"><span><span data-print-label>Print prepared: </span><span data-print-time>''' + escape(eastern_print_time(printed_at)) + '''</span> | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | PICU HANDOFF' + '</span></div>' + ('<div class="import-review">' + escape(review_summary(sheet)) + '</div>' if review_summary(sheet) else '') + '''
-<table class="systems"><colgroup>''' + cols + '</colgroup><thead><tr>' + headers + '</tr></thead><tbody><tr>' + cells + '</tr></tbody></table>' + ''.join(bands) + '<table class="access"><tbody><tr>' + access + '''</tr></tbody></table>
+<table class="systems"><colgroup>''' + cols + '</colgroup><thead><tr>' + headers + '</tr></thead><tbody><tr>' + cells + '</tr></tbody></table>' + ''.join(bands) + access_table + '''
 <footer>Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted. Infusion rates reflect the source Last Rate, not a live feed.</footer>
 </main>''' + PRINT_TIME_SCRIPT + '</body></html>'
 
@@ -251,7 +258,12 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: b
     bands = [(name, (laboratory_flowables(sheet['labs'], total_width-6, font_size, blood_gas=sheet['blood_gas'], cbc=sheet['cbc'])
                     if name == 'Lab Results / Trends' else []) + paragraphs(text))
              for name, text in band_items]
+    device_summary = devices_markup(sheet, _clinical_markup)
+    if device_summary:
+        bands.append(('Devices', paragraphs(device_summary, rich=True)))
     access = [(name, paragraphs(fields[name])) for name in ACCESS_FIELDS]
+    if device_summary and not any(fields[k].strip() for k in ACCESS_FIELDS):
+        access = []
     review = review_summary(sheet)
     banner = Paragraph(escape(review), ParagraphStyle('review', fontName='Helvetica-Bold', fontSize=7, leading=8)) if review else None
     review_height = banner.wrap(total_width, 10000)[1] + 4 if banner else 0
@@ -271,7 +283,7 @@ def _plan_heights(plan: dict) -> tuple[float, list[float], float]:
     main = max(20, max((_queue_height(q, w-2*pad) for q, w in zip(plan['columns'], plan['widths'])), default=0)+2*pad)
     bands = [max(plan['empty_band'], _queue_height(q, width-6) + plan['band_label'] + plan['band_padding'])
              for _, q in plan['bands']]
-    access = max(plan['access_min'], max((_queue_height(q, width/4-6) for _, q in plan['access']), default=0)+14)
+    access = max(plan['access_min'], max((_queue_height(q, width/4-6) for _, q in plan['access']), default=0)+14) if plan['access'] else 0
     return main, bands, access
 
 

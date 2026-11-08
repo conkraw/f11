@@ -19,11 +19,12 @@ from cbc import parse_cbc
 from recurring_orders import parse_orders, selected_orders
 from fluid_balance import parse_balance
 from feeds import parse_feeds
+from devices import parse_devices
 from fen_gi import apply_gi_rules
 from medication_groups import apply_group_rules
 from import_review import diagnostic, diagnostic_text
 
-SUPPORTED_SECTIONS = "abcdefgiklmnopqrst"
+SUPPORTED_SECTIONS = "abcdefgiklmnopqrstuv"
 
 
 @dataclass
@@ -47,7 +48,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
     parsed = parse_smartphrase(text)
     relevant = set(SUPPORTED_SECTIONS) & (set(parsed.blocks) | parsed.invalid)
     if not relevant:
-        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O, P, Q, R, S or T dividers.")
+        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O, P, Q, R, S, T, U or V dividers.")
         return out
     # Repeated paired sections can mean two patients were pasted together.
     # That document-wide identity ambiguity cannot be repaired by partial import.
@@ -60,7 +61,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
     def reject(group, code='section_parse_failed', line=0):
         nonlocal candidate
         item = diagnostic(group, code,
-                          action='orders_hidden' if group == 'r' else 'feeds_hidden' if group == 't' else 'not_updated', line=line)
+                          action='orders_hidden' if group == 'r' else 'feeds_hidden' if group == 't' else 'devices_hidden' if group == 'u' else 'neuro_devices_hidden' if group == 'v' else 'not_updated', line=line)
         candidate['import_warnings'][group] = [item]
         out.diagnostics.append(item)
         if group not in out.skipped:
@@ -201,6 +202,15 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 recoveries = feeds.diagnostics
                 out.notices.extend(feeds.issues)
                 out.imported.append("feeds" if feeds.data else "feeds display cleared")
+            elif letter in "uv":
+                detected = parse_devices(parsed.blocks[letter], letter)
+                if detected.error:
+                    out.errors.append(detected.error)
+                    continue
+                candidate["devices" if letter == "u" else "neuro_devices"] = detected.data
+                recoveries = detected.diagnostics
+                out.notices.extend(detected.issues)
+                out.imported.append(SECTION_NAMES[letter] if detected.data else SECTION_NAMES[letter] + " display cleared")
             elif letter in "klm":
                 observations = parse_neuro(parsed.blocks[letter], letter)
                 if observations.error:

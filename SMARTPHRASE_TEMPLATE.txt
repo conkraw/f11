@@ -109,3 +109,16 @@ formula lines and Continuous Tube Feeding Ordered Rate mL/hr lines. A backup
 rate must have hourly units. Intake (mL) alone is not a rate. Replace these
 placeholders with the actual SmartLink definitions used by your institution.]
 tttttttttttttttttttttttttttttttt
+
+
+uuuuuuuuuuuuuuuuuuuuuuuuuuuuuu
+Lines:
+[Insert your real Epic device SmartLinks, including vascular lines, ETT,
+feeding tubes, urinary catheters, drains and tracheostomy entries. Retain the
+REMOVED marker. Use the device names and their recorded dates, sizes and secured values.]
+uuuuuuuuuuuuuuuuuuuuuuuuuuuuuu
+
+vvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+Intracranial Pressure Monitor:
+[Insert your Epic ICP/ventriculostomy device SmartLink with Drain Status.]
+vvvvvvvvvvvvvvvvvvvvvvvvvvvvvv

@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.25: ETCO2 and CVP in their vital-sign groups."""
+"""PICU SmartPhrase v6.26: device footer and EVD status."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -43,6 +43,7 @@ from demographics import validate_dosing_weight, validate_admission_date, demogr
 from cultures import validate_cultures, cultures_text, compact_groups, category_for
 from viral import validate_viral_panel, viral_text
 from microbiology_display import culture_markup, viral_markup
+from devices import validate_devices, EDIT_FIELDS as DEVICE_EDIT_FIELDS, device_line, devices_markup, evd_text
 from feeds import METHODS as FEED_METHODS, validate_feeds, feeds_text, feeds_for_output
 from fluid_balance import FIELDS as IO_FIELDS, META_FIELDS as IO_META_FIELDS, validate_balance, balance_text, empty_balance
 from fen_gi import (MODES as GI_MODES, MODE_LABELS as GI_MODE_LABELS, GROUP_NAMES,
@@ -103,7 +104,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_")):
             st.session_state.pop(key, None)
 
 
@@ -169,6 +170,13 @@ def editor_snapshot(room: str) -> dict:
                         value = "" if str(value).strip().casefold() in ("", "unk", "unknown", "--") else str(value).strip()
                         if value != row["rate"]:
                             row["rate_source"] = "manual" if value else "unknown"
+                    row[field] = value.strip() if isinstance(value, str) else value
+    for source in ("devices", "neuro_devices"):
+        for row in (sheet[source] or {}).get("rows", []):
+            for field in DEVICE_EDIT_FIELDS:
+                key = "device_" + row["id"] + "_" + field
+                if key in ss:
+                    value = ss[key]
                     row[field] = value.strip() if isinstance(value, str) else value
     for group, prefix, fields in (
         (sheet["labs"]["rows"], "lab_", ("value", "date", "include")),
@@ -1213,7 +1221,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.25 | ETCO2 and CVP in vitals")
+        st.caption("Version 6.26 | Devices and EVD status")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1488,6 +1496,7 @@ def handoff_page(store: GitHubVault | None) -> None:
     with orders_tab:
         recurring_orders_editor(sheet)
     with edit_tab:
+        devices_editor(sheet)
         st.caption("These are your separate notes. Re-pasting medications or ventilation does not erase them.")
         for section in SYSTEMS:
             key = edit_key(sheet, section)
@@ -2082,6 +2091,64 @@ def feed_row_change(room: str, row_id: str, field: str, key: str) -> None:
         note(str(exc), "error")
 
 
+def device_row_change(room: str, source: str, row_id: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    if source not in ("devices", "neuro_devices") or field not in DEVICE_EDIT_FIELDS:
+        return
+    ss = st.session_state
+    data = ss["drafts"][room][source]
+    original = next((r for r in (data or {}).get("rows", []) if r["id"] == row_id), None)
+    if original is None:
+        return
+    candidate = deepcopy(original)
+    value = ss[key]
+    candidate[field] = value.strip() if isinstance(value, str) else value
+    try:
+        validate_devices({"rows": [candidate]}, "u" if source == "devices" else "v")
+        original.update(candidate)
+    except ValueError as exc:
+        ss[key] = original[field]
+        note(str(exc), "error")
+
+
+def devices_editor(sheet: dict) -> None:
+    with st.expander("Devices / airway and EVD", expanded=False):
+        st.caption("U adds the bottom device inventory. V adds EVD status to Neurologic. Removed ETTs are airway history, not a current airway. Other removed devices are excluded.")
+        if devices_markup(sheet):
+            st.markdown('<div style="white-space:pre-wrap">' + devices_markup(sheet) + '</div>', unsafe_allow_html=True)
+        if evd_text(sheet):
+            st.text(evd_text(sheet))
+        fields = (("label", "Device / location"), ("date", "Device date (as documented)"),
+                  ("size", "Airway size"), ("secured", "Secure site / recorded depth"),
+                  ("status", "Device / drain status"), ("include", "Include on handoff"))
+        count = 0
+        for source, letter in (("devices", "u"), ("neuro_devices", "v")):
+            if any(i["action"].endswith("_hidden") for i in sheet["import_warnings"].get(letter, [])):
+                st.warning("This device section was not updated. Retained entries are hidden until reviewed or reimported.")
+            for row in (sheet[source] or {}).get("rows", []):
+                count += 1
+                st.text(str(count) + ". " + device_line(row))
+                for field, label in fields:
+                    if field == "size" and row["kind"] != "ETT":
+                        continue
+                    if field == "secured" and row["kind"] not in ("ETT", "Feeding tube") and not row["secured"]:
+                        continue
+                    if field == "status" and row["kind"] not in ("EVD", "ICP monitor", "Trach", "Drain") and not row["status"]:
+                        continue
+                    key = "device_" + row["id"] + "_" + field
+                    if key not in st.session_state:
+                        st.session_state[key] = row[field]
+                    args = (sheet["room"], source, row["id"], field, key)
+                    if field == "include":
+                        st.checkbox(label + " " + str(count), key=key, on_change=device_row_change, args=args)
+                    else:
+                        st.text_input(label + " " + str(count), key=key, max_chars=600 if field == "label" else 250,
+                                      on_change=device_row_change, args=args)
+        if not count:
+            st.caption("Paste the paired U and V sections to add documented devices. An empty section clears its old entries. No device is assumed from a blank field.")
+
+
 def feeds_editor(sheet: dict) -> None:
     st.subheader("Feeds")
     data = sheet["feeds"]
@@ -2202,12 +2269,13 @@ def import_review_editor(sheet: dict) -> None:
         return
     st.warning(summary)
     with st.expander("Review skipped or incomplete imports", expanded=False):
-        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed R orders and failed T feeds are retained only for review and are hidden from print. Do not treat skipped values as refreshed.")
+        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed orders, feeds and device imports are retained for review but hidden from print. Do not treat skipped values as refreshed.")
         for section, items in sheet["import_warnings"].items():
             for item in items:
                 st.text(diagnostic_text(item))
             label = ("Use retained orders after checking Epic" if section == 'r' else
                      "Use retained feeds after checking Epic" if section == 't' and any(i['action'] == 'feeds_hidden' for i in items) else
+                     "Use retained devices after checking Epic" if section in ('u', 'v') and any(i['action'].endswith('_hidden') for i in items) else
                      "Acknowledge reviewed omissions" if any(i['action'].endswith('omitted') for i in items) else
                      "Accept retained values after checking Epic")
             st.button(label + " (" + REVIEW_SECTIONS[section] + ")", key="accept_import_" + sheet["id"] + "_" + section,

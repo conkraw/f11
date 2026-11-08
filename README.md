@@ -1,3 +1,18 @@
+# PICU Handoff 6.26: Devices and EVD status
+
+Complete ZIP update. Read DEVICES_UPDATE.md or START_HERE.html first.
+
+U adds a compact device inventory at the bottom. V adds EVD drain status to Neurologic.
+Removed non-ETT devices are excluded. Removed ETTs remain clearly labeled airway history.
+All new entries are editable, encrypted with the existing archive, and included in room autosave and Print all.
+
+This release uses schema 20 with migration from schemas 1-19. No dependencies or credentials change.
+Do not downgrade after saving with this version. Installing the update does not clear handoffs.
+
+The notes below describe earlier releases. Use the 6.26 update guide for current installation instructions.
+
+---
+
 # PICU Handoff 6.25: ETCO2 and CVP in vital signs
 
 Complete ZIP update. Start with ETCO2_CVP_UPDATE.md or START_HERE.html.

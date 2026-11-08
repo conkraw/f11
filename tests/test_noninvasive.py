@@ -258,7 +258,7 @@ def test_schema_three_migration_preserves_invasive_notes_mappings_and_ids():
     strip_v6_fields(vault)
     vault['rooms']['P4102'].pop('noninvasive')
     migrated=upgrade_vault(vault)
-    assert migrated['schema']==19 and vault['schema']==3
+    assert migrated['schema']==20 and vault['schema']==3
     assert migrated['rooms']['P4102']['noninvasive']==[]
     assert migrated['rooms']['P4102']['ventilation']==s['ventilation']
     assert migrated['rooms']['P4102']['id']==s['id']
@@ -276,7 +276,7 @@ def test_encrypted_niv_roundtrip_and_schema3_ciphertext_upgrade():
     strip_v6_fields(vault)
     vault['rooms']['P4102'].pop('noninvasive')
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(vault).encode())
-    assert open_vault(oldtoken,key)['schema']==19
+    assert open_vault(oldtoken,key)['schema']==20
 
 
 def test_niv_only_rooms_print_all_and_both_exports():
@@ -353,7 +353,7 @@ def test_session_schema3_migration_preserves_unsaved_support_notes(app):
     ss['vault']['schema']=3;ss['vault'].pop("reset_generation", None);ss['vault']["settings"].pop("medication_groups", None);ss['vault']["settings"].pop("medication_gi_groups", None);ss['vault']['settings'].pop('medication_infusions', None)
     ss['vault']['settings'].pop('medication_visibility', None)
     for obj in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):
-        obj.pop("feeds", None);obj.pop("import_warnings", None);obj.pop("intake_output", None);obj.pop("recurring_orders", None);obj.pop("cbc", None);obj.pop('blood_gas', None)
+        obj.pop("feeds", None);obj.pop("devices", None);obj.pop("neuro_devices", None);obj.pop("import_warnings", None);obj.pop("intake_output", None);obj.pop("recurring_orders", None);obj.pop("cbc", None);obj.pop('blood_gas', None)
         obj.pop('noninvasive')
         obj.pop('neuro_vitals', None)
         obj.pop('nutrition', None)
@@ -364,7 +364,7 @@ def test_session_schema3_migration_preserves_unsaved_support_notes(app):
         obj.pop('vitals', None)
         for row in obj.get('medications', []): row.pop('hidden', None)
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==19
+    assert ss['vault']['schema']==20
     assert ss['drafts']['P4102']['fields']['Respiratory']=='Unsaved note'
     assert ss['drafts']['P4102']['noninvasive']==[]
 
