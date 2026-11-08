@@ -1,15 +1,15 @@
-Complete Version 6.26 package. Replace all matching application files, keeping app.py at the root.
+Version 6.27 is a COMPLETE ZIP, not a patch. Upload all contents.
 
-Changed/new runtime files:
+Changed runtime modules:
 app.py
 batching.py
-devices.py
 error_store.py
 exports.py
 import_review.py
 importing.py
 models.py
+pacemaker.py
 parser.py
 
-Also replace the included docs, SmartPhrase scaffold and tests. New device examples are synthetic. No dependencies changed. Keep your existing private Secrets and encrypted data repository. Never rerun either setup generator for this update.
-Schema 20 adds devices and neuro_devices. Earlier handoffs migrate with every prior field, setting and timestamp preserved. Do not downgrade after saving.
+Keep all Secrets and both passwords unchanged. Include pacemaker.py.
+Schema 20 migrates to 21 without changing old fields. Do not downgrade after saving.

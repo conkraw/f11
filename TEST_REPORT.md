@@ -1,17 +1,21 @@
-# Version 6.26 validation
+# Version 6.27 validation
 
-The working package passes 2,164 automated tests: 2,061 existing tests and 103 new device tests. Historical migration fixtures and current-schema assertions were updated for the two added snapshots. No previous test was removed.
+The complete suite contains 2,229 automated checks: 2,164 inherited checks and 65 new pacemaker checks. Historical migration fixtures and expected current-schema assertions were adjusted for the added pacemaker snapshot. No inherited tests were removed. The full suite is rerun from the extracted delivery ZIP.
 
-The device checks cover ETT and removed-ETT history, device identification independent of surrounding headings, removed non-ETT exclusion, dated vascular lines, tracheostomies, feeding tubes, urinary catheters, drains, EVD drain status, non-EVD ICP monitors, empty and conflicting fields, HTML escaping, omission/restoration, independent U/V updates, partial recovery and patient-free error diagnostics. Tests also cover editor callbacks, room autosave snapshots, encrypted round trips, new-patient and shared reset behavior, single and batch export, and overflow without clipping.
+The new tests cover the supplied tab-separated W pattern, AAI/AAIR/AOO and VVI/VVIR/VOO mode-to-rate pairing, colon/space variants, missing modes or rates, generic-rate fallback, conflicting rates, distinct dual-chamber rates, explicit No/Off/Standby values, and the distinction between pacing rate, heart rate and output in milliamps. Missing required values remain UNK. No capture or clinical-indication inference is made.
 
-All nine supplied U/V excerpts were checked separately against their expected device inventories. The excerpts are not included in the distribution. No real patient source is included in new examples or tests.
+Integration checks cover independent W updates, empty-W clearing, omission preserving prior settings, failed-W hiding without cancelling unrelated sections, patient-free error reports, manual editing, include/exclude, pending widget edits during room autosave, session migration, new-patient clearing, encrypted round trips and single/batch export. HTML is escaped, and mode/rate are verified in PDF text.
 
-An encrypted synthetic schema-19 archive was created with the actual original Version 6.25 code, then opened with Version 6.26 using the same key. Every original field, setting, reset generation and save timestamp remained unchanged. The new snapshots initialize to null until imported.
+The supplied W excerpt produces Pacemaker: AAI at 140 bpm. With a synthetic full-handoff baseline, every other imported snapshot was compared against actual Version 6.26 output and remained unchanged.
 
-Twenty-two existing clinical parser, layout-helper, security and storage modules were compared byte-for-byte with Version 6.25 and remain unchanged. The generic section divider parser now recognizes U/V, the import pipeline handles their independent snapshots, and the export path adds the device band and EVD prefix. Runtime file changes are listed in UPDATE_FILES.txt.
+A synthetic encrypted archive was generated using the actual original Version 6.26 code, then decrypted with Version 6.27 and the same key. Every prior field, setting, reset generation and saved timestamp remained unchanged. The new pacemaker field initialized to null. A second encrypted round trip passed.
 
-The three-room synthetic PDF was rendered at 145 dpi and each page was visually inspected. Each room occupies one landscape page in this example. The device inventory is at the bottom, and the first page shows EVD status among the neurologic observations. Longer content continues according to the existing auto-fit limits.
+The synthetic landscape PDF was rendered and visually checked. It fits on one page. The pacing line is bold under cardiovascular vitals and above lactate/CV Infusions. The numeric rate and bpm stay together on a printed line. The original auto-fit and overflow behavior remains.
 
-The delivery ZIP is integrity-checked and every packaged file has a SHA-256 digest in SHA256SUMS.txt. The full suite is also rerun from an extracted delivery copy.
+The following prior runtime modules are byte-for-byte unchanged:
 
-Limits: Streamlit page tests use widget stubs, not a real deployed browser session. Storage tests use synthetic data and mocked requests. No live app or authenticated private handoff repository was accessed or tested. Tests cannot guarantee every future Epic format. The inventory reflects the pasted documentation, not verified bedside device placement.
+admin_access.py, blood_gases.py, cbc.py, create_secrets.py, cultures.py, demographics.py, devices.py, feeds.py, fen_gi.py, fluid_balance.py, github_store.py, guide_store.py, handoff_reset.py, infusions.py, lab_layout.py, labs.py, medication_groups.py, medications.py, microbiology_display.py, noninvasive.py, observations.py, output_text.py, print_time.py, recurring_orders.py, save_status.py, security.py, set_admin_password.py, user_guide.py, ventilation.py, viral.py, vitals.py.
+
+Each packaged file is listed in SHA256SUMS.txt. The archive is checked for corruption and read back against its source files. Neither real patient source files nor deployment secrets are packaged in this update.
+
+Limits: UI tests use Streamlit widget stubs, not the live hosted app. GitHub tests use synthetic data and mocked requests. No live deployment, authenticated private storage, or real bedside pacemaker was tested. The parser copies documented fields and cannot determine whether pacing is currently capturing or whether the pasted settings are current.

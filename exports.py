@@ -20,6 +20,7 @@ from output_text import medication_output
 from fen_gi import effective_section, fen_gi_body
 from feeds import feeds_for_output
 from devices import devices_text, devices_markup
+from pacemaker import pacemaker_text
 from lab_layout import laboratory_flowables, laboratory_html, LabRow
 from cultures import cultures_text
 from viral import viral_text
@@ -84,7 +85,11 @@ def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
         return fen_gi_body(sheet["fields"][section], sheet["medications"], sheet["intake_output"], True, esc, feeds=feeds_for_output(sheet), feeds_failed=any(i["action"] == "feeds_hidden" for i in sheet["import_warnings"].get("t", [])))
     if section in INFUSION_SECTIONS:
         body = render_body_blocks(system_body_blocks(section, sheet["fields"][section], sheet["medications"]), True, esc)
-        return esc(infusion_section_prefix(sheet, section, bool(body.strip()))) + body
+        prefix = esc(infusion_section_prefix(sheet, section, bool(body.strip())))
+        pacing = pacemaker_text(sheet) if section == "Cardiovascular" else ""
+        if pacing:
+            prefix = prefix.replace(esc(pacing), "<b>" + esc(pacing) + "</b>", 1)
+        return prefix + body
     if section == "Diagnoses":
         plain = viral_text(sheet["viral_panel"])
         if plain and text.endswith(plain):
@@ -194,6 +199,8 @@ def _clinical_markup(text: str) -> str:
     value = escape(_pdf_text(text))
     # Keep short score/value pairs together at a line boundary. This changes
     # layout only, never the underlying score or stored text.
+    if "Pacemaker:" in text:
+        value = re.sub(r"(\d+(?:\.\d+)?)\s+bpm\b", r"\1&#160;bpm", value)
     return re.sub(r"\b(SBS|RASS)\s+([+-]?\d+(?:\.\d+)?)", r"\1&#160;\2", value)
 
 
@@ -229,7 +236,11 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: b
         q = []
         prefix_text = infusion_section_prefix(sheet, section, bool(blocks)).rstrip("\n")
         if prefix_text:
-            q.extend(paragraphs(prefix_text))
+            prefix_markup = _clinical_markup(prefix_text)
+            pacing = pacemaker_text(sheet) if section == "Cardiovascular" else ""
+            if pacing:
+                prefix_markup = prefix_markup.replace(_clinical_markup(pacing), "<b>" + _clinical_markup(pacing) + "</b>", 1)
+            q.extend(paragraphs(prefix_markup, rich=True))
         index = 0
         while index < len(blocks):
             kind, item = blocks[index]

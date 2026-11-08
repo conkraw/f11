@@ -163,13 +163,13 @@ def test_schema15_migration_preserves_every_old_field():
     old = new_vault()
     old['schema'] = 15;old.pop("reset_generation", None);old["settings"].pop("medication_groups", None)
     old['rooms']['P4102'] = new_sheet('P4102')
-    old['rooms']['P4102'].pop("feeds", None);old['rooms']['P4102'].pop("devices", None);old['rooms']['P4102'].pop("neuro_devices", None);old['rooms']['P4102'].pop('import_warnings')
+    old['rooms']['P4102'].pop("feeds", None);old['rooms']['P4102'].pop("devices", None);old['rooms']['P4102'].pop("neuro_devices", None);old['rooms']['P4102'].pop("pacemaker", None);old['rooms']['P4102'].pop('import_warnings')
     old['rooms']['P4102']['fields']['FEN / GI'] = 'Keep all notes'
     before = deepcopy(old)
     new = upgrade_vault(old)
-    assert old == before and new['schema'] ==20
+    assert old == before and new['schema'] ==21
     assert new['settings'] == dict(old['settings'], medication_groups=[])
-    assert new['rooms']['P4102'] == dict(old['rooms']['P4102'], import_warnings={}, feeds=None,devices=None,neuro_devices=None)
+    assert new['rooms']['P4102'] == dict(old['rooms']['P4102'], import_warnings={}, feeds=None,devices=None,neuro_devices=None,pacemaker=None)
 
 
 def test_warnings_on_html_text_pdf_and_multiple_pages():

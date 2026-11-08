@@ -241,21 +241,21 @@ def test_html_escapes_labels_and_status_no_script_injection():
 
 def test_schema19_migration_keeps_every_previous_field_generation_and_times():
     v=save_sheet_in(new_vault(),new_sheet('P4102'));v['schema']=19
-    for s in v['rooms'].values():s.pop('devices');s.pop('neuro_devices')
+    for s in v['rooms'].values():s.pop('devices');s.pop('neuro_devices');s.pop("pacemaker", None)
     v['reset_generation']='d'*32
     v['rooms']['P4102']['fields']['Access']='MANUAL LINE NOTE'
     before=deepcopy(v);key=generate_key()
     old=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     migrated=open_vault(old,key)
-    assert v==before and migrated['schema']==SCHEMA_VERSION==20
+    assert v==before and migrated['schema']==SCHEMA_VERSION==21
     assert migrated['settings']==before['settings'] and migrated['reset_generation']==before['reset_generation']
-    for room,s in before['rooms'].items():assert migrated['rooms'][room]==dict(s, devices=None,neuro_devices=None)
+    for room,s in before['rooms'].items():assert migrated['rooms'][room]==dict(s, devices=None,neuro_devices=None,pacemaker=None)
     assert open_vault(seal_vault(migrated,key),key)==migrated
 
 
 def test_old19_with_unexpected_field_is_not_silently_discarded():
     v=new_vault();v['schema']=19;v['rooms']['P4102']=new_sheet('P4102')
-    v['rooms']['P4102'].pop('devices');v['rooms']['P4102'].pop('neuro_devices')
+    v['rooms']['P4102'].pop('devices');v['rooms']['P4102'].pop('neuro_devices');v['rooms']['P4102'].pop("pacemaker", None)
     v['rooms']['P4102']['unknown']='KEEP'
     with pytest.raises(ValueError):upgrade_vault(v)
 
@@ -338,11 +338,11 @@ def test_schema19_session_upgrade_preserves_unsaved_draft(app):
     open_room(app);app.save_room(None);ss=app.st.session_state
     ss['vault']['schema']=19
     for s in (ss['vault']['rooms']['P4102'],ss['drafts']['P4102'],ss['base_sheets']['P4102']):
-        s.pop('devices');s.pop('neuro_devices')
+        s.pop('devices');s.pop('neuro_devices');s.pop("pacemaker", None)
     ss['drafts']['P4102']['fields']['Neurologic']='UNSAVED MANUAL NOTE'
     app.upgrade_existing_session()
     assert ss['drafts']['P4102']['fields']['Neurologic']=='UNSAVED MANUAL NOTE'
-    assert ss['drafts']['P4102']['devices'] is None and ss['vault']['schema']==20
+    assert ss['drafts']['P4102']['devices'] is None and ss['vault']['schema']==21
 
 @pytest.mark.parametrize('text', ['Endotracheal Tube: None','Urinary Catheter: --','Intracranial Pressure Monitor: No data recorded','No EVD','No ETT present','Tracheostomy Tube: N/A'])
 def test_empty_headers_and_absence_statements_do_not_invent_devices(text):

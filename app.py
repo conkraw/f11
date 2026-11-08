@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.26: device footer and EVD status."""
+"""PICU SmartPhrase v6.27: W-section pacemaker mode and rate."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -43,6 +43,8 @@ from demographics import validate_dosing_weight, validate_admission_date, demogr
 from cultures import validate_cultures, cultures_text, compact_groups, category_for
 from viral import validate_viral_panel, viral_text
 from microbiology_display import culture_markup, viral_markup
+from pacemaker import (validate_pacemaker, format_pacemaker, pacemaker_text,
+                       EDIT_FIELDS as PACER_FIELDS, STATUSES as PACER_STATUSES, normalize_mode, normalize_rate)
 from devices import validate_devices, EDIT_FIELDS as DEVICE_EDIT_FIELDS, device_line, devices_markup, evd_text
 from feeds import METHODS as FEED_METHODS, validate_feeds, feeds_text, feeds_for_output
 from fluid_balance import FIELDS as IO_FIELDS, META_FIELDS as IO_META_FIELDS, validate_balance, balance_text, empty_balance
@@ -104,7 +106,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_")):
             st.session_state.pop(key, None)
 
 
@@ -229,6 +231,16 @@ def editor_snapshot(room: str) -> dict:
             for field, widget in (("value", key), ("include", key + "_include")):
                 if widget in ss:
                     row[field] = ss[widget]
+    if sheet["pacemaker"] is not None:
+        for field in PACER_FIELDS:
+            key = "pacer_" + sheet["id"] + "_" + field
+            if key in ss:
+                value = ss[key]
+                if field == "mode":
+                    value = normalize_mode(value)
+                elif field in ("atrial_rate", "ventricular_rate", "rate"):
+                    value = normalize_rate(value)
+                sheet["pacemaker"][field] = value
     if sheet["nutrition"] is not None:
         for field in ("weight", "z_score", "include"):
             key = "weight_" + sheet["id"] + "_" + field
@@ -1221,7 +1233,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.26 | Devices and EVD status")
+        st.caption("Version 6.27 | Pacemaker mode and rate")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1503,6 +1515,8 @@ def handoff_page(store: GitHubVault | None) -> None:
             if key not in ss:
                 ss[key] = sheet["fields"][section]
             with st.expander(section_label(section), expanded=section == "Diagnoses"):
+                if section == "Cardiovascular":
+                    pacemaker_editor(sheet)
                 if section == "FEN / GI":
                     intake_output_editor(sheet)
                     feeds_editor(sheet)
@@ -2112,6 +2126,51 @@ def device_row_change(room: str, source: str, row_id: str, field: str, key: str)
         note(str(exc), "error")
 
 
+def pacemaker_change(room: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room") or field not in PACER_FIELDS:
+        return
+    ss = st.session_state
+    old = ss["drafts"][room]["pacemaker"]
+    if old is None:
+        return
+    candidate = deepcopy(old)
+    try:
+        value = ss[key]
+        if field == "mode":
+            value = normalize_mode(value)
+        elif field in ("atrial_rate", "ventricular_rate", "rate"):
+            value = normalize_rate(value)
+        candidate[field] = value
+        validate_pacemaker(candidate)
+        ss["drafts"][room]["pacemaker"] = candidate
+    except ValueError as exc:
+        ss[key] = old[field]
+        note(str(exc), "error")
+
+
+def pacemaker_editor(sheet: dict) -> None:
+    data = sheet["pacemaker"]
+    if data is None:
+        return
+    with st.expander("Edit pacemaker", expanded=False):
+        if any(i["action"] == "pacemaker_hidden" for i in sheet["import_warnings"].get("w", [])):
+            st.warning("W was not updated. The previous pacemaker settings below are hidden until reviewed or reimported.")
+        st.caption("W supplies pacer mode and atrial/ventricular rate. Blank values remain UNK. The patient heart rate and output in milliamps are not used as a pacing rate.")
+        for field, label in (("mode", "Pacer mode"), ("atrial_rate", "Atrial rate (bpm)"),
+                             ("ventricular_rate", "Ventricular rate (bpm)"), ("rate", "Generic set rate (bpm)"),
+                             ("status", "Pacemaker status"), ("include", "Include pacemaker on handoff")):
+            key = "pacer_" + sheet["id"] + "_" + field
+            if key not in st.session_state:
+                st.session_state[key] = data[field]
+            args = (sheet["room"], field, key)
+            if field == "include":
+                st.checkbox(label, key=key, on_change=pacemaker_change, args=args)
+            elif field == "status":
+                st.selectbox(label, PACER_STATUSES, key=key, on_change=pacemaker_change, args=args)
+            else:
+                st.text_input(label, key=key, max_chars=100, on_change=pacemaker_change, args=args)
+
+
 def devices_editor(sheet: dict) -> None:
     with st.expander("Devices / airway and EVD", expanded=False):
         st.caption("U adds the bottom device inventory. V adds EVD status to Neurologic. Removed ETTs are airway history, not a current airway. Other removed devices are excluded.")
@@ -2269,12 +2328,13 @@ def import_review_editor(sheet: dict) -> None:
         return
     st.warning(summary)
     with st.expander("Review skipped or incomplete imports", expanded=False):
-        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed orders, feeds and device imports are retained for review but hidden from print. Do not treat skipped values as refreshed.")
+        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed orders, feeds, device and pacemaker imports are retained for review but hidden from print. Do not treat skipped values as refreshed.")
         for section, items in sheet["import_warnings"].items():
             for item in items:
                 st.text(diagnostic_text(item))
             label = ("Use retained orders after checking Epic" if section == 'r' else
                      "Use retained feeds after checking Epic" if section == 't' and any(i['action'] == 'feeds_hidden' for i in items) else
+                     "Use retained pacemaker settings after checking Epic" if section == "w" and any(i["action"] == "pacemaker_hidden" for i in items) else
                      "Use retained devices after checking Epic" if section in ('u', 'v') and any(i['action'].endswith('_hidden') for i in items) else
                      "Acknowledge reviewed omissions" if any(i['action'].endswith('omitted') for i in items) else
                      "Accept retained values after checking Epic")

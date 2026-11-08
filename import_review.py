@@ -10,9 +10,10 @@ SECTIONS = {
     'e': 'Vitals', 'f': 'Cultures', 'g': 'Labs', 'i': 'Weight',
     'k': 'Arousal target', 'l': 'WAT', 'm': 'ICP / CPP', 'n': 'Admission',
     'o': 'Viral panel', 'p': 'Blood gas', 'q': 'CBC', 'r': 'Orders',
-    's': 'Intake / output', 't': 'Feeds', 'u': 'Devices', 'v': 'Neuro devices', 'document': 'Paste',
+    's': 'Intake / output', 't': 'Feeds', 'u': 'Devices', 'v': 'Neuro devices', 'w': 'Pacemaker', 'document': 'Paste',
 }
 CODES = {
+    'pacemaker_incomplete': 'A pacemaker mode or matching rate was not supplied. Missing values are shown as UNK.',
     'section_parse_failed': 'This section was not updated. Previous values are retained for review.',
     'section_boundary': 'Section boundaries were not reliable. This section was not updated.',
     'parser_exception': 'An unexpected parser problem occurred. This section was not updated.',
@@ -36,7 +37,7 @@ CODES = {
     'document_rejected': 'The paste could not be assigned safely to one handoff. Nothing was changed.',
 }
 FIELDS = {'', 'WBC', 'HGB', 'HGB_ISTAT', 'HCT', 'HCT_ISTAT', 'MCV', 'PLT', 'ANC', 'ALC', 'method', 'formula', 'rate', 'device_date', 'device_size', 'device_secured', 'device_status'}
-ACTIONS = {'not_updated', 'orders_hidden', 'cell_omitted', 'row_omitted', 'nothing_changed', 'field_unknown', 'feeds_hidden', 'devices_hidden', 'neuro_devices_hidden'}
+ACTIONS = {'not_updated', 'orders_hidden', 'cell_omitted', 'row_omitted', 'nothing_changed', 'field_unknown', 'feeds_hidden', 'devices_hidden', 'neuro_devices_hidden', 'pacemaker_hidden'}
 
 
 def diagnostic(section: str, code: str, *, line: int = 0, column: int = 0,
@@ -74,7 +75,7 @@ def diagnostic_text(item: dict) -> str:
     position = (' | line ' + str(item['line']) if item['line'] else '')
     position += (' | column ' + str(item['column']) if item['column'] else '')
     field = (' | ' + item['field']) if item['field'] else ''
-    return SECTIONS[item['section']] + field + position + ': ' + CODES[item['code']] + (' Previous automatic orders are hidden from print.' if item['action'] == 'orders_hidden' and item['code'] != 'orders_skipped' else '') + (' Previous automatic feeds are hidden from print.' if item['action'] == 'feeds_hidden' else '') + (' Previous automatic device details are hidden from print.' if item['action'] in ('devices_hidden', 'neuro_devices_hidden') else '')
+    return SECTIONS[item['section']] + field + position + ': ' + CODES[item['code']] + (' Previous automatic orders are hidden from print.' if item['action'] == 'orders_hidden' and item['code'] != 'orders_skipped' else '') + (' Previous automatic feeds are hidden from print.' if item['action'] == 'feeds_hidden' else '') + (' Previous automatic device details are hidden from print.' if item['action'] in ('devices_hidden', 'neuro_devices_hidden') else '') + (' Previous automatic pacemaker settings are hidden from print.' if item['action'] == 'pacemaker_hidden' else '')
 
 
 def review_summary(sheet: dict) -> str:
@@ -84,6 +85,10 @@ def review_summary(sheet: dict) -> str:
             note = 'orders skipped; prior list hidden'
         elif section == 't' and any(item['action'] == 'feeds_hidden' for item in items):
             note = 'not updated; prior feeds hidden'
+        elif section == 'w' and any(item['action'] == 'pacemaker_hidden' for item in items):
+            note = 'not updated; prior pacemaker settings hidden'
+        elif section == 'w':
+            note = 'mode or matching rate missing; verify settings'
         elif section in ('u', 'v') and any(item['action'] in ('devices_hidden', 'neuro_devices_hidden') for item in items):
             note = 'not updated; prior devices hidden'
         elif any(item['action'] == 'not_updated' for item in items):

@@ -122,3 +122,11 @@ vvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 Intracranial Pressure Monitor:
 [Insert your Epic ICP/ventriculostomy device SmartLink with Drain Status.]
 vvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
+
+wwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+Pacemaker:
+[Insert your Epic pacemaker SmartLink with Pacemaker Yes/No, Pacer Mode, and
+Atrial Rate (beats/min) and/or Ventricular Rate (beats/min). Do not replace
+this source definition with an example patient result.]
+wwwwwwwwwwwwwwwwwwwwwwwwwwwwww

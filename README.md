@@ -1,3 +1,13 @@
+# PICU Handoff 6.27: Pacemaker mode and rate
+
+Complete ZIP update. Read PACEMAKER_UPDATE.md or START_HERE.html first.
+
+W adds the documented pacer mode and rate to Cardiovascular, below vital signs and above CV Infusions. Example: Pacemaker: AAI at 140 bpm. Blank or negative W clears the snapshot. An omitted W preserves it. No heartbeat or output-current value is used as a pacing rate.
+
+Existing credentials and dependencies stay unchanged. Schema 20 migrates to 21 with all prior data preserved. Do not downgrade after saving. The following notes describe earlier releases.
+
+---
+
 # PICU Handoff 6.26: Devices and EVD status
 
 Complete ZIP update. Read DEVICES_UPDATE.md or START_HERE.html first.
