@@ -1,8 +1,11 @@
-COMPLETE VERSION 6.31 PACKAGE
+COMPLETE VERSION 6.32 PACKAGE
 Replace matching files, keeping app.py at the root.
-Changed runtime modules: app.py, anthropometrics.py, problem_review.py,
+Changed runtime modules: app.py, anthropometrics.py, parser.py, importing.py,
 exports.py, error_store.py, user_guide.py.
-No new runtime module, dependency, or archive schema change.
-Keep both passwords, encryption key, token, settings, private data repository,
-and your existing public CDC BMI reference CSV unchanged.
-No generators need to run. See COMPACT_PROBLEMS_UPDATE.md and TEST_REPORT.md.
+No new dependency or archive schema change.
+Keep both passwords, encryption key, token, medication mappings, private data
+repository, and your existing public CDC BMI reference CSV unchanged.
+Do not rerun the setup generators.
+Re-paste the affected SmartPhrase after updating, then Create / update handoff
+and Save handoff, to correct previously stored diagnosis text.
+Read AGE_SEX_UPDATE.md and TEST_REPORT.md.

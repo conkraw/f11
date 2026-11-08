@@ -37,10 +37,17 @@ BOTTOM = ("Other Medications", "Lab Results / Trends", "Goals / Follow-up")
 ACCESS_FIELDS = ("Airway", "Last Intubation", "Access", "Drains / Tubes")
 
 
+def patient_header(sheet: dict) -> str:
+    attributes = sheet.get("anthropometrics", {})
+    return "\n".join(("Room: " + sheet["room"],
+                      "Age: " + (attributes.get("age") or "--"),
+                      "Sex: " + (attributes.get("sex") or "--")))
+
+
 @stable_window_clock
 def handoff_text(sheet: dict, printed_at: datetime | None = None) -> str:
     fields = fields_with_medications(sheet)
-    parts = ["Print prepared: " + eastern_print_time(printed_at), "PICU HANDOFF", "Room: " + sheet["room"], "Age: " + (sheet.get("anthropometrics", {}).get("age") or "--"), "Handoff reference: " + sheet["id"][:8],
+    parts = ["Print prepared: " + eastern_print_time(printed_at), "PICU HANDOFF", patient_header(sheet), "Handoff reference: " + sheet["id"][:8],
              "Saved (UTC): " + (sheet["updated_at"] or "Unsaved draft"),
              "Confirm patient identity in Epic. A room is not a patient identifier."]
     if review_summary(sheet):
@@ -57,7 +64,7 @@ def handoff_text(sheet: dict, printed_at: datetime | None = None) -> str:
 
 
 def patient_column(sheet: dict, fields: dict) -> str:
-    lines = ["Room: " + sheet["room"] + "\nAge: " + (sheet.get("anthropometrics", {}).get("age") or "--")]
+    lines = [patient_header(sheet)]
     if fields["Demographics / Weight"].strip():
         lines.append(fields["Demographics / Weight"].strip())
     if fields["Diagnoses"].strip():
@@ -109,7 +116,7 @@ def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
 
 
 def patient_markup(sheet: dict, fields: dict, esc=escape) -> str:
-    lines = [esc("Room: " + sheet["room"] + "\nAge: " + (sheet.get("anthropometrics", {}).get("age") or "--"))]
+    lines = [esc(patient_header(sheet))]
     if fields["Demographics / Weight"].strip():
         lines.append(field_markup(sheet, fields, "Demographics / Weight", esc).strip())
     if fields["Diagnoses"].strip():

@@ -194,7 +194,7 @@ def test_empty_omitted_and_q_precedence():
     base=imported()
     base['labs']=parse_labs('LABS:\nWBC\t999\t01/07/26\nHGB\t99\t01/07/26\nNA\t140\t01/07/26').data
     original=deepcopy(base)
-    assert '999' not in handoff_text(base)
+    assert 'WBC: 999' not in handoff_text(base)
     out=import_sections(base,wrap('g','LABS:\nNA\t139\t01/08/26'),new_vault()['settings'])
     assert not out.errors and out.sheet['cbc']==base['cbc']
     cleared=imported('',base)

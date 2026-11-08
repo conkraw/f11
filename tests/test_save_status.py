@@ -323,7 +323,7 @@ def test_room_page_places_timestamp_next_to_room_heading_and_in_all_room_list(ap
     events = capture_page(app, monkeypatch)
     app.handoff_page(Store())
     heading = events.index(('subheader', 'Room P4301'))
-    assert events[heading + 1] == ('caption', 'Age: --')
+    assert events[heading + 1] == ('caption', 'Age: -- | Sex: --')
     assert events[heading + 2] == ('caption', 'Last saved to GitHub: ' + DISPLAY)
     assert events[heading + 3] == ('caption', 'Saved')
     tables = [text for kind, text in events if kind == 'markdown' and 'Handoff save status' in text]

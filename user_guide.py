@@ -57,7 +57,7 @@ Lactate, theophylline and CK use a rolling 24-hour display window. CRP and proca
 
 ## Age, sex and BMI
 
-Place Age and Sex lines inside the I / NUTRITION or N / admission dividers. Sex: Male, Female, M and F are accepted, including a value on the next line. BMI and its percentile are omitted from the handoff for children under 24 months and when age is not established. Source measurements remain in the editor and archive. At age 2 or older, the recorded BMI can print. A percentile requires age at measurement in months, explicit growth-chart sex and the configured CDC reference. Missing-percentile explanations stay in the editor rather than taking space on the printed sheet.
+Place explicit Age: and Sex: fields inside A / Diagnoses, I / NUTRITION, or N / admission. The combined line Age: 6 y.o. Sex: female is supported. Age and sex print directly below Room and are not part of the diagnosis list. Male, Female, M and F are accepted, including a value on the next line. A years-only age is not assumed to include an exact month. BMI and its percentile are omitted from the handoff for children under 24 months and when age is not established. Source measurements remain in the editor and archive. At age 2 or older, the recorded BMI can print. A percentile requires age at measurement in months, explicit growth-chart sex and the configured CDC reference. Missing-percentile explanations stay in the editor rather than taking space on the printed sheet.
 
 ## 8. Save and confirm
 

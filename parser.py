@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import re
+from anthropometrics import extract_age_sex
 
 SECTION_NAMES = {
     "a": "Diagnoses", "b": "Medications", "c": "Invasive Ventilation",
@@ -34,6 +35,7 @@ class ParseResult:
     invalid: set[str] = field(default_factory=set)
     diagnosis_error: str = ""
     diagnoses: list[str] = field(default_factory=list)
+    demographics: dict[str, str] = field(default_factory=dict)
 
 
 def parse_smartphrase(text: str) -> ParseResult:
@@ -116,9 +118,16 @@ def parse_smartphrase(text: str) -> ParseResult:
     if "a" not in result.blocks or "a" in result.invalid:
         result.diagnosis_error = "Diagnoses could not be imported safely. Use one complete a-divider pair with Diagnoses: inside."
         return result
-    body = result.blocks["a"].splitlines()
+    metadata = extract_age_sex(result.blocks["a"], allow_inline_suffix=True)
+    if metadata.error:
+        result.diagnosis_error = metadata.error
+        return result
+    result.demographics = metadata.values
+    body = metadata.remainder.splitlines()
     # Drop blank lines and the first heading only. Do not alter medical wording/codes.
     lines = [ln.strip() for ln in body if ln.strip()][1:]
+    if not lines and result.demographics:
+        return result  # A metadata-only update must not erase existing diagnoses.
     if not lines:
         result.diagnosis_error = "The Diagnoses section is empty. Existing content has not been changed."
         return result

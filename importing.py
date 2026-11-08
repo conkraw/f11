@@ -93,8 +93,12 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 if parsed.diagnosis_error:
                     out.errors.append(parsed.diagnosis_error)
                     continue
-                candidate = apply_diagnoses(candidate, "\n".join(parsed.diagnoses), settings["diagnoses_destination"])
-                out.imported.append("Diagnoses")
+                if parsed.demographics:
+                    candidate.setdefault("anthropometrics", empty_anthropometrics()).update(parsed.demographics)
+                    out.imported.append("age / sex")
+                if parsed.diagnoses:
+                    candidate = apply_diagnoses(candidate, "\n".join(parsed.diagnoses), settings["diagnoses_destination"])
+                    out.imported.append("Diagnoses")
             elif letter == "b":
                 meds = parse_medications(parsed.blocks[letter], settings["medication_mappings"], settings.get("medication_visibility", []))
                 if meds.error:

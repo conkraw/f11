@@ -1,45 +1,48 @@
-# Version 6.31 validation report
+# Version 6.32 validation report
 
 ## Automated checks
 
-Original unchanged v6.30 baseline: 2,614 tests passed.
-Updated package: 2,661 tests passed (47 added regression cases).
-Full suite: python -m pytest -q
+2,702 tests passed with python -m pytest -q.
+The 2,661-case preceding suite was retained and 41 regression cases were added.
+One existing UI expectation was updated because the room caption intentionally
+now contains Sex as well as Age. Save timestamps and status positions remain
+unchanged. One older CBC assertion was narrowed to WBC: 999 rather than the
+substring 999 anywhere in the output, which could match a randomly generated
+record ID. No CBC implementation was changed. The full suite is rerun from
+an extracted delivery ZIP.
 
-Coverage added for same-line and next-line Sex fields (Male/Female/M/F) in I/N,
-under-24-month suppression, exact 24-month boundary, unknown-age suppression,
-no percentile calculation/reference lookup for under-two exports, preservation
-of source BMI/height/BSA, compact inline problem output, duplicate name handling,
-HTML escaping, optional hidden/confirmed choices, evidence-change behavior,
-Print all, PDF band-height accounting, and encrypted archive round trips.
-Only previous assertions for the intentionally changed output were revised.
+New coverage includes the exact combined Age: 6 y.o. Sex: female format,
+separate lines, next-line values, tabs, nonbreaking spaces, reversed label order,
+metadata appended to a diagnosis, custom diagnosis destinations, preservation
+of actual diagnosis text and wrapping, partial imports, conflicting/invalid
+values, absence of demographic inference from prose, archive round trips,
+old embedded-text correction on reimport, and all printed/exported header paths.
+
+Epic y.o./m.o./w.o./d.o. abbreviations are validated without manufacturing an
+exact month from a whole-year age. Existing BMI age gates are tested for these
+forms, including the 24-month boundary.
 
 ## Compatibility
 
-An encrypted synthetic archive was created with the original v6.30 code.
-Version 6.31 opened it with the same key and every stored field, decision,
-setting and save timestamp unchanged. The archive schema remains 24.
+Archive schema remains 24. Storage, encryption, clinical result parsers,
+medication mapping logic, saves, and clear-all behavior are unchanged.
+Existing records are not automatically rewritten at load. Re-paste affected
+text and use Create / update handoff to replace the older embedded Age/Sex
+wording with structured demographics. Save only through the existing controls.
 
-Byte-identical original modules include models, labs, laboratory windows, CBC,
-blood gases, medication parser, vital signs, feeds, devices, importing, BMI
-reference formulas and installer, GitHub storage, encryption, save status and
-clear-all logic. The full baseline regression suite was retained.
+Runtime modules changed: app.py, anthropometrics.py, parser.py, importing.py,
+exports.py, error_store.py, user_guide.py. No dependencies were added.
 
-## PDF checks
+## Printed check
 
-A dense synthetic handoff with 34 numbered neurologic notes required two pages
-in v6.30 and one page in v6.31, at 7.2-point body text with tightened spacing.
-All 34 notes were present in the new PDF. No clipping or text deletion was used.
-Longer synthetic handoffs were allowed to continue to a second page.
-
-The public synthetic preview has one landscape page at 7.2-point body text.
-It was rendered to a PNG and visually inspected. Problems is a single inline
-band, with no printed evidence or review-status prefixes. An infant BMI is
-retained in source data but absent from the printed demographics.
+The synthetic preview has one landscape page using 7.2-point body text.
+Its actual application-generated PDF was rendered to an image and inspected.
+The patient column begins with Room: P4201, Age: 6 y.o., Sex: Female, followed
+by Admission and Diagnoses. Age and Sex each print once. No clipping was seen.
 
 ## Limits
 
-These are software regression tests, not clinical validation.
-Interface callbacks use a simulated Streamlit interface; storage uses mocks.
-No live Streamlit deployment, private GitHub connection, or clinical environment
-was tested. No patient source texts or deployment secrets were added to the ZIP.
+Tests use synthetic data and simulated Streamlit/GitHub interfaces.
+No live Streamlit deployment, private repository, or clinical environment was
+tested. No live GitHub changes were made. This is a parsing/layout change,
+not clinical validation. No patient source text, keys, or secrets are bundled.

@@ -594,8 +594,8 @@ def neuro_weight_editor(sheet: dict) -> None:
     st.text_input("Date of admission", key=key, max_chars=32,
                   on_change=demographic_change, args=(sheet["room"], field, key))
     attributes = sheet.get("anthropometrics", empty_anthropometrics())
-    with st.expander("Age, BMI, height and BSA", expanded=True):
-        st.caption("Age prints directly below the room. For BMI percentile, supply age AT THE BMI MEASUREMENT in months or years and months, plus growth-chart sex. Age and sex are never inferred from diagnoses or a weight-chart footnote. BMI and BMI percentile are hidden from handoff output below age 2, or until age is documented. Imported values stay editable.")
+    with st.expander("Age, sex, BMI, height and BSA", expanded=True):
+        st.caption("Age and sex print directly below the room. The combined Epic line Age: 6 y.o. Sex: female is accepted in A, I, or N. For BMI percentile, supply age AT THE BMI MEASUREMENT in months or years and months, plus growth-chart sex. Only explicit Age: and Sex: labels are read, not clinical diagnoses or weight-chart footnotes. BMI and BMI percentile are hidden from handoff output below age 2, or until age is documented. Imported values stay editable.")
         for field, label in (("age", "Age (for example 5 years 2 months)"), ("sex", "Sex for BMI growth chart (Male / Female, or blank)"), ("bmi", "Recorded BMI (kg/m²)"), ("height", "Recorded Height (for example 100 cm)"), ("bsa", "Recorded BSA (for example 0.65 m²)")):
             key = "anthro_" + sheet["id"] + "_" + field
             if key not in st.session_state:
@@ -1291,7 +1291,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.31 | Compact problems and age-aware BMI")
+        st.caption("Version 6.32 | Age and sex below Room")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1507,7 +1507,8 @@ def handoff_page(store: GitHubVault | None) -> None:
         return
     sheet = ss["drafts"][room]
     st.subheader("Room " + room)
-    st.caption("Age: " + (sheet.get("anthropometrics", {}).get("age") or "--"))
+    st.caption("Age: " + (sheet.get("anthropometrics", {}).get("age") or "--") +
+               " | Sex: " + (sheet.get("anthropometrics", {}).get("sex") or "--"))
     status = display_room_save_status(room, store)
     st.caption(status.caption)
     st.caption(status.status + (". Changes save automatically when you change rooms." if status.unsaved else ""))

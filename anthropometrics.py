@@ -1,4 +1,4 @@
-"""Explicit demographic values. No DOB capture or age/sex inference from diagnoses.
+"""Explicit demographic values. No DOB capture or age/sex inference from prose.
 
 Age is the age at the BMI measurement. A years-only display is not treated as an
 exact age in months for a BMI percentile. BMI and BSA are imported, not derived
@@ -19,9 +19,22 @@ def empty_anthropometrics() -> dict:
     return {key: '' for key in FIELDS}
 
 
+def _age_for_math(text: str) -> str:
+    """Interpret Epic age abbreviations without changing the displayed wording."""
+    text = re.sub(r'\s+', ' ', text.strip().lower())
+    for pattern, unit in (
+        (r'\by\.?\s*o\.?(?!\w)', 'years'),
+        (r'\bm\.?\s*o\.?(?!\w)', 'months'),
+        (r'\bw\.?\s*o\.?(?!\w)', 'weeks'),
+        (r'\bd\.?\s*o\.?(?!\w)', 'days'),
+    ):
+        text = re.sub(pattern, unit, text)
+    return text
+
+
 def age_months(text: str) -> float | None:
     """Accept documented total months or years AND months. Never guess months."""
-    text = re.sub(r'\s+', ' ', text.strip().lower())
+    text = _age_for_math(text)
     match = re.fullmatch(r'(\d+(?:\.\d+)?)\s*(?:months?|mos?|m)', text)
     if match:
         return float(match.group(1))
@@ -32,6 +45,7 @@ def age_months(text: str) -> float | None:
 
 
 def age_bounds(text: str) -> tuple[float, float] | None:
+    text = _age_for_math(text)
     value = age_months(text)
     if value is not None:
         return value, value
@@ -61,7 +75,7 @@ def clean_field(key: str, value: str) -> str:
     if len(value) > 100:
         raise ValueError('A demographic field is too long.')
     if key == 'age':
-        if not re.fullmatch(r'\d+(?:\.\d+)?\s*(?:years?|yrs?|y|months?|mos?|m|weeks?|wks?|w|days?|d)(?:\s*(?:,|and)?\s*\d+\s*(?:months?|mos?|m|days?|d))?', value, re.I):
+        if not re.fullmatch(r'\d+(?:\.\d+)?\s*(?:years?|yrs?|y|months?|mos?|m|weeks?|wks?|w|days?|d)(?:\s*(?:,|and)?\s*\d+\s*(?:months?|mos?|m|days?|d))?', _age_for_math(value), re.I):
             raise ValueError('Use an age with units, for example 5 years 2 months, 14 months, or 10 days.')
         if age_months(value) is not None and age_months(value) > 1440:
             raise ValueError('Check the recorded age.')
@@ -106,9 +120,84 @@ class AnthropometricResult:
     error: str = ''
 
 
-def extract_anthropometrics(block: str) -> AnthropometricResult:
-    """Remove ONLY explicitly labeled measurements from I/N before old parsing."""
+AGE_SEX_LABEL = re.compile(
+    r'(?<!\w)(Age(?:\s+(?:in\s+months|at\s+(?:BMI\s+)?measurement))?'
+    r'|Sex(?:\s+for\s+growth\s+chart)?)\s*:[ \t]*', re.I)
+
+
+def extract_age_sex(block: str, *, allow_inline_suffix: bool = False) -> AnthropometricResult:
+    """Extract labeled patient age/sex, including one-line Epic metadata.
+
+    A metadata line may start with either label. In a diagnosis block, a trailing
+    Age AND Sex pair is also accepted, so older joined diagnosis text can be
+    reimported. A single embedded label (for example Bone age:) stays untouched.
+    Errors are static and never include source text.
+    """
     out = AnthropometricResult()
+    remaining = []
+    pending = None
+
+    def record(label: str, raw_value: str) -> bool:
+        key = 'age' if label.lower().startswith('age') else 'sex'
+        value = raw_value.strip()
+        if label.casefold() == 'age in months' and re.fullmatch(NUMBER, value):
+            value += ' months'
+        try:
+            value = clean_field(key, value)
+        except ValueError as exc:
+            out.error = str(exc)
+            return False
+        if key in out.values and out.values[key] and value and out.values[key] != value:
+            out.error = 'Conflicting demographic measurements were supplied in one section.'
+            return False
+        if value or key not in out.values:
+            out.values[key] = value
+        return True
+
+    for raw in block.replace('\r\n', '\n').replace('\r', '\n').splitlines():
+        text = raw.strip()
+        if not text:
+            remaining.append(raw)
+            continue
+        matches = list(AGE_SEX_LABEL.finditer(raw))
+        prefix = raw[:matches[0].start()] if matches else ''
+        keys = {m.group(1).split()[0].lower() for m in matches}
+        starts_line = bool(matches) and not prefix.strip()
+        suffix_pair = (allow_inline_suffix and keys == {'age', 'sex'}
+                       and not re.search(r'\b(?:bone|gestational|maternal|paternal|corrected)\s*$', prefix, re.I))
+        if matches and (starts_line or suffix_pair):
+            pending = None
+            if prefix.strip():
+                remaining.append(prefix.rstrip())
+            for index, match in enumerate(matches):
+                end = matches[index + 1].start() if index + 1 < len(matches) else len(raw)
+                value = raw[match.end():end].strip()
+                if not record(match.group(1), value):
+                    return out
+                if not value and index == len(matches) - 1:
+                    pending = match.group(1)
+            continue
+        if pending:
+            # A new heading does not become a missing demographic value.
+            if HEADER.match(text) or re.match(r'^(?:Dosing|Wt|Weight|Date of Admission|NUTRITION|Diagnoses)\b', text, re.I):
+                pending = None
+            else:
+                if not record(pending, text):
+                    return out
+                pending = None
+                continue
+        remaining.append(raw)
+    out.remainder = '\n'.join(remaining)
+    return out
+
+
+def extract_anthropometrics(block: str) -> AnthropometricResult:
+    """Remove explicitly labeled measurements from I/N before weight parsing."""
+    age_sex = extract_age_sex(block)
+    if age_sex.error:
+        return age_sex
+    block = age_sex.remainder
+    out = AnthropometricResult(values=dict(age_sex.values))
     remaining = []
     pending = None
     for raw in block.replace('\r\n', '\n').replace('\r', '\n').splitlines():
