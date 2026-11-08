@@ -169,7 +169,7 @@ def test_schema20_migration_preserves_all_prior_data():
     v=save_sheet_in(new_vault(),new_sheet('P4102'));v['schema']=20
     v['rooms']['P4102'].pop('pacemaker');v['rooms']['P4102'].pop("diet", None);before=deepcopy(v)
     m=upgrade_vault(v)
-    assert m['schema']==SCHEMA_VERSION==22 and v==before
+    assert m['schema']==SCHEMA_VERSION==23 and v==before
     assert m['rooms']['P4102']==dict(before['rooms']['P4102'],pacemaker=None,diet=None)
     assert m['settings']==v['settings'] and m['reset_generation']==v['reset_generation']
 
@@ -177,7 +177,9 @@ def test_schema20_migration_preserves_all_prior_data():
 def test_encrypted_round_trip_includes_pacer():
     v=save_sheet_in(new_vault(),imported());k=generate_key()
     encrypted=seal_vault(v,k)
-    assert b'AAI' not in encrypted and open_vault(encrypted,k)==v
+    # A three-character fragment can occur by chance in base64 ciphertext.
+    assert b'\"mode\": \"AAI\"' not in encrypted
+    assert open_vault(encrypted,k)==v
 
 
 def test_callbacks_capture_pending_edit_autosave_new_room(app):
@@ -232,7 +234,7 @@ def test_session20_migration_keeps_saved_and_unsaved_notes(app):
     ss['drafts']['P4102']['fields']['Cardiovascular']='Unsaved synthetic note'
     old_saved=ss['vault']['rooms']['P4102']['updated_at']
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==22
+    assert ss['vault']['schema']==23
     assert ss['drafts']['P4102']['pacemaker'] is None
     assert ss['drafts']['P4102']['fields']['Cardiovascular']=='Unsaved synthetic note'
     assert ss['vault']['rooms']['P4102']['updated_at']==old_saved

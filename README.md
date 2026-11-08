@@ -1,11 +1,18 @@
-# Version 6.28: diet summary and lactate endpoints
+# Version 6.29: demographics, fluid totals, latest vitals and Antiepileptic
 
-This is the complete application update. Upload all folder contents to the code
-repository, with app.py at its root. Keep the existing Streamlit Secrets, app
-password, Admin password, encryption key, GitHub token and private data archive.
-Do not run either secrets/password generator again. No new dependencies.
+## Update your existing app
+Save open work, extract PICU629.zip and upload the contents of
+PICU_Handoff_v6_29_Demographics_Vitals to your application code repository.
+Keep app.py at the repository root. Include anthropometrics.py, bmi_reference.py
+and the data folder. Keep all existing Secrets, both passwords, encryption key,
+token, medication rules and private data repository unchanged. Do not run the
+setup or password generators. No new Python packages are required.
 
-Read DIET_LACTATE_UPDATE.md for behavior and limits.
+The sidebar reads Version 6.29 | Demographics, latest vitals and Antiepileptic.
+Schema 22 migrates to 23 without changing existing room fields or settings.
+Do not downgrade after saving new demographic fields or Antiepileptic rules.
+
+Read DEMOGRAPHICS_VITALS_UPDATE.md and BMI_REFERENCE.md for the new features.
 
 The notes below are historical.
 

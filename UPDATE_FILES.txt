@@ -1,6 +1,6 @@
-Version 6.28 complete update
+Version 6.29 complete update
 
 Replace the full application folder contents, keeping app.py at repository root.
-New runtime file: diet.py
-Preserve all private Secrets and the existing data repository.
-Read DIET_LACTATE_UPDATE.md. No new dependencies.
+New runtime modules: anthropometrics.py, bmi_reference.py. Include data/README.md.
+Keep all private Secrets, both passwords, encryption key and data repository.
+Read DEMOGRAPHICS_VITALS_UPDATE.md and BMI_REFERENCE.md. No new dependencies.

@@ -109,8 +109,26 @@ def parse_balance(block: str) -> FluidBalanceResult:
     return result
 
 
-def balance_text(data: dict | None) -> str:
+def balance_text(data: dict | None, dosing_weight: str = "") -> str:
     validate_balance(data)
     if data is None or not data["include"]:
         return ""
-    return "\n".join(LABELS[name] + ": " + ("--" if data[name].strip().casefold() in MISSING else data[name].strip()) for name in FIELDS)
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    weight = re.fullmatch(r"(\d+(?:\.\d+)?)\s*(kg|g)", dosing_weight.strip(), re.I)
+    kg = Decimal(weight.group(1)) / (1000 if weight.group(2).lower() == "g" else 1) if weight else None
+    if kg is not None and kg <= 0:
+        kg = None
+    rows = []
+    for name in FIELDS:
+        value = "--" if data[name].strip().casefold() in MISSING else data[name].strip()
+        result = LABELS[name] + ": " + value
+        volume = re.fullmatch(rf"({NUMBER})\s*(ml|l|cc)", value, re.I)
+        if name in ("intake", "output") and kg and volume:
+            ml = Decimal(volume.group(1).replace(",", "").replace("−", "-")) * (1000 if volume.group(2).lower() == "l" else 1)
+            per_kg = (ml / kg).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+            number = format(per_kg, "f").rstrip("0").rstrip(".") if "." in str(per_kg) else str(per_kg)
+            result = ("In" if name == "intake" else "Out") + ": " + value + " (" + number + " mL/kg)"
+        rows.append(result)
+    if kg:
+        rows.append("Using dosing weight: " + dosing_weight)
+    return "\n".join(rows)

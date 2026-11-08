@@ -1,47 +1,44 @@
-# Version 6.28 validation
+# Version 6.29 verification
 
-The original Version 6.27 package passed all 2,229 inherited tests before edits.
-The updated suite passed 2,324 tests: 2,229 inherited tests plus 95 diet/lactate
-checks. Existing migration fixture shapes and current-schema expectations were
-updated for the new diet field. Lactate output assertions were updated for the
-requested endpoints. No inherited tests were removed or skipped.
+Baseline Version 6.28 suite: 2,324 tests passed.
+Updated suite: 2,420 tests passed.
+New feature module tests: 95 cases passed.
 
-Tests cover adult/pediatric regular and liquid diets, NPO with exceptions,
-tube-feeding types, PN/TPN/PPN and label exclusion, inactive order exclusion,
-multiple-order warnings, duplicated summaries, missing/empty X, independent
-partial updates, failed-X hiding, manual corrections, HTML escaping, room
-switch autosave, output inclusion, and encrypted storage.
+Executed checks cover explicit age/sex/BMI/height/BSA parsing, missing input gates,
+latest SpO2/ETCO2/CVP brackets, zero and flagged values, unit mismatches, independent
+section updates, dosing-weight-only mL/kg totals, immutable source totals,
+Antiepileptic defaults and saved additional-name rules, exact-rule precedence,
+hidden medications, continuous infusion emphasis, editor callbacks and exports.
 
-Lactate tests cover all requested aliases, cross-alias date selection, explicit
-time sorting, same-date ambiguity, numeric and flagged results, zero, supplied
-units, comparisons, rejected samples, nonnumeric values, exclusions, empty
-snapshots, and preservation of source records. Nothing is averaged or converted.
-The earliest result is only the earliest in the pasted G snapshot.
+The BMI formula was checked against both published CDC examples below and above
+P95. Public-reference validation, completeness, atomic installation and a mocked
+fixed-URL download were tested using artificial structure fixtures. Those fixtures
+are never installed as reference data. A complete official CDC table was not
+available in this build environment. Load it in Admin or place the official CSV
+at data/cdc_bmi_age_2022.csv. No real patient percentile was calculated.
 
-Eight supplied X-section excerpts and four supplied lactate-row patterns were
-checked separately. Original complete patient documents are not included in
-this package, and are not claimed to have been tested end-to-end in this update.
+An archive was generated and encrypted by the original Version 6.28 code, then
+opened by this version with the same synthetic key. Every previous room field,
+setting and save timestamp compared equal. Schema 22 becomes 23. New demographics
+and Antiepileptic prefix rules also survive encrypted round-trip tests.
 
-A synthetic archive was generated with the actual original Version 6.27 code,
-encrypted, and opened with Version 6.28 using the same key. Every prior room
-field, setting, saved timestamp and reset generation was preserved. The only
-new snapshot is diet=null and the schema changes from 21 to 22. A second
-same-key encrypted round trip passed.
+Four supplied E/I example patterns were checked, including last-value alert flags,
+missing last readings, measured weights in grams and kg, and BMI prose. Their
+age and sex were not invented. User source files are excluded from the package.
 
-Three synthetic landscape preview pages were rendered and visually inspected.
-Each room fits on one page. Diet appears below intake/output and before feeds.
-Lactate appears in Cardiovascular after vital signs/pacing, before CV Infusions.
-The two values retain their individual dates and original component codes.
+Two synthetic room PDFs rendered on two landscape pages. Both were visually
+inspected after rendering. Age is directly below Room. Intake/output include the
+recorded dosing-weight denominator. Antiepileptic infusion emphasis is retained.
+The preview intentionally shows the under-2 percentile restriction and missing
+reference-data state. The HTML is a corresponding synthetic preview.
 
-Unchanged runtime modules, byte-for-byte compared with the delivered 6.27 ZIP:
+The following runtime parsers are byte-for-byte unchanged from Version 6.28:
+cbc.py, blood_gases.py, labs.py, lab_layout.py, feeds.py, diet.py, devices.py,
+pacemaker.py, cultures.py, recurring_orders.py, ventilation.py, noninvasive.py.
 
-admin_access.py, blood_gases.py, cbc.py, create_secrets.py, cultures.py, demographics.py, devices.py, feeds.py, fluid_balance.py, github_store.py, guide_store.py, handoff_reset.py, infusions.py, lab_layout.py, medication_groups.py, medications.py, microbiology_display.py, noninvasive.py, observations.py, output_text.py, pacemaker.py, print_time.py, recurring_orders.py, save_status.py, security.py, set_admin_password.py, user_guide.py, ventilation.py, viral.py, vitals.py.
-
-The delivery ZIP is read back and verified with SHA256SUMS.txt. The full test
-suite is also rerun from an independent extraction of that ZIP. No deployment
-secrets, encryption keys, real patient input files or new font files are added.
-
-Limits: UI tests use Streamlit widget stubs. GitHub tests use mocked responses.
-The live Streamlit deployment and authenticated private repository were not
-accessed or tested. Missing collection times, stale orders and clinical context
-still require source review. The app does not make treatment decisions.
+Tests use interface stubs and mocked network calls where needed. Streamlit was
+not installed in this build environment. This is not a live Streamlit deployment,
+authenticated private-GitHub integration test, or clinical validation. No direct
+changes were made to the user's GitHub repositories. No credentials or reference
+font files are included. The complete ZIP is integrity checked and its extracted
+application is tested separately before delivery.

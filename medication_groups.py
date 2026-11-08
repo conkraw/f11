@@ -8,11 +8,11 @@ from copy import deepcopy
 import re
 from medications import match_name, normalized
 
-MODES = ("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "other")
+MODES = ("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic", "other")
 MODE_LABELS = {"auto": "Automatic", "dvt": "DVT Prophylaxis", "fever": "Fever Control",
-               "sedative_prn": "PRN", "paralytic_prn": "Paralytic PRN", "other": "No special grouping"}
-GROUP_NAMES = {key: MODE_LABELS[key] for key in ("dvt", "fever", "sedative_prn", "paralytic_prn")}
-GROUP_SECTIONS = {"dvt": "Hematology", "fever": "Neurologic", "sedative_prn": "Neurologic", "paralytic_prn": "Neurologic"}
+               "sedative_prn": "PRN", "paralytic_prn": "Paralytic PRN", "antiepileptic": "Antiepileptic", "other": "No special grouping"}
+GROUP_NAMES = {key: MODE_LABELS[key] for key in ("dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic")}
+GROUP_SECTIONS = {"dvt": "Hematology", "fever": "Neurologic", "sedative_prn": "Neurologic", "paralytic_prn": "Neurologic", "antiepileptic": "Neurologic"}
 
 
 def is_prn(row: dict) -> bool:
@@ -34,6 +34,8 @@ def automatic_group(row: dict) -> str:
             return "dvt"
     if re.match(r"^(?:acetaminophen|ibuprofen)\b", name):
         return "fever"
+    if re.match(r"^(?:phenytoin|fosphenytoin|phenobarbital|clobazam|clobozam|levetiracetam|valproic acid|pentobarbital)\b", name):
+        return "antiepileptic"
     if is_prn(row):
         if re.match(r"^(?:fentanyl|midazolam|ketamine|morphine|hydromorphone)\b", name):
             return "sedative_prn"
@@ -60,14 +62,16 @@ def validate_group_rules(rules: list[dict]) -> None:
         raise ValueError("The medication group rules are invalid or too large.")
     seen = set()
     for rule in rules:
-        if not isinstance(rule, dict) or set(rule) != {"name", "route", "frequency", "mode"}:
+        if not isinstance(rule, dict) or set(rule) - {"match"} != {"name", "route", "frequency", "mode"}:
             raise ValueError("A medication group rule has an invalid structure.")
         for key in ("name", "route", "frequency"):
             if not isinstance(rule[key], str) or len(rule[key]) > 4000 or any(c in rule[key] for c in "\n\r\t"):
                 raise ValueError("A medication group rule contains invalid text.")
         if not rule["name"] or rule["mode"] not in MODES[1:]:
             raise ValueError("A medication group rule has an invalid choice.")
-        key = (rule["name"], rule["route"], rule["frequency"])
+        if "match" in rule and (rule["match"] != "prefix" or rule["mode"] != "antiepileptic" or rule["route"] or rule["frequency"]):
+            raise ValueError("An Antiepileptic prefix rule is invalid.")
+        key = (rule["name"], rule["route"], rule["frequency"], rule.get("match", "exact"))
         if key in seen:
             raise ValueError("Duplicate medication group rules were found.")
         seen.add(key)
@@ -87,7 +91,10 @@ def set_group_rule(rules: list[dict], row: dict, mode: str) -> list[dict]:
 
 def group_mode_for(row: dict, rules: list[dict]) -> str:
     key = group_key(row)
-    return next((r["mode"] for r in rules if (r["name"], r["route"], r["frequency"]) == key), "auto")
+    exact = next((r["mode"] for r in rules if r.get("match") != "prefix" and (r["name"], r["route"], r["frequency"]) == key), None)
+    if exact is not None:
+        return exact
+    return "antiepileptic" if any(r.get("match") == "prefix" and re.match(r"^" + re.escape(r["name"]) + r"(?=$|[^a-z0-9])", key[0]) for r in rules) else "auto"
 
 
 def apply_group_rules(rows: list[dict], rules: list[dict]) -> list[dict]:

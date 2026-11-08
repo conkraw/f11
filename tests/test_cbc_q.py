@@ -251,7 +251,7 @@ def test_schema12_upgrade_preserves_old_gases_rows_mappings_and_fields():
     key=Fernet.generate_key().decode()
     cipher=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     new=open_vault(cipher,key)
-    assert old==before and new['schema']==SCHEMA_VERSION==22
+    assert old==before and new['schema']==SCHEMA_VERSION==23
     assert new['rooms']['P4102']==dict(sheet,cbc=None,recurring_orders=None,intake_output=None,import_warnings={},feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None)
     assert new['settings']==dict(old['settings'], medication_gi_groups=[], medication_groups=[])
     assert open_vault(seal_vault(new,key),key)==new

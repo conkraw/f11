@@ -323,8 +323,9 @@ def test_room_page_places_timestamp_next_to_room_heading_and_in_all_room_list(ap
     events = capture_page(app, monkeypatch)
     app.handoff_page(Store())
     heading = events.index(('subheader', 'Room P4301'))
-    assert events[heading + 1] == ('caption', 'Last saved to GitHub: ' + DISPLAY)
-    assert events[heading + 2] == ('caption', 'Saved')
+    assert events[heading + 1] == ('caption', 'Age: --')
+    assert events[heading + 2] == ('caption', 'Last saved to GitHub: ' + DISPLAY)
+    assert events[heading + 3] == ('caption', 'Saved')
     tables = [text for kind, text in events if kind == 'markdown' and 'Handoff save status' in text]
     assert len(tables) == 1 and 'P4301' in tables[0] and 'P4102' in tables[0]
 
@@ -392,5 +393,5 @@ def test_same_schema_roundtrip_preserves_all_times_and_custom_rooms():
     before = deepcopy(vault)
     key = generate_key()
     restored = open_vault(seal_vault(vault, key), key)
-    assert restored == before and SCHEMA_VERSION ==22
+    assert restored == before and SCHEMA_VERSION ==23
     assert room_save_status('P4301', restored['rooms']['P4301']).last_saved == LATER_DISPLAY

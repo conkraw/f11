@@ -37,7 +37,8 @@ from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
+from anthropometrics import empty_anthropometrics, validate_anthropometrics, measurements_text
 
 
 def section_label(section: str) -> str:
@@ -79,7 +80,7 @@ def new_vault() -> dict:
 
 
 def validate_sheet(sheet: dict) -> None:
-    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "devices", "neuro_devices", "pacemaker", "diet", "import_warnings"}:
+    if not isinstance(sheet, dict) or set(sheet) - {"anthropometrics"} != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "devices", "neuro_devices", "pacemaker", "diet", "import_warnings"}:
         raise ValidationError("The handoff structure is invalid.")
     if not isinstance(sheet["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", sheet["id"]):
         raise ValidationError("The handoff identifier is invalid.")
@@ -115,6 +116,7 @@ def validate_sheet(sheet: dict) -> None:
         validate_devices(sheet["neuro_devices"], "v")
         validate_pacemaker(sheet["pacemaker"])
         validate_diet(sheet["diet"])
+        validate_anthropometrics(sheet.get("anthropometrics", empty_anthropometrics()))
         validate_import_warnings(sheet["import_warnings"])
     except ValueError as exc:
         raise ValidationError(str(exc)) from None
@@ -183,13 +185,18 @@ def apply_diagnoses(sheet: dict, diagnosis_text: str, destination: str, append: 
 
 
 def upgrade_vault(vault: dict) -> dict:
-    """Migrate schemas 1-21 without replacing keys, notes or saved mappings."""
+    """Migrate schemas 1-22 without replacing keys, notes or saved mappings."""
     if not isinstance(vault, dict):
         raise ValidationError("The encrypted archive has an invalid structure.")
     version = vault.get("schema")
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
+    if version == 22:
+        candidate = deepcopy(vault)
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     if version == 21:
         if set(vault) != {"schema", "reset_generation", "settings", "rooms"} or not isinstance(vault["rooms"], dict):
             raise ValidationError("The previous archive structure is invalid. Nothing was discarded.")
@@ -404,7 +411,7 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
         section = effective_section(row)
         content = medication_output(format_medication(row))
         result[section] = (result[section].rstrip() + "\n" if result[section].strip() else "") + content
-    result["FEN / GI"] = fen_gi_body(sheet["fields"]["FEN / GI"], sheet["medications"], sheet["intake_output"], feeds=feeds_for_output(sheet), feeds_failed=any(i["action"] == "feeds_hidden" for i in sheet["import_warnings"].get("t", [])), diet=diet_for_output(sheet), diet_failed=diet_failed(sheet))
+    result["FEN / GI"] = fen_gi_body(sheet["fields"]["FEN / GI"], sheet["medications"], sheet["intake_output"], feeds=feeds_for_output(sheet), feeds_failed=any(i["action"] == "feeds_hidden" for i in sheet["import_warnings"].get("t", [])), diet=diet_for_output(sheet), diet_failed=diet_failed(sheet), dosing_weight=sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else "")
     scheduled = orders_text(orders_for_output(sheet))
     if "r" in sheet["import_warnings"]:
         scheduled = "Orders not imported. Review needed."
@@ -440,6 +447,9 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
     if nutrition:
         diagnosis = result["Diagnoses"].rstrip()
         result["Diagnoses"] = (diagnosis + "\n----\n" if diagnosis else "") + nutrition
+    measurements = measurements_text(sheet.get("anthropometrics", empty_anthropometrics()))
+    if measurements:
+        result["Diagnoses"] += "\n" + measurements
     positive = viral_text(sheet["viral_panel"])
     if positive:
         result["Diagnoses"] = result["Diagnoses"].rstrip() + ("\n" if result["Diagnoses"].strip() else "") + "----\n" + positive

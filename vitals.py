@@ -29,6 +29,10 @@ _NO_DATA = {'no data recorded', 'not recorded', 'not documented', 'none', 'n/a',
 
 def route(label: str) -> str:
     key = re.sub(r'\s+', ' ', label.strip().casefold().replace('₂', '2'))
+    if re.match(r'^last\s+', key):
+        return route(re.sub(r'^last\s+', '', key))
+    if re.match(r'^(?:pulse ox(?:imetry)?|pulse oxygen)\b', key):
+        return 'Respiratory'
     if re.match(r'^(?:icp|cpp|intracranial pressure|cerebral perfusion pressure|wat(?:[- ]?1)?|target arousal level|sbs|rass)\b', key):
         return 'Neurologic'
     if re.match(r'^(?:temp(?:erature)?|tmax|t min|t max)\b', key):
@@ -64,7 +68,7 @@ class VitalsResult:
 
 
 _SPO2_SUMMARY = re.compile(
-    r'^spo[2₂](?P<units>\s*\(\s*%\s*\))?\s*:?\s*'
+    r'^(?:spo[2₂]|pulse ox(?:imetry)?)(?P<units>\s*\(\s*%\s*\))?\s*:?\s*'
     r'(?=(?:avg|average|min|minimum|max|maximum)\s*:)', re.IGNORECASE,
 )
 _SUMMARY_STAT = re.compile(r'\b(avg|average|min|minimum|max|maximum)\s*:', re.IGNORECASE)
@@ -176,7 +180,20 @@ def parse_vitals(block: str) -> VitalsResult:
         text = raw.strip()
         if not text or text.rstrip(':').casefold() in ('vitals', 'vital signs', 'none', 'not documented'):
             continue
-        if text.rstrip('.:').casefold() == 'no data recorded' or _no_monitor_data(text):
+        last = re.match(r'(?i)^Last\s+(SpO[2₂]|Pulse Ox(?:imetry)?|ET\s*CO[2₂]|CVP)\s*:\s*(.*)$', text)
+        if last:
+            kind = monitor_kind(last.group(1))
+            value = last.group(2).strip()
+            value = re.sub(r'(?i)^(?:SpO[2₂]|Pulse Ox(?:imetry)?|ET\s*CO[2₂]|CVP)(?:\s*\([^)]*\))*\s*:\s*', '', value)
+            if not value or value.casefold().rstrip('.:') in _NO_DATA:
+                continue
+            if not re.fullmatch(r'(?:\(!\)\s*)?[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*(?:%|mm\s*Hg|cm\s*H[2₂]O|kPa)?', value, re.I):
+                out.issues.append('A latest monitor value could not be read. Its range was retained without a bracketed last value.')
+                continue
+            out.rows.append({'label': 'Last ' + kind, 'value': value,
+                             'section': 'Cardiovascular' if kind == 'CVP' else 'Respiratory', 'include': True})
+            continue
+        if text.rstrip('.:').casefold() == 'no data recorded'  or _no_monitor_data(text):
             continue
         try:
             summary = monitor_summary_range(text)
@@ -215,10 +232,60 @@ def parse_vitals(block: str) -> VitalsResult:
     return out
 
 
+def monitor_kind(label: str) -> str:
+    key = re.sub(r'\s+', ' ', label.strip().casefold().replace('₂', '2'))
+    key = re.sub(r'^last\s+', '', key)
+    if re.match(r'^(?:spo2|pulse ox(?:imetry)?)(?=$|[\s:(])', key):
+        return 'SpO2'
+    if re.match(rf'^{_ETCO2_NAME}(?=$|[\s:(])', key, re.I):
+        return 'ETCO2'
+    if re.match(rf'^{_CVP_NAME}(?=$|[\s:(])', key, re.I):
+        return 'CVP'
+    return ''
+
+
+def _latest_parts(value: str) -> tuple[str, str] | None:
+    # Also understands last-value rows saved by earlier releases in Other.
+    value = re.sub(r'(?i)^(?:SpO[2₂]|Pulse Ox(?:imetry)?|ET\s*CO[2₂]|CVP)(?:\s*\([^)]*\))*\s*:\s*', '', value.strip())
+    m = re.fullmatch(r'(?P<flag>\(!\)\s*)?(?P<number>[+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*(?P<unit>%|mm\s*Hg|cm\s*H[2₂]O|kPa)?', value, re.I)
+    if not m:
+        return None
+    unit = m.group('unit') or ''
+    unit = '%' if unit == '%' else _unit_name(unit)
+    return (('(!) ' if m.group('flag') else '') + m.group('number'), unit)
+
+
 def text_by_system(rows: list[dict]) -> dict[str, str]:
     result = {}
-    for row in rows:
-        if row['include']:
-            section = row['section']
-            result[section] = (result.get(section, '') + '\n' + row['label'] + ': ' + row['value']).strip()
+    active = [r for r in rows if r['include']]
+    consumed = set()
+    def add(section, text):
+        result[section] = (result.get(section, '') + '\n' + text).strip()
+    for index, row in enumerate(active):
+        kind = monitor_kind(row['label'])
+        is_last = row['label'].strip().lower().startswith('last ')
+        if is_last and kind:
+            continue
+        value = row['value']
+        if kind and ' to ' in value:
+            candidates = [(i, _latest_parts(r['value'])) for i, r in enumerate(active)
+                          if monitor_kind(r['label']) == kind and r['label'].strip().lower().startswith('last ')]
+            parts = {parts for _, parts in candidates if parts is not None}
+            if len(parts) == 1:
+                last_value, unit = next(iter(parts))
+                range_unit = '%' if '%' in value else next((_unit_name(m.group(0)) for m in re.finditer(_PRESSURE_UNIT, value, re.I)), '')
+                if (unit == range_unit) or not unit:
+                    value += ' [' + last_value + ']'
+                    consumed.update(i for i, parts in candidates if parts is not None)
+        add(row['section'], row['label'] + ': ' + value)
+    for index, row in enumerate(active):
+        kind = monitor_kind(row['label'])
+        if index in consumed or not kind or not row['label'].strip().lower().startswith('last '):
+            continue
+        if not row['value'].strip() or row['value'].strip().casefold() in _NO_DATA:
+            continue
+        has_range = any(monitor_kind(r['label']) == kind and ' to ' in r['value'] for r in active)
+        parts = _latest_parts(row['value'])
+        value = (parts[0] + (' ' + parts[1] if parts[1] else '')) if parts else row['value']
+        add('Cardiovascular' if kind == 'CVP' else 'Respiratory', ('Last ' if has_range else '') + kind + ': ' + value)
     return result

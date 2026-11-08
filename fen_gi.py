@@ -94,12 +94,12 @@ def apply_gi_rules(rows: list[dict], rules: list[dict]) -> list[dict]:
     return result
 
 
-def fen_gi_body(notes: str, rows: list[dict], intake_output: dict | None, rich: bool = False, esc=escape, feeds: dict | None = None, feeds_failed: bool = False, diet: dict | None = None, diet_failed: bool = False) -> str:
+def fen_gi_body(notes: str, rows: list[dict], intake_output: dict | None, rich: bool = False, esc=escape, feeds: dict | None = None, feeds_failed: bool = False, diet: dict | None = None, diet_failed: bool = False, dosing_weight: str = "") -> str:
     """Totals, then feeds.  Each visible order appears exactly once, without changing doses."""
     encode = esc if rich else lambda s: s
     meds = [r for r in rows if visible(r) and effective_section(r) == "FEN / GI"]
     sections = []
-    totals = balance_text(intake_output)
+    totals = balance_text(intake_output, dosing_weight)
     if totals:
         sections.append(encode(totals))
     diet_summary = diet_text(diet, rich, esc)

@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.28: diet summary and earliest/latest lactate."""
+"""PICU SmartPhrase v6.29: demographics, fluid totals, latest vitals and Antiepileptic."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -40,6 +40,8 @@ from vitals import validate_vitals, text_by_system
 from lab_layout import laboratory_html
 from observations import NEURO_SECTIONS, validate_neuro, validate_nutrition, format_nutrition
 from demographics import validate_dosing_weight, validate_admission_date, demographic_weight_text
+from anthropometrics import empty_anthropometrics, clean_field, validate_anthropometrics, measurements_text, FIELDS as ANTHRO_FIELDS
+from bmi_reference import bmi_percentile_summary, download_reference, install_reference, REFERENCE_PATH
 from cultures import validate_cultures, cultures_text, compact_groups, category_for
 from viral import validate_viral_panel, viral_text
 from microbiology_display import culture_markup, viral_markup
@@ -107,7 +109,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_", "diet_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_", "diet_", "anthro_")):
             st.session_state.pop(key, None)
 
 
@@ -254,6 +256,12 @@ def editor_snapshot(room: str) -> dict:
             if key in ss:
                 value = ss[key]
                 sheet["nutrition"][field] = value.strip() if isinstance(value, str) else value
+    for field in ANTHRO_FIELDS:
+        key = "anthro_" + sheet["id"] + "_" + field
+        if key in ss:
+            value = clean_field(field, ss[key])
+            if value or "anthropometrics" in sheet:
+                sheet.setdefault("anthropometrics", empty_anthropometrics())[field] = value
     for field in ("admission_date", "dosing_weight"):
         key = "demo_" + sheet["id"] + "_" + field
         if key in ss:
@@ -453,6 +461,23 @@ def nutrition_change(room: str, field: str, key: str) -> None:
         note(str(exc), "error")
 
 
+def anthropometric_change(room: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room") or field not in ANTHRO_FIELDS:
+        return
+    ss = st.session_state
+    previous = deepcopy(ss["drafts"][room].get("anthropometrics", empty_anthropometrics()))
+    try:
+        value = clean_field(field, ss[key])
+        data = dict(previous)
+        data[field] = value
+        validate_anthropometrics(data)
+        ss["drafts"][room]["anthropometrics"] = data
+        ss[key] = value
+    except ValueError as exc:
+        ss[key] = previous[field]
+        note(str(exc), "error")
+
+
 def demographic_change(room: str, field: str, key: str) -> None:
     if not require_session() or room != st.session_state.get("current_room"):
         return
@@ -557,6 +582,19 @@ def neuro_weight_editor(sheet: dict) -> None:
         st.session_state[key] = sheet[field]
     st.text_input("Date of admission", key=key, max_chars=32,
                   on_change=demographic_change, args=(sheet["room"], field, key))
+    attributes = sheet.get("anthropometrics", empty_anthropometrics())
+    with st.expander("Age, BMI, height and BSA", expanded=True):
+        st.caption("Age prints directly below the room. For BMI percentile, supply age AT THE BMI MEASUREMENT in months or years and months, plus growth-chart sex. Age and sex are never inferred from diagnoses or a weight-chart footnote.")
+        for field, label in (("age", "Age (for example 5 years 2 months)"), ("sex", "Sex for BMI growth chart (Male / Female, or blank)"), ("bmi", "Recorded BMI (kg/m²)"), ("height", "Recorded Height (for example 100 cm)"), ("bsa", "Recorded BSA (for example 0.65 m²)")):
+            key = "anthro_" + sheet["id"] + "_" + field
+            if key not in st.session_state:
+                st.session_state[key] = attributes[field]
+            st.text_input(label, key=key, max_chars=100, on_change=anthropometric_change,
+                          args=(sheet["room"], field, key))
+        summary, reason = bmi_percentile_summary(attributes)
+        if summary:
+            st.text("BMI percentile: " + summary)
+            st.caption(reason)
     data = sheet["nutrition"]
     if data is None:
         st.caption("Paste the I block to add a measured weight. Dosing weight is kept separately.")
@@ -984,9 +1022,10 @@ def save_rooms(store: GitHubVault | None, rooms: list[str]) -> None:
     try:
         candidate = deepcopy(ss["vault"])
         for room in rooms:
-            candidate = save_sheet_in(candidate, ss["drafts"][room])
+            sheet = editor_snapshot(room) if room == ss.get("current_room") else ss["drafts"][room]
+            candidate = save_sheet_in(candidate, sheet)
         commit(candidate, store)
-    except (StorageError, ValidationError) as exc:
+    except (StorageError, ValidationError, ValueError) as exc:
         note(str(exc), "error")
         return
     for room in rooms:
@@ -1241,7 +1280,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.28 | Diet and lactate results")
+        st.caption("Version 6.29 | Demographics, latest vitals and Antiepileptic")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1457,6 +1496,7 @@ def handoff_page(store: GitHubVault | None) -> None:
         return
     sheet = ss["drafts"][room]
     st.subheader("Room " + room)
+    st.caption("Age: " + (sheet.get("anthropometrics", {}).get("age") or "--"))
     status = display_room_save_status(room, store)
     st.caption(status.caption)
     st.caption(status.status + (". Changes save automatically when you change rooms." if status.unsaved else ""))
@@ -2073,6 +2113,8 @@ def intake_output_editor(sheet: dict) -> None:
         st.caption("Paste the paired S section to place its totals at the top of FEN/GI.")
         return
     meta = " | ".join(x for x in (data["period"], "As of " + data["as_of"] if data["as_of"] else "", "Last filed " + data["last_filed"] if data["last_filed"] else "") if x)
+    st.text(balance_text(data, sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else ""))
+    st.caption("mL/kg uses only the documented dosing weight. It is a total for this reporting period, not an hourly rate. Without a dosing weight or an explicit volume unit, no mL/kg is calculated.")
     if meta:
         st.caption(meta)
     for field in IO_FIELDS:
@@ -2349,11 +2391,67 @@ def update_group_admin(rule_key: tuple, key: str, store: GitHubVault | None) -> 
         note(str(exc), "error")
 
 
+def save_antiepileptic_names(store: GitHubVault | None) -> None:
+    if not require_admin():
+        return
+    ss = st.session_state
+    from medications import match_name
+    import re
+    names = list(dict.fromkeys(match_name(line) for line in ss.get("antiepileptic_extra_names", "").splitlines() if line.strip()))
+    if len(names) > 100 or any(not re.fullmatch(r"[a-z][a-z -]{1,100}", n) for n in names):
+        note("Enter generic medication names only, one per line.", "error")
+        return
+    candidate = deepcopy(ss["vault"])
+    rules = [r for r in candidate["settings"]["medication_groups"] if r.get("match") != "prefix"]
+    rules.extend({"name": n, "route": "", "frequency": "", "mode": "antiepileptic", "match": "prefix"} for n in names)
+    candidate["settings"]["medication_groups"] = rules
+    try:
+        commit(candidate, store)
+        reapply_open_mappings()
+        note("Additional Antiepileptic names saved. Existing per-order overrides still take priority.", "success")
+    except (StorageError, ValidationError, ValueError) as exc:
+        note(str(exc), "error")
+
+
+def install_bmi_reference() -> None:
+    if not require_admin():
+        return
+    try:
+        download_reference()
+        note("Public CDC BMI reference loaded. No patient information was sent.", "success")
+    except Exception:
+        note("The public CDC reference could not be downloaded. BMI values still display, but percentiles stay unavailable. Use the reference-file upload in Admin.", "error")
+
+
+def upload_bmi_reference() -> None:
+    if not require_admin():
+        return
+    file = st.session_state.get("bmi_public_reference_upload")
+    if file is None:
+        return
+    try:
+        install_reference(file.getvalue())
+        note("Public CDC BMI reference validated and loaded.", "success")
+    except Exception:
+        note("This is not a complete supported CDC BMI reference CSV. No reference was changed.", "error")
+
+
 def group_admin(store: GitHubVault | None) -> None:
+    with st.expander("Antiepileptic medications", expanded=False):
+        st.caption("Automatic: phenytoin, fosphenytoin, phenobarbital, clobazam, levetiracetam, valproic acid and pentobarbital. Add more generic names below. This controls display, not a medication indication.")
+        if "antiepileptic_extra_names" not in st.session_state:
+            st.session_state["antiepileptic_extra_names"] = "\n".join(r["name"] for r in st.session_state["vault"]["settings"]["medication_groups"] if r.get("match") == "prefix")
+        st.text_area("Additional generic names, one per line", key="antiepileptic_extra_names", max_chars=10000)
+        st.button("Save Antiepileptic names", on_click=save_antiepileptic_names, args=(store,))
+    with st.expander("BMI reference data", expanded=False):
+        st.caption("CDC BMI-for-age, ages 2 through 19. Reference only, no patient data. Data is local to this deployment, not stored in the patient archive.")
+        st.caption("Reference available" if REFERENCE_PATH.exists() else "Reference not loaded yet")
+        st.button("Load / refresh public CDC BMI reference", on_click=install_bmi_reference)
+        st.file_uploader("Or upload CDC bmi-age-2022.csv (public reference only)", type=["csv"], key="bmi_public_reference_upload", on_change=upload_bmi_reference)
     with st.expander("Medication subgroup choices", expanded=False):
         st.caption("DVT Prophylaxis: enoxaparin, cangrelor and heparin with an explicit Units/kg/hr Dose. Fever Control: acetaminophen and ibuprofen. PRN: the requested sedative PRNs. Paralytic PRN: rocuronium, cisatracurium and vecuronium PRNs.")
         st.caption("These are user-defined display labels, not inferred indications or a determination that a dose is prophylactic. Original orders and hidden-medication choices are preserved. Overrides use the formulation, route and frequency.")
-        rules = st.session_state["vault"]["settings"]["medication_groups"]
+        rules = [r for r in st.session_state["vault"]["settings"]["medication_groups"] if r.get("match") != "prefix"]
         for index, rule in enumerate(rules):
             st.text(rule["name"] + " | " + rule["route"] + " | " + rule["frequency"])
             key = "group_rule_mode_" + str(index)

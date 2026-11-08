@@ -163,11 +163,11 @@ def system_body_blocks(section: str, notes: str, rows: list[dict]) -> list[tuple
             groups.append([("heading", INFUSION_HEADINGS[section])] +
                           [("infusion", r) for r in drips])
             assigned.update(r["id"] for r in drips)
-    modes = ("sedative_prn", "paralytic_prn", "fever") if section == "Neurologic" else ()
+    modes = ("antiepileptic", "sedative_prn", "paralytic_prn", "fever") if section == "Neurologic" else ()
     for mode in modes:
         group = [r for r in meds if r["id"] not in assigned and special_group(r) == mode]
         if group:
-            groups.append([("heading", GROUP_NAMES[mode])] + [("medication", r) for r in group])
+            groups.append([("heading", GROUP_NAMES[mode])] + [("infusion" if mode == "antiepileptic" and is_infusion(r) else "medication", r) for r in group])
             assigned.update(r["id"] for r in group)
     other = [r for r in meds if r["id"] not in assigned]
     if not groups:
