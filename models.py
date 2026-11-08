@@ -28,12 +28,13 @@ from blood_gases import validate_gases
 from cbc import validate_cbc
 from output_text import medication_output
 from recurring_orders import validate_orders, orders_text
+from feeds import validate_feeds, feeds_for_output
 from fluid_balance import validate_balance
 from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 def section_label(section: str) -> str:
@@ -67,7 +68,7 @@ def normalize_room(value: str) -> str:
 
 def new_sheet(room: str) -> dict:
     return {"id": uuid.uuid4().hex, "room": normalize_room(room), "created_at": utc_now(),
-            "updated_at": None, "fields": {s: "" for s in SYSTEMS}, "medications": [], "ventilation": None, "noninvasive": [], "vitals": [], "labs": empty_labs(), "neuro_vitals": empty_neuro(), "nutrition": None, "cultures": empty_cultures(), "dosing_weight": "", "admission_date": "", "viral_panel": empty_viral_panel(), "blood_gas": None, "cbc": None, "recurring_orders": None, "intake_output": None, "import_warnings": {}}
+            "updated_at": None, "fields": {s: "" for s in SYSTEMS}, "medications": [], "ventilation": None, "noninvasive": [], "vitals": [], "labs": empty_labs(), "neuro_vitals": empty_neuro(), "nutrition": None, "cultures": empty_cultures(), "dosing_weight": "", "admission_date": "", "viral_panel": empty_viral_panel(), "blood_gas": None, "cbc": None, "recurring_orders": None, "intake_output": None, "feeds": None, "import_warnings": {}}
 
 
 def new_vault() -> dict:
@@ -75,7 +76,7 @@ def new_vault() -> dict:
 
 
 def validate_sheet(sheet: dict) -> None:
-    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "import_warnings"}:
+    if not isinstance(sheet, dict) or set(sheet) != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "import_warnings"}:
         raise ValidationError("The handoff structure is invalid.")
     if not isinstance(sheet["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", sheet["id"]):
         raise ValidationError("The handoff identifier is invalid.")
@@ -106,6 +107,7 @@ def validate_sheet(sheet: dict) -> None:
         validate_cbc(sheet["cbc"])
         validate_orders(sheet["recurring_orders"])
         validate_balance(sheet["intake_output"])
+        validate_feeds(sheet["feeds"])
         validate_import_warnings(sheet["import_warnings"])
     except ValueError as exc:
         raise ValidationError(str(exc)) from None
@@ -174,13 +176,25 @@ def apply_diagnoses(sheet: dict, diagnosis_text: str, destination: str, append: 
 
 
 def upgrade_vault(vault: dict) -> dict:
-    """Migrate schemas 1-17 without replacing keys, notes or saved mappings."""
+    """Migrate schemas 1-18 without replacing keys, notes or saved mappings."""
     if not isinstance(vault, dict):
         raise ValidationError("The encrypted archive has an invalid structure.")
     version = vault.get("schema")
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
+    if version == 18:
+        if set(vault) != {"schema", "reset_generation", "settings", "rooms"} or not isinstance(vault["rooms"], dict):
+            raise ValidationError("The previous archive structure is invalid. Nothing was discarded.")
+        candidate = deepcopy(vault)
+        expected = set(new_sheet("P4102")) - {"feeds"}
+        for sheet in candidate["rooms"].values():
+            if not isinstance(sheet, dict) or set(sheet) != expected:
+                raise ValidationError("A previous handoff structure is invalid. Nothing was discarded.")
+            sheet["feeds"] = None
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     if set(vault) != {"schema", "settings", "rooms"}:
         raise ValidationError("The previous archive structure is invalid. Nothing was discarded.")
     if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
@@ -188,6 +202,13 @@ def upgrade_vault(vault: dict) -> dict:
     candidate = deepcopy(vault)
     candidate["reset_generation"] = ""
     if version == 17:
+        if not isinstance(candidate["rooms"], dict):
+            raise ValidationError("The previous archive structure is invalid. Nothing was discarded.")
+        expected = set(new_sheet("P4102")) - {"feeds"}
+        for sheet in candidate["rooms"].values():
+            if not isinstance(sheet, dict) or set(sheet) != expected:
+                raise ValidationError("A previous handoff structure is invalid. Nothing was discarded.")
+            sheet["feeds"] = None
         candidate["schema"] = SCHEMA_VERSION
         validate_vault(candidate)
         return candidate
@@ -289,6 +310,7 @@ def upgrade_vault(vault: dict) -> dict:
             sheet["intake_output"] = None
         if version < 16:
             sheet["import_warnings"] = {}
+        sheet["feeds"] = None
         room = normalize_room(original_room)
         if normalize_room(sheet["room"]) != room:
             raise ValidationError("A previous handoff does not match its room. Nothing was discarded.")
@@ -323,7 +345,7 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
         section = effective_section(row)
         content = medication_output(format_medication(row))
         result[section] = (result[section].rstrip() + "\n" if result[section].strip() else "") + content
-    result["FEN / GI"] = fen_gi_body(sheet["fields"]["FEN / GI"], sheet["medications"], sheet["intake_output"])
+    result["FEN / GI"] = fen_gi_body(sheet["fields"]["FEN / GI"], sheet["medications"], sheet["intake_output"], feeds=feeds_for_output(sheet), feeds_failed=any(i["action"] == "feeds_hidden" for i in sheet["import_warnings"].get("t", [])))
     scheduled = orders_text(orders_for_output(sheet))
     if "r" in sheet["import_warnings"]:
         scheduled = "Orders not imported. Review needed."

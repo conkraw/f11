@@ -1,12 +1,23 @@
-Version 6.23: full package, not a patch
+Version 6.24: complete package, not a patch
 
-Extract PICU623.zip, open PICU_Handoff_v6_23_Print_Reset, and upload its CONTENTS to the existing app code repository. Keep app.py at the root. Replace matching files. Add handoff_reset.py. Use the supplied requirements.txt (unchanged from 6.22).
+Extract PICU624.zip. Open PICU_Handoff_v6_24_Feeds and upload its CONTENTS into the
+existing application code repository, replacing matching files. Keep app.py at
+the repository root. Include the new feeds.py file and all supplied Python files.
 
-Keep all existing deployment Secrets, app/Admin passwords, encryption key, token and private data repository. Do not rerun any generator. Installing this update does not clear any handoff.
+Preserve all Streamlit Secrets, app/Admin passwords, encryption key, GitHub token,
+private data repository and saved settings. Do not rerun the generators.
+No new dependencies are needed. Restart the deployment and refresh the browser.
 
-Restart the deployment and refresh the browser. Sidebar:
-Version 6.23 | Auto-fit printing and clear all handoffs
+Sidebar: Version 6.24 | Feeds in FEN/GI
 
-Schema 17 archives migrate to 18 without changing existing fields or settings. The next successful save writes schema 18. Do not downgrade files afterward.
+Paste the complete SmartPhrase or paired T section. Click Create / update handoff,
+then review Edit handoff > FEN / GI > Edit feeds / review source. Feeds appears
+below Intake/Output/Net. Save normally or change rooms to trigger autosave.
 
-Read PRINT_RESET_UPDATE.md for how automatic PDF fitting and the one-click Admin reset behave. The reset deletes custom rooms and shared current handoffs, not medication rules or technical error logs. Prior Git history and downloads are not erased.
+Keep explicit hourly units in a backup rate. Back Up Feed Intake containing only
+mL is a volume, not a rate, and results in UNK unless another hourly rate exists.
+
+Schema 18 migrates to 19 on save. Existing fields and timestamps are preserved.
+Do not downgrade after saving. Installing this update does not clear handoffs.
+
+See FEEDS_UPDATE.md and TEST_REPORT.md for details and testing limitations.

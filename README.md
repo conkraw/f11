@@ -1,3 +1,25 @@
+# PICU Handoff 6.24: feeds in FEN/GI
+
+This is a complete ZIP update. Read FEEDS_UPDATE.md or START_HERE.html first.
+
+T-section feeding method, formula and hourly rate appear directly below
+intake/output in FEN/GI. Removed tube entries are ignored. Missing rates use a
+same-device backup hourly rate when available, otherwise UNK. Intake volume in
+mL is not converted to mL/hr. Multiple devices remain separate and editable.
+
+Upload the complete folder contents with app.py at the root, including feeds.py.
+Keep all existing Secrets and both passwords. No new dependencies are needed.
+Schema 18 migrates to 19 without changing prior fields or settings. Do not
+downgrade after saving with this version. Installing the update clears no data.
+
+See TEST_REPORT.md for the checks and limits of this release.
+
+# Historical update notes
+
+The material below describes earlier versions. Use the Version 6.24 installation
+instructions above for this package. Previously published team instructions and
+SmartPhrase text remain in their existing encrypted store and are not replaced.
+
 # PICU Handoff 6.23: auto-fit printing and clear all
 
 This is the complete app update. Start with PRINT_RESET_UPDATE.md.

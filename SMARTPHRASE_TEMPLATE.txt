@@ -101,3 +101,11 @@ ssssssssssssssssssssssssssssssss
 [Insert your Epic Intake/Output Summary here, including the three total lines:
 Intake, Output and Net. Replace this placeholder with the real SmartLink output.]
 ssssssssssssssssssssssssssssssss
+
+
+tttttttttttttttttttttttttttttttt
+[Insert your Epic feeding SmartLinks here. Include device-labelled Tube Feeding
+formula lines and Continuous Tube Feeding Ordered Rate mL/hr lines. A backup
+rate must have hourly units. Intake (mL) alone is not a rate. Replace these
+placeholders with the actual SmartLink definitions used by your institution.]
+tttttttttttttttttttttttttttttttt

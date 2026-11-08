@@ -10,7 +10,7 @@ SECTIONS = {
     'e': 'Vitals', 'f': 'Cultures', 'g': 'Labs', 'i': 'Weight',
     'k': 'Arousal target', 'l': 'WAT', 'm': 'ICP / CPP', 'n': 'Admission',
     'o': 'Viral panel', 'p': 'Blood gas', 'q': 'CBC', 'r': 'Orders',
-    's': 'Intake / output', 'document': 'Paste',
+    's': 'Intake / output', 't': 'Feeds', 'document': 'Paste',
 }
 CODES = {
     'section_parse_failed': 'This section was not updated. Previous values are retained for review.',
@@ -25,10 +25,14 @@ CODES = {
     'cbc_row_columns': 'A CBC row did not match the dated columns. That row was omitted.',
     'cbc_conflict': 'Conflicting CBC results were excluded from the affected cell.',
     'cbc_percentage': 'A percentage-labelled row was omitted from absolute counts.',
+    'feeds_conflict': 'A feeding field contains conflicting or unusable values. It is shown as UNK.',
+    'feeds_rate_invalid': 'The backup feed rate could not be established in mL/hr. The rate is shown as UNK.',
+    'feeds_unassigned': 'A feeding field was not associated with exactly one tube and was not assigned.',
+    'feeds_unrecognized': 'An unrecognized feeding line was omitted. Review the feeding summary.',
     'document_rejected': 'The paste could not be assigned safely to one handoff. Nothing was changed.',
 }
-FIELDS = {'', 'WBC', 'HGB', 'HGB_ISTAT', 'HCT', 'HCT_ISTAT', 'MCV', 'PLT', 'ANC', 'ALC'}
-ACTIONS = {'not_updated', 'orders_hidden', 'cell_omitted', 'row_omitted', 'nothing_changed'}
+FIELDS = {'', 'WBC', 'HGB', 'HGB_ISTAT', 'HCT', 'HCT_ISTAT', 'MCV', 'PLT', 'ANC', 'ALC', 'method', 'formula', 'rate'}
+ACTIONS = {'not_updated', 'orders_hidden', 'cell_omitted', 'row_omitted', 'nothing_changed', 'field_unknown', 'feeds_hidden'}
 
 
 def diagnostic(section: str, code: str, *, line: int = 0, column: int = 0,
@@ -66,7 +70,7 @@ def diagnostic_text(item: dict) -> str:
     position = (' | line ' + str(item['line']) if item['line'] else '')
     position += (' | column ' + str(item['column']) if item['column'] else '')
     field = (' | ' + item['field']) if item['field'] else ''
-    return SECTIONS[item['section']] + field + position + ': ' + CODES[item['code']] + (' Previous automatic orders are hidden from print.' if item['action'] == 'orders_hidden' and item['code'] != 'orders_skipped' else '')
+    return SECTIONS[item['section']] + field + position + ': ' + CODES[item['code']] + (' Previous automatic orders are hidden from print.' if item['action'] == 'orders_hidden' and item['code'] != 'orders_skipped' else '') + (' Previous automatic feeds are hidden from print.' if item['action'] == 'feeds_hidden' else '')
 
 
 def review_summary(sheet: dict) -> str:
@@ -74,6 +78,8 @@ def review_summary(sheet: dict) -> str:
     for section, items in sheet.get('import_warnings', {}).items():
         if section == 'r':
             note = 'orders skipped; prior list hidden'
+        elif section == 't' and any(item['action'] == 'feeds_hidden' for item in items):
+            note = 'not updated; prior feeds hidden'
         elif any(item['action'] == 'not_updated' for item in items):
             note = 'not updated; verify retained values'
         else:

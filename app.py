@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.23: automatic print fit and an Admin census reset."""
+"""PICU SmartPhrase v6.24: per-device feeds in FEN/GI."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -43,6 +43,7 @@ from demographics import validate_dosing_weight, validate_admission_date, demogr
 from cultures import validate_cultures, cultures_text, compact_groups, category_for
 from viral import validate_viral_panel, viral_text
 from microbiology_display import culture_markup, viral_markup
+from feeds import METHODS as FEED_METHODS, validate_feeds, feeds_text, feeds_for_output
 from fluid_balance import FIELDS as IO_FIELDS, META_FIELDS as IO_META_FIELDS, validate_balance, balance_text, empty_balance
 from fen_gi import (MODES as GI_MODES, MODE_LABELS as GI_MODE_LABELS, GROUP_NAMES,
                     automatic_group, group_for, effective_section, fen_gi_body,
@@ -102,7 +103,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_")):
             st.session_state.pop(key, None)
 
 
@@ -158,6 +159,17 @@ def editor_snapshot(room: str) -> dict:
             key = "io_" + sheet["id"] + "_" + field
             if key in ss:
                 sheet["intake_output"][field] = ss[key].strip() if isinstance(ss[key], str) else ss[key]
+    if sheet["feeds"] is not None:
+        for row in sheet["feeds"]["rows"]:
+            for field in ("method", "formula", "rate", "include"):
+                key = "feed_" + row["id"] + "_" + field
+                if key in ss:
+                    value = ss[key]
+                    if field == "rate":
+                        value = "" if str(value).strip().casefold() in ("", "unk", "unknown", "--") else str(value).strip()
+                        if value != row["rate"]:
+                            row["rate_source"] = "manual" if value else "unknown"
+                    row[field] = value.strip() if isinstance(value, str) else value
     for group, prefix, fields in (
         (sheet["labs"]["rows"], "lab_", ("value", "date", "include")),
         (sheet["viral_panel"]["rows"], "viral_", ("name", "result", "date", "include")),
@@ -1105,7 +1117,10 @@ def upgrade_existing_session() -> None:
             canonical = normalize_room(room)
             if canonical in changes[key]:
                 raise ValidationError("Two open room aliases conflict. Save and resolve them before upgrading.")
-            changes[key][canonical] = None if sheet is None else upgrade_vault({"schema": old_schema, "settings": old_settings, "rooms": {room: sheet}})["rooms"][canonical]
+            previous = {"schema": old_schema, "settings": old_settings, "rooms": {room: sheet}}
+            if old_schema >= 18:
+                previous["reset_generation"] = vault.get("reset_generation", "")
+            changes[key][canonical] = None if sheet is None else upgrade_vault(previous)["rooms"][canonical]
     ss.update(vault=converted, **changes)
     for key in ("current_room", "room_choice"):
         if ss.get(key) and ss[key] not in ("Choose a room", "Other room"):
@@ -1198,7 +1213,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.23 | Auto-fit printing and clear all handoffs")
+        st.caption("Version 6.24 | Feeds in FEN/GI")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1481,6 +1496,7 @@ def handoff_page(store: GitHubVault | None) -> None:
             with st.expander(section_label(section), expanded=section == "Diagnoses"):
                 if section == "FEN / GI":
                     intake_output_editor(sheet)
+                    feeds_editor(sheet)
                 if section == "Labs" and orders_text(sheet["recurring_orders"]):
                     st.text(orders_text(sheet["recurring_orders"]) + "\n-----")
                     st.caption("Edit the imported recurring orders in Labs/Imaging. Notes below stay separate.")
@@ -2039,6 +2055,66 @@ def intake_output_editor(sheet: dict) -> None:
     st.caption("Values are copied from S. Missing values are not zero. Net is not recalculated.")
 
 
+def feed_row_change(room: str, row_id: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room") or key not in st.session_state:
+        return
+    ss = st.session_state
+    data = ss["drafts"][room]["feeds"]
+    if data is None or field not in ("method", "formula", "rate", "include"):
+        return
+    original = next((row for row in data["rows"] if row["id"] == row_id), None)
+    if original is None:
+        return
+    candidate = deepcopy(original)
+    value = ss[key]
+    if isinstance(value, str):
+        value = value.strip()
+    if field == "rate":
+        value = "" if str(value).casefold() in ("", "unk", "unknown", "--") else value
+        if value != original["rate"]:
+            candidate["rate_source"] = "manual" if value else "unknown"
+    candidate[field] = value
+    try:
+        validate_feeds({"rows": [candidate]})
+        original.update(candidate)
+    except ValueError as exc:
+        ss[key] = original[field]
+        note(str(exc), "error")
+
+
+def feeds_editor(sheet: dict) -> None:
+    st.subheader("Feeds")
+    data = sheet["feeds"]
+    if data is None or not data["rows"]:
+        st.caption("Paste the paired T section to add feeding method, formula and rate below intake/output in FEN/GI.")
+        return
+    if any(i["action"] == "feeds_hidden" for i in sheet["import_warnings"].get("t", [])):
+        st.warning("The T section was not updated. The retained feeding entries below are hidden from the handoff until reviewed.")
+    else:
+        st.text(feeds_text(data))
+    with st.expander("Edit feeds / review source", expanded=False):
+        st.caption("Each entry belongs to one tube. Blank formula or rate prints UNK. A volume in mL is not an hourly rate.")
+        for number, row in enumerate(data["rows"], 1):
+            st.text("Feed " + str(number))
+            if row["device"]:
+                st.caption("Source device: " + row["device"])
+            for field, label in (("method", "Feeding method"), ("formula", "Formula"), ("rate", "Rate (mL/hr, or blank for UNK)"), ("include", "Include this feeding entry")):
+                key = "feed_" + row["id"] + "_" + field
+                if key not in st.session_state:
+                    st.session_state[key] = row[field]
+                args = (sheet["room"], row["id"], field, key)
+                if field == "method":
+                    st.selectbox(label + " " + str(number), FEED_METHODS, key=key, on_change=feed_row_change, args=args)
+                elif field == "include":
+                    st.checkbox(label + " " + str(number), key=key, on_change=feed_row_change, args=args)
+                else:
+                    st.text_input(label + " " + str(number), key=key, max_chars=600 if field == "formula" else 80, on_change=feed_row_change, args=args)
+            descriptions = {"primary": "T-section hourly rate", "backup": "T-section backup hourly rate", "manual": "Manually edited", "unknown": "No usable hourly rate"}
+            st.caption("Rate source: " + descriptions[row["rate_source"]])
+            if row["backup_intake"]:
+                st.caption("Backup intake (volume only, not used as a rate): " + row["backup_intake"])
+
+
 def update_gi_admin(rule_key: tuple, key: str, store: GitHubVault | None) -> None:
     if not require_admin():
         return
@@ -2126,11 +2202,12 @@ def import_review_editor(sheet: dict) -> None:
         return
     st.warning(summary)
     with st.expander("Review skipped or incomplete imports", expanded=False):
-        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed R orders are retained only for review and are hidden from print. Do not treat skipped values as refreshed.")
+        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed R orders and failed T feeds are retained only for review and are hidden from print. Do not treat skipped values as refreshed.")
         for section, items in sheet["import_warnings"].items():
             for item in items:
                 st.text(diagnostic_text(item))
             label = ("Use retained orders after checking Epic" if section == 'r' else
+                     "Use retained feeds after checking Epic" if section == 't' and any(i['action'] == 'feeds_hidden' for i in items) else
                      "Acknowledge reviewed omissions" if any(i['action'].endswith('omitted') for i in items) else
                      "Accept retained values after checking Epic")
             st.button(label + " (" + REVIEW_SECTIONS[section] + ")", key="accept_import_" + sheet["id"] + "_" + section,

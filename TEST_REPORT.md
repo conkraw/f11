@@ -1,23 +1,51 @@
-# Validation report: Version 6.23
+# Validation report: Version 6.24
 
 ## Executed checks
 
-The original Version 6.22 ZIP passed all 1,843 tests before modification. The updated package passed 1,892 tests in the build environment. Existing legacy fixtures and schema assertions were updated for schema 18. A legacy long-text assertion now permits a one-page result because adaptive columns fit that example without data loss. Clinical content assertions remain in place.
+The unmodified Version 6.23 delivery ZIP passed its existing 1,892 tests in this
+build environment before changes. Version 6.24 passed 1,994 tests with:
 
-New checks cover actual PDF page counts for one/two-page targets, long-content continuation, unique-text retention, coordinate bounds, fixed column order, heading widths, no below-limit body font, per-room batch boundaries, unchanged laboratory and medication data, malformed targets, Admin authorization, failed and conflicting resets, preservation of shared rules and instructions, clearing all local widget/draft/selection state, token generation, stale writer rejection, remote reset reconciliation, old download revocation, logout revocation, and schema-17 encrypted migration.
+```
+PYTHONPATH=.:tests pytest -q --disable-warnings
+```
 
-A separate migration check used the unmodified Version 6.22 code to generate an encrypted archive. The updated code opened it with the same key. All old settings, room contents, IDs and timestamps were identical. Round-trip encryption and a subsequent reset were also checked.
+The 102 added tests cover explicit tube methods, hourly rates qualified by the
+source label, removed lines, per-device matching, no cross-tube rate inheritance,
+backup hourly rates, volume-only intake, unknowns, zero and decimal rates,
+conflicts, duplicate lines, partial-section recovery, source escaping, encrypted
+round trips, session upgrades, unblurred edits during room autosave, exclusion
+and restoration, Print all, clear-all, and FEN/GI output order.
 
-Synthetic visual comparisons: one dense handoff rendered as 2 pages under Version 6.22 and 1 page under this version. A deliberately lengthy handoff rendered as 6 pages before and 2 afterward. Every numbered observation was retained exactly once. Both continuation pages and the single-page example were rendered with PyMuPDF and visually inspected. The examples are synthetic, not user patient records.
+Historical migration fixtures were updated to omit the new feeds field when
+constructing an older schema and to expect the new feeds=None default afterward.
+Existing clinical behavior assertions were retained. No test is skipped.
 
-The new PDF preflight and downloads use the same ReportLab rendering functions. The page target is not a hard content limit. Longer handoffs may still exceed it rather than be truncated.
+The four supplied T-section excerpts were independently checked. They produce:
+NJ with its explicit rate, PEG with its explicit rate and removed tube entries
+excluded, separate NJ and GT entries with an unknown GT rate, and a jejunostomy
+entry with UNK because its backup is volume-only. The supplied patient sources
+are not included in the delivery folder or used as the preview records.
 
-## Unchanged clinical logic
+A separate process using the unmodified Version 6.23 code created an encrypted
+schema-18 archive with 23 synthetic rooms. Version 6.24 opened it using the same
+key. Every original room field, save timestamp, setting and reset generation was
+unchanged. Formatted preexisting fields were identical, and a new encrypted
+round trip retained the migrated content.
 
-Clinical parser modules, CBC/gas selection, lab tree drawing, medication routing/grouping, data encryption functions, storage API operations, guide storage and the separate Admin password mechanism were not altered. The models module adds only archive reset metadata and migration, not clinical field changes.
+The synthetic three-room PDF was rendered at 140 dpi and each page was visually
+inspected. Feeds appears beneath totals when present, and above medication
+subgroups and notes. The primary-rate, backup-rate and UNK examples each fit on
+one landscape page. The source backup volume does not print as an hourly rate.
 
-## Limitations
+## Limits
 
-Streamlit is not installed in this build environment. Interface/callback tests use widget stubs, and GitHub operations use mock stores. The hosted browser, authenticated private data repository and physical printer have not been tested. No real shared handoffs were cleared and no direct GitHub edits were made.
+Streamlit UI tests use a widget stub. GitHub tests use mocked responses. The
+hosted browser application, real team concurrency and authenticated private data
+repository were not exercised. The feeding display is a summary of supplied
+records, not verification that all unremoved devices are in current use.
 
-Automatic fitting applies to PDF, not browser-specific HTML pagination. Clear all changes the current encrypted archive, not prior Git history or downloaded copies. Other sessions must reload to see a reset. Simulated stale writes are rejected, and reset detection discards their previous drafts on reload. The tests do not establish clinical validity, identity, privacy compliance or data completeness.
+No source method, formula or rate is reconstructed from other sections. Intake
+volume is not treated as an hourly rate. Unknowns and review warnings require
+comparison with Epic before clinical use.
+
+Existing dependencies are unchanged. No live repository was read or modified.
