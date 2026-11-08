@@ -69,6 +69,7 @@ def test_coagulation_is_visible_without_a_hepatic_result(source):
 def test_inflammatory_aliases_remain_in_id_only(source):
     s = new_sheet('P4102')
     s['labs'] = parse_labs(f'{source}\t0.4 (H)\t01/06/2026').data
+    s['admission_date'] = '01/01/2026'  # v6.30: ID markers require the encounter start
     before = deepcopy(s)
     f = fields_with_medications(s)
     assert source + ': 0.4 (H)' in f['Infectious Disease']
@@ -112,7 +113,7 @@ def test_no_data_mutation_during_any_export():
     for fn in [handoff_html, handoff_pdf, handoff_text]:
         fn(s)
         assert s == before
-    assert SCHEMA_VERSION ==23
+    assert SCHEMA_VERSION ==24
 
 
 @pytest.mark.parametrize('exporter', [handoff_html, handoff_text])

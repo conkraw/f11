@@ -14,7 +14,8 @@ from import_review import review_summary
 from models import SYSTEMS, fields_with_medications, validate_sheet, automatic_vitals, section_label, respiratory_text
 from infusions import (neuro_body, cardiovascular_body, hematology_body, is_infusion, infusion_entry,
                        system_body_blocks, render_body_blocks, INFUSION_SECTIONS)
-from labs import lactate_text, theophylline_text
+from lab_windows import cardiac_labs_summary, theophylline_summary, laboratory_data, stable_window_clock, clock as window_clock
+from problem_review import review_text as problem_text, TITLE as PROBLEM_TITLE
 from medications import visible, format_medication
 from output_text import medication_output
 from fen_gi import effective_section, fen_gi_body
@@ -36,6 +37,7 @@ BOTTOM = ("Other Medications", "Lab Results / Trends", "Goals / Follow-up")
 ACCESS_FIELDS = ("Airway", "Last Intubation", "Access", "Drains / Tubes")
 
 
+@stable_window_clock
 def handoff_text(sheet: dict, printed_at: datetime | None = None) -> str:
     fields = fields_with_medications(sheet)
     parts = ["Print prepared: " + eastern_print_time(printed_at), "PICU HANDOFF", "Room: " + sheet["room"], "Age: " + (sheet.get("anthropometrics", {}).get("age") or "--"), "Handoff reference: " + sheet["id"][:8],
@@ -43,6 +45,8 @@ def handoff_text(sheet: dict, printed_at: datetime | None = None) -> str:
              "Confirm patient identity in Epic. A room is not a patient identifier."]
     if review_summary(sheet):
         parts.extend(["", review_summary(sheet)])
+    if problem_text(sheet):
+        parts.extend(["", PROBLEM_TITLE.upper(), problem_text(sheet)])
     for section in SYSTEMS:
         content = fields[section].strip()
         if content:
@@ -67,10 +71,10 @@ def infusion_section_prefix(sheet: dict, section: str, has_body: bool) -> str:
     parts = [automatic_vitals(sheet).get(section, "")]
     trailing_support_separator = False
     if section == "Cardiovascular":
-        parts.append(lactate_text(sheet["labs"]))
+        parts.append(cardiac_labs_summary(sheet))
     elif section == "Respiratory":
         support = respiratory_text(sheet)
-        level = theophylline_text(sheet["labs"])
+        level = theophylline_summary(sheet)
         parts.extend((support, level))
         trailing_support_separator = bool(support and not level)
     prefix = "\n-----\n".join(v for v in parts if v.strip())
@@ -114,14 +118,19 @@ def patient_markup(sheet: dict, fields: dict, esc=escape) -> str:
     return "\n\n".join(lines)
 
 
+@stable_window_clock
 def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
     fields = fields_with_medications(sheet, include_lab_text=False)
     headers = ''.join('<th>' + escape(label) + '</th>' for label, _ in COLUMNS)
     cells = ''.join('<td><div class="content">' + (patient_markup(sheet, fields) if section is None else field_markup(sheet, fields, section)) + '</div></td>' for _, section in COLUMNS)
     cols = ''.join(f'<col style="width:{w*100:.1f}%">' for w in WIDTHS)
     bands = []
+    problems = problem_text(sheet, rich=True)
+    if problems:
+        bands.append('<div class="band problem-review"><strong>' + escape(PROBLEM_TITLE) +
+                     ':</strong><div class="content">' + problems + '</div></div>')
     for key in BOTTOM:
-        bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(sheet['labs'], blood_gas=sheet['blood_gas'], cbc=sheet['cbc']) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
+        bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(laboratory_data(sheet), blood_gas=sheet['blood_gas'], cbc=sheet['cbc']) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
     extra = '\n'.join(k + ': ' + fields[k] for k in ('Skin / Wounds', 'Tasks', 'Other') if fields[k].strip())
     if extra:
         bands.insert(2, '<div class="band"><strong>Additional notes:</strong> <span class="content">' + escape(extra) + '</span></div>')
@@ -139,14 +148,14 @@ main{width:11in;min-height:8.5in;margin:0 auto;background:white;padding:.25in}
 table{border-collapse:collapse;width:100%;table-layout:fixed}th{font-size:8pt;text-align:center;padding:2px;border-bottom:1px solid black}
 .systems td{border:1px solid black;vertical-align:top;height:auto;min-height:0;padding:3px;font-size:7.2pt;line-height:1.14}
 .import-review{font:bold 7pt/1.15 Arial,sans-serif;border:1px solid #222;padding:3px;margin-bottom:3px;overflow-wrap:anywhere}.content{white-space:pre-wrap;overflow-wrap:anywhere}.band{border:1px solid black;border-top:0;font-size:7.2pt;line-height:1.14;padding:3px;min-height:15px}
-.access{font-size:7.2pt}.access td{vertical-align:top;border:1px solid black;border-top:0;padding:3px;overflow-wrap:anywhere}
+.problem-review{background:#fff4cf;border:1px solid #80611a}.access{font-size:7.2pt}.access td{vertical-align:top;border:1px solid black;border-top:0;padding:3px;overflow-wrap:anywhere}
 .labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;align-items:start}.labcard{width:100%;height:auto;border:1px solid #888;break-inside:avoid}.labnote{font:6.1pt/1.15 "Times New Roman",serif;margin:1px 0}.lab-summary{font:7.2pt/1.14 "Times New Roman",serif;overflow-wrap:anywhere;margin:1px 0}.lab-full{grid-column:1/-1}
 footer{font:6.1pt/1.2 Arial,sans-serif;margin-top:4px}
 @page{size:letter landscape;margin:.25in}
 @media print{body{margin:0;padding:0;background:white}main{width:100%;min-height:0;padding:0;margin:0}.systems td{height:auto}thead{display:table-header-group}footer{font-size:6.1pt}.band{break-inside:auto}}
 </style></head><body><main><div class="meta"><span><span data-print-label>Print prepared: </span><span data-print-time>''' + escape(eastern_print_time(printed_at)) + '''</span> | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | PICU HANDOFF' + '</span></div>' + ('<div class="import-review">' + escape(review_summary(sheet)) + '</div>' if review_summary(sheet) else '') + '''
 <table class="systems"><colgroup>''' + cols + '</colgroup><thead><tr>' + headers + '</tr></thead><tbody><tr>' + cells + '</tr></tbody></table>' + ''.join(bands) + access_table + '''
-<footer>Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted. Infusion rates reflect the source Last Rate, not a live feed.</footer>
+<footer>Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted. Infusion rates reflect the source Last Rate, not a live feed. Lab windows evaluated: ''' + escape(eastern_print_time(window_clock())) + '''. Download again to refresh filtered results.</footer>
 </main>''' + PRINT_TIME_SCRIPT + '</body></html>'
 
 
@@ -157,6 +166,7 @@ def _pdf_text(text: str) -> str:
     return text
 
 
+@stable_window_clock
 def handoffs_pdf(sheets: list[dict], printed_at: datetime | None = None, *, target_pages: int = 1) -> bytes:
     """One landscape document. Each room starts on a new page, in memory only."""
     from reportlab.lib.pagesizes import landscape, letter
@@ -179,6 +189,7 @@ def handoffs_pdf(sheets: list[dict], printed_at: datetime | None = None, *, targ
     return output.getvalue()
 
 
+@stable_window_clock
 def handoff_pdf(sheet: dict, printed_at: datetime | None = None, *, target_pages: int = 1) -> bytes:
     return handoffs_pdf([sheet], printed_at, target_pages=target_pages)
 
@@ -267,9 +278,12 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: b
                       if fields[name].strip())
     if extra:
         band_items.insert(2, ('Additional notes', extra))
-    bands = [(name, (laboratory_flowables(sheet['labs'], total_width-6, font_size, blood_gas=sheet['blood_gas'], cbc=sheet['cbc'])
+    bands = [(name, (laboratory_flowables(laboratory_data(sheet), total_width-6, font_size, blood_gas=sheet['blood_gas'], cbc=sheet['cbc'])
                     if name == 'Lab Results / Trends' else []) + paragraphs(text))
              for name, text in band_items]
+    problems = problem_text(sheet, rich=True, esc=_clinical_markup)
+    if problems:
+        bands.insert(0, (PROBLEM_TITLE, paragraphs(problems, rich=True)))
     device_summary = devices_markup(sheet, _clinical_markup)
     if device_summary:
         bands.append(('Devices', paragraphs(device_summary, rich=True)))
@@ -419,12 +433,14 @@ def _select_pdf_plan(sheet: dict, width: float, height: float, target_pages: int
     return best, best['pages'] == 1
 
 
+@stable_window_clock
 def print_layout_info(sheet: dict) -> dict:
     """Legacy compact status. New UI uses the full render-verified report."""
     plan, fits = _select_pdf_plan(sheet, 792, 612)
     return {'font_size': plan['font_size'], 'fits_one_page': fits}
 
 
+@stable_window_clock
 def print_fit_report(sheet: dict, target_pages: int = 1) -> dict:
     """Private in-memory preflight using exactly the PDF renderer's layout."""
     validate_sheet(sheet)
@@ -547,6 +563,11 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         y -= main_height
         updated_bands = []
         for (label, queue), bh in zip(bands, band_heights):
+            if label == PROBLEM_TITLE:
+                c.saveState()
+                c.setFillColorRGB(1, .965, .86)
+                c.rect(margin, y-bh, total_width, bh, fill=1, stroke=0)
+                c.restoreState()
             c.rect(margin, y-bh, total_width, bh)
             c.setFont('Times-Bold', 7.5)
             c.drawString(margin+3, y-8, label + (':' if page == 1 else ' (continued):'))
@@ -573,6 +594,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
             return page
 
 
+@stable_window_clock
 def handoffs_html(sheets: list[dict], printed_at: datetime | None = None) -> str:
     if not sheets or len(sheets) > 100:
         raise ValueError("Select between 1 and 100 handoffs to print.")

@@ -75,7 +75,7 @@ def clean_field(key: str, value: str) -> str:
             raise ValueError('Enter recorded height with a unit, for example 100 cm.')
         return match.group(1) + ' ' + match.group(2).lower()
     if key == 'bsa':
-        match = re.fullmatch(rf'({NUMBER})\s*(?:m²|m\^?2|sq\.?\s*m)', value, re.I)
+        match = re.fullmatch(rf'({NUMBER})\s*(?:m²|m\^?2|sq\.?\s*m|square\s+met(?:er|re)s?|met(?:er|re)s?\s+squared)\.?', value, re.I)
         if not match or not 0 < Decimal(match.group(1)) <= 10:
             raise ValueError('Check BSA and its unit. Use a recorded value such as 0.65 m², not m/kg².')
         return match.group(1) + ' m²'

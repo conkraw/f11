@@ -1,6 +1,9 @@
-Version 6.29 complete update
-
-Replace the full application folder contents, keeping app.py at repository root.
-New runtime modules: anthropometrics.py, bmi_reference.py. Include data/README.md.
-Keep all private Secrets, both passwords, encryption key and data repository.
-Read DEMOGRAPHICS_VITALS_UPDATE.md and BMI_REFERENCE.md. No new dependencies.
+COMPLETE VERSION 6.30 PACKAGE
+Replace matching files using this complete folder, with app.py at the root.
+New runtime modules: lab_windows.py, problem_review.py.
+Updated integration: app.py, models.py, exports.py, error_store.py.
+Updated valid Epic BSA spelling support: anthropometrics.py.
+Default guide updates: user_guide.py.
+Keep all current secrets, credentials, encryption key and public BMI data file.
+Do not run generators or downgrade after saving.
+Read LAB_WINDOWS_PROBLEMS_UPDATE.md and TEST_REPORT.md.

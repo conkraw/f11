@@ -111,7 +111,7 @@ def test_other_labs_and_only_latest_gas_specimen():
 def test_lactate_routes_cardiac_only(component):
     s=new_sheet('P4102');s['labs']=parsed(component+'\t1.4\t01/03/2026')
     fields=fields_with_medications(s)
-    assert 'Lactate (only result): 1.4' in fields['Cardiovascular'] and component in fields['Cardiovascular']
+    assert 'Lactate (only result): 1.4' in fields['Cardiovascular'] and '; '+component+']' not in fields['Cardiovascular']
     assert component+': 1.4' not in fields['Lab Results / Trends']
 
 
@@ -316,7 +316,7 @@ def test_v6_encrypted_roundtrip_and_v5_migration():
     baseline=deepcopy(old)
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     upgraded=open_vault(oldtoken,key)
-    assert upgraded['schema']==23 and old==baseline
+    assert upgraded['schema']==24 and old==baseline
     after=upgraded['rooms']['P4102'];before=old['rooms']['P4102']
     for k in ('fields','noninvasive','ventilation','id','updated_at'):
         assert after[k]==before[k]
@@ -356,3 +356,12 @@ def test_export_escaping_and_long_lab_values_not_lost():
     assert '<script>alert(1)</script>' not in html and '&lt;script&gt;' in html
     doc=fitz.open(stream=handoff_pdf(s),filetype='pdf')
     assert 'ENDLABTOKEN' in ''.join(p.get_text() for p in doc)
+
+
+# v6.30: make time-window routing tests independent of the machine's clock.
+from datetime import datetime, timezone
+from lab_windows import display_clock
+@pytest.fixture(autouse=True)
+def fixed_routing_clock():
+    with display_clock(datetime(2026,1,3,20,0,tzinfo=timezone.utc)):
+        yield

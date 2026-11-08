@@ -19,7 +19,7 @@ from test_callbacks import app, open_room
 from test_ui_smoke import equip
 
 ROOT = Path(__file__).parents[1]
-STAMP = datetime(2026, 11, 7, 18, 0, tzinfo=timezone.utc)
+STAMP = datetime(2027, 1, 5, 12, 0, tzinfo=timezone.utc)
 
 
 def parsed(text):
@@ -126,7 +126,7 @@ def test_respiratory_order_and_single_occurrence():
 def test_no_device_needed_for_result_to_show():
     s = new_sheet('P4102')
     s['labs'] = parsed('THEOPH\t12.4\t01/04/2027')
-    assert fields_with_medications(s)['Respiratory'] == 'Theophylline level: 12.4 [01/04/2027]'
+    assert fields_with_medications(s)['Respiratory'] == 'Theophylline level: 12.4 [01/04/2027, time not supplied / 24h unverified]'
 
 
 def test_older_saved_other_labs_panel_routes_without_reimport():
@@ -215,7 +215,7 @@ def test_original_fields_encrypted_without_schema_or_key_change():
     before = deepcopy(vault)
     key = generate_key()
     reopened = open_vault(seal_vault(vault, key), key)
-    assert SCHEMA_VERSION ==23
+    assert SCHEMA_VERSION ==24
     assert reopened == before
     assert 'Theophylline level:' in fields_with_medications(reopened['rooms']['P4102'])['Respiratory']
 
@@ -248,5 +248,14 @@ def test_html_escapes_source_value_not_executable_markup():
     s = new_sheet('P4102')
     s['labs'] = parsed('THEOPH\t<2.0 (L) <script>bad()</script>\t01/04/2027')
     html = handoff_html(s)
-    assert '&lt;script&gt;bad()&lt;/script&gt;' in html
+    assert 'Theophylline level:' not in html  # v6.30: non-measurements are retained only in the editor
     assert '<script>bad()</script>' not in html
+
+
+# v6.30: make time-window routing tests independent of the machine's clock.
+from datetime import datetime, timezone
+from lab_windows import display_clock
+@pytest.fixture(autouse=True)
+def fixed_routing_clock():
+    with display_clock(datetime(2027,1,5,12,0,tzinfo=timezone.utc)):
+        yield

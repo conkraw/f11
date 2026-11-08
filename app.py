@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.29: demographics, fluid totals, latest vitals and Antiepileptic."""
+"""PICU SmartPhrase v6.30: lab windows and clinician-reviewed problem suggestions."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -32,7 +32,10 @@ from admin_access import admin_valid, unlock_admin, lock_admin, config_error as 
 from user_guide import (default_guide, publication, validate_guide, instructions_html,
                         MAX_TEMPLATE, MAX_INSTRUCTIONS, MAX_NOTES)
 from guide_store import GuideStore
-from labs import validate_labs, lactate_text, id_labs_text, theophylline_text
+from labs import validate_labs
+from lab_windows import (cardiac_labs_summary, theophylline_summary, id_summary, laboratory_data, window_help)
+from problem_review import (suggestions, empty_review, validate_review, set_decision, limitation_notes,
+                            LOW_RULES, LABELS as PROBLEM_LAB_LABELS, STATUSES as PROBLEM_STATUSES)
 from cbc import validate_cbc, cbc_summary, cbc_selection_issues
 from recurring_orders import validate_orders, selected_orders, orders_text, order_line, recurring_frequency
 from blood_gases import FIELDS as GAS_FIELDS, validate_gases, latest_sample, gas_summary, legacy_gases
@@ -109,7 +112,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_", "diet_", "anthro_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_", "diet_", "anthro_", "problem_")):
             st.session_state.pop(key, None)
 
 
@@ -287,6 +290,14 @@ def editor_snapshot(room: str) -> dict:
                     device["values"][label] = value
                 else:
                     device["values"].pop(label, None)
+    review_key = 'problem_' + sheet['id'] + '_enabled'
+    if review_key in ss and bool(ss[review_key]) != sheet.get("problem_review", empty_review())["enabled"]:
+        sheet.setdefault('problem_review', empty_review())['enabled'] = bool(ss[review_key])
+    for item in suggestions(sheet):
+        prefix = 'problem_' + sheet['id'] + '_' + item['key'] + '_' + item['fingerprint'][:12]
+        status_key, text_key = prefix + '_status', prefix + '_text'
+        if status_key in ss and text_key in ss and (ss[status_key] != item['status'] or ss[text_key] != item['label']):
+            sheet = set_decision(sheet, item['key'], item['fingerprint'], ss[status_key], ss[text_key])
     validate_sheet(sheet)
     return sheet
 
@@ -898,14 +909,14 @@ def labs_vitals_editor(sheet: dict) -> None:
     viral_editor(sheet)
     st.subheader("Laboratory results")
     st.caption("Q supplies the two latest CBC columns. BMP and older G-only CBCs retain per-component selection. Other tests show the latest result per component. Only one latest gas is printed, labeled VEN, ART or CAP. The P table keeps specimen and column values together. Dates and source flags are preserved. No collection times or same-draw groupings are invented.")
-    components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}.lab-summary{font:14px/1.3 sans-serif;overflow-wrap:anywhere;margin:3px 0}.lab-full{grid-column:1/-1}</style>' + laboratory_html(sheet["labs"], blood_gas=sheet["blood_gas"], cbc=sheet["cbc"]), height=490, scrolling=True)
-    if theophylline_text(sheet["labs"]):
-        st.text("Respiratory: " + theophylline_text(sheet["labs"]))
-    if lactate_text(sheet["labs"]):
-        st.text("Cardiovascular: " + lactate_text(sheet["labs"]))
-        st.caption("Lactate shows the earliest and latest usable results in the pasted G section across all aliases, not the entire chart. Original codes, dates, flags and supplied units remain. Same-date ties follow source order when times are missing.")
-    if id_labs_text(sheet["labs"]):
-        st.text("Infectious Disease:\n" + id_labs_text(sheet["labs"]))
+    components.html('<style>.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.labcard{width:100%;border:1px solid #aaa}.labnote{font:13px sans-serif;margin:8px 0}.lab-summary{font:14px/1.3 sans-serif;overflow-wrap:anywhere;margin:3px 0}.lab-full{grid-column:1/-1}</style>' + laboratory_html(laboratory_data(sheet), blood_gas=sheet["blood_gas"], cbc=sheet["cbc"]), height=490, scrolling=True)
+    if theophylline_summary(sheet):
+        st.text("Respiratory: " + theophylline_summary(sheet))
+    if cardiac_labs_summary(sheet):
+        st.text("Cardiovascular: " + cardiac_labs_summary(sheet))
+        st.caption("Lactate shows the earliest and latest usable results in the rolling 24-hour display window. The printed result omits the source code. All original codes, dates, flags and units remain in the editor. NT-proBNP shows the latest from all supplied dates. Date-only cutoff entries are marked timing unverified.")
+    if id_summary(sheet):
+        st.text("Infectious Disease:\n" + id_summary(sheet))
     st.caption("Glucose is in the BMP tree. Mg and phosphorus are below it. Albumin stays in Hepatic. Coagulation, including Anti-Xa (HEPLMW), is immediately below Hepatic in the lab results. CRP and procalcitonin (PROCAL) remain in ID below temperature. The latest THEOPH result prints as Theophylline level in Respiratory, below support settings and above medications.")
     with st.expander("Edit retained laboratory rows (" + str(len(sheet["labs"]["rows"])) + ")"):
         for row in sheet["labs"]["rows"]:
@@ -1280,7 +1291,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.29 | Demographics, latest vitals and Antiepileptic")
+        st.caption("Version 6.30 | Lab windows and suggested problem review")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1515,7 +1526,7 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.button("Start blank for new patient", on_click=start_new_patient)
         st.button("Load saved handoff", on_click=load_saved_into_editor)
         st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
-    paste_tab, meds_tab, labs_tab, cultures_tab, orders_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Labs/Imaging", "Edit handoff", "Preview / print"])
+    paste_tab, meds_tab, labs_tab, cultures_tab, orders_tab, problems_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Labs/Imaging", "Suggested problems", "Edit handoff", "Preview / print"])
     with paste_tab:
         st.caption("Paste your SmartPhrase and click Create / update handoff. Imported results and edits save automatically before you change rooms.")
         st.button("Clear pasted text", on_click=clear_paste)
@@ -1550,11 +1561,14 @@ def handoff_page(store: GitHubVault | None) -> None:
         else:
             st.info("Paste a B block and create the handoff to add medications.")
     with labs_tab:
+        st.caption(window_help(sheet))
         labs_vitals_editor(sheet)
     with cultures_tab:
         cultures_editor(sheet)
     with orders_tab:
         recurring_orders_editor(sheet)
+    with problems_tab:
+        problem_review_editor(sheet)
     with edit_tab:
         devices_editor(sheet)
         st.caption("These are your separate notes. Re-pasting medications or ventilation does not erase them.")
@@ -1576,15 +1590,15 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.text(automatic_vitals(sheet)[section] + "\n-----")
                 if section == "Demographics / Weight" and sheet["admission_date"]:
                     st.text("Admission: " + sheet["admission_date"])
-                if section == "Infectious Disease" and id_labs_text(sheet["labs"]):
-                    st.text(id_labs_text(sheet["labs"]) + "\n------")
-                if section == "Cardiovascular" and lactate_text(sheet["labs"]):
-                    st.text(lactate_text(sheet["labs"]) + "\n-----")
+                if section == "Infectious Disease" and id_summary(sheet):
+                    st.text(id_summary(sheet) + "\n------")
+                if section == "Cardiovascular" and cardiac_labs_summary(sheet):
+                    st.text(cardiac_labs_summary(sheet) + "\n-----")
                 if section == "Respiratory" and respiratory_text(sheet):
                     st.text(respiratory_text(sheet) + "\n-----")
                     st.caption("Vital signs print first, then support settings. Edit support under Paste / create.")
-                if section == "Respiratory" and theophylline_text(sheet["labs"]):
-                    st.text(theophylline_text(sheet["labs"]) + "\n-----")
+                if section == "Respiratory" and theophylline_summary(sheet):
+                    st.text(theophylline_summary(sheet) + "\n-----")
                     st.caption("Latest included THEOPH result. Edit or exclude its original row in Labs / Vitals.")
                 if section == "Diagnoses" and viral_text(sheet["viral_panel"]):
                     st.markdown('<div style="white-space:pre-wrap">----\n' + viral_markup(sheet["viral_panel"]) + '</div>', unsafe_allow_html=True)
@@ -2780,6 +2794,105 @@ def guide_admin(store: GitHubVault | None) -> None:
     with st.expander("Published instructions preview", expanded=False):
         st.markdown(guide["instructions"], unsafe_allow_html=False)
     st.divider()
+
+
+def problem_display_change(room: str, widget: str) -> None:
+    if not require_session() or room != st.session_state.get('current_room'):
+        return
+    sheet = deepcopy(st.session_state['drafts'][room])
+    data = deepcopy(sheet.get('problem_review', empty_review()))
+    data['enabled'] = bool(st.session_state[widget])
+    sheet['problem_review'] = data
+    validate_sheet(sheet)
+    st.session_state['drafts'][room] = sheet
+
+
+def problem_decision_change(room: str, key: str, fingerprint: str, status_widget: str, text_widget: str) -> None:
+    if not require_session() or room != st.session_state.get('current_room'):
+        return
+    ss = st.session_state
+    sheet = ss['drafts'][room]
+    current = next((r for r in suggestions(sheet) if r['key'] == key), None)
+    if current is None or current['fingerprint'] != fingerprint:
+        note('The supporting information changed. Review the refreshed suggestion before applying a decision.', 'warning')
+        return
+    try:
+        candidate = set_decision(sheet, key, fingerprint, ss[status_widget], ss[text_widget])
+        validate_sheet(candidate)
+    except ValueError as exc:
+        ss[status_widget] = current['status']
+        ss[text_widget] = current['label']
+        note(str(exc), 'error')
+        return
+    ss['drafts'][room] = candidate
+
+
+def save_problem_limits(room: str, prefix: str) -> None:
+    if not require_session() or room != st.session_state.get('current_room'):
+        return
+    ss = st.session_state
+    sheet = deepcopy(ss['drafts'][room])
+    data = deepcopy(sheet.get('problem_review', empty_review()))
+    limits = {}
+    for key in LOW_RULES:
+        value = str(ss.get(prefix + key + '_value', '')).strip()
+        unit = str(ss.get(prefix + key + '_unit', '')).strip()
+        if value:
+            limits[key] = {'value': value, 'unit': unit}
+    data['low_limits'] = limits
+    try:
+        validate_review(data)
+        sheet['problem_review'] = data
+        validate_sheet(sheet)
+    except ValueError as exc:
+        note(str(exc), 'error')
+        return
+    ss['drafts'][room] = sheet
+    note('Patient-specific review limits updated. Save the handoff to retain them.', 'success')
+
+
+def problem_review_editor(sheet: dict) -> None:
+    st.subheader('Suggested problems')
+    st.caption('These are review prompts, not diagnoses or treatment advice. Source diagnoses stay unchanged. Review the evidence, then keep, edit, confirm or dismiss each prompt. Changed evidence needs a new review.')
+    data = sheet.get('problem_review', empty_review())
+    key = 'problem_' + sheet['id'] + '_enabled'
+    st.session_state.setdefault(key, data['enabled'])
+    st.checkbox('Show the separate suggested-problem band on the handoff', key=key,
+                on_change=problem_display_change, args=(sheet['room'], key))
+    items = suggestions(sheet)
+    if not items:
+        st.info('No review prompts were generated from the available evidence. This is not a normal-results check or a complete problem list.')
+    for item in items:
+        prefix = 'problem_' + sheet['id'] + '_' + item['key'] + '_' + item['fingerprint'][:12]
+        text_key, status_key = prefix + '_text', prefix + '_status'
+        st.session_state.setdefault(text_key, item['label'])
+        st.session_state.setdefault(status_key, item['status'])
+        with st.expander(item['label'] + ' (' + item['status'] + ')', expanded=item['status'] == 'review'):
+            st.text(item['evidence'])
+            st.caption(item['caution'])
+            args = (sheet['room'], item['key'], item['fingerprint'], status_key, text_key)
+            st.text_input('Problem wording', key=text_key, max_chars=200,
+                          on_change=problem_decision_change, args=args)
+            st.selectbox('Review decision', PROBLEM_STATUSES, key=status_key,
+                         format_func=lambda x: {'review':'Needs review', 'confirmed':'Confirmed by me', 'dismissed':'Dismiss / do not print'}[x],
+                         on_change=problem_decision_change, args=args)
+    for message in limitation_notes(sheet):
+        st.caption(message)
+    with st.expander('Patient-specific low-result limits (optional)', expanded=False):
+        st.caption('By default, only explicit L / LL / LOW flags count as low. An asterisk alone does not identify the direction. Enter a clinician-verified cutoff for this patient only, in the same units as the source. Missing or mismatched units prevent comparison. Leave blank to use source flags only. These are not universal pediatric reference ranges.')
+        prefix = 'problem_limit_' + sheet['id'] + '_'
+        with st.form('problem_limits_' + sheet['id']):
+            for component in LOW_RULES:
+                saved = data['low_limits'].get(component, {})
+                value_key, unit_key = prefix + component + '_value', prefix + component + '_unit'
+                st.session_state.setdefault(value_key, saved.get('value', ''))
+                st.session_state.setdefault(unit_key, saved.get('unit', ''))
+                left, right = st.columns(2)
+                left.text_input(PROBLEM_LAB_LABELS[component] + ' low limit', key=value_key, max_chars=20)
+                right.text_input(PROBLEM_LAB_LABELS[component] + ' source units', key=unit_key, max_chars=50)
+            st.form_submit_button('Apply patient-specific limits', on_click=save_problem_limits, args=(sheet['room'], prefix))
+    st.caption('Prompts skip failed imports, excluded/hidden medication orders, held or future orders, and preadmission lab results when admission is known. Kidney review uses a >50% rise between the latest two comparable creatinine results with an established order within 7 days. A fall or a same-date pair without times does not establish that rise.')
+
 
 if __name__ == "__main__":
     try:

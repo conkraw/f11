@@ -1,3 +1,25 @@
+# Version 6.30: laboratory windows and suggested-problem review
+
+Save current work. Extract PICU630.zip and upload the contents of
+PICU_Handoff_v6_30_Problem_Review to the application code repository, replacing
+matching files. Keep app.py at the root. Include lab_windows.py and
+problem_review.py. Keep all existing Secrets, both passwords, encryption key,
+token, medication mappings, public BMI reference data and private repository.
+Do not run the generators. No new dependencies are required.
+
+Read LAB_WINDOWS_PROBLEMS_UPDATE.md first. Lactate, theophylline and CK use a
+24-hour display window. CRP/procalcitonin are limited to admission onward.
+NT-proBNP is the latest from all supplied dates. The new highlighted review band
+never modifies the source Diagnoses field. It is not a diagnostic classifier.
+
+The sidebar reads Version 6.30 | Lab windows and suggested problem review.
+Schema 23 migrates to 24. Existing fields and save times are retained.
+Do not downgrade after saving new review settings.
+
+The following notes describe historical releases, not current installation.
+
+---
+
 # Version 6.29: demographics, fluid totals, latest vitals and Antiepileptic
 
 ## Update your existing app

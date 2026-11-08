@@ -28,7 +28,7 @@ from ventilation import parse_ventilation
 from medications import upsert_rule, remap
 from security import generate_key, open_vault, seal_vault
 
-STAMP = datetime(2026, 11, 7, 18, 0, tzinfo=timezone.utc)
+STAMP = datetime(2027, 1, 4, 20, 0, tzinfo=timezone.utc)
 
 
 def example():
@@ -283,7 +283,16 @@ def test_rendering_saved_data_preserves_archive_every_field_and_timestamp():
     v['settings']['medication_infusions']=set_infusion_rule([],s['medications'][1],'other')
     key=generate_key();encrypted=seal_vault(v,key);before=deepcopy(v)
     restored=open_vault(encrypted,key)
-    assert restored==before and restored['schema']==23==SCHEMA_VERSION
+    assert restored==before and restored['schema']==24==SCHEMA_VERSION
     for sheet in restored['rooms'].values():
         fields_with_medications(sheet);handoff_html(sheet);handoff_pdf(sheet,STAMP)
     assert restored==before and upgrade_vault(restored)==before
+
+
+# v6.30: make time-window routing tests independent of the machine's clock.
+from datetime import datetime, timezone
+from lab_windows import display_clock
+@pytest.fixture(autouse=True)
+def fixed_routing_clock():
+    with display_clock(datetime(2027,1,4,20,0,tzinfo=timezone.utc)):
+        yield

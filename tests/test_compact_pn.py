@@ -37,6 +37,7 @@ def paired(connector='\tAnd'):
 def sheet():
     out=import_sections(new_sheet('P4102'),SAMPLE,new_vault()['settings'])
     assert not out.errors,out.errors
+    out.sheet["admission_date"] = "01/01/2026"  # v6.30: synthetic encounter window
     return out.sheet
 
 
@@ -231,7 +232,7 @@ def test_same_schema_roundtrip_preserves_mapping_hiding_and_all_order_fields():
     v['settings']['medication_mappings']=upsert_rule([],'fat emulsion','FEN / GI')
     v['settings']['medication_visibility']=set_visibility_rule([],name,True)
     key=generate_key();restored=open_vault(seal_vault(v,key),key)
-    assert restored==v and restored['schema']==23 and upgrade_vault(v)==v
+    assert restored==v and restored['schema']==24 and upgrade_vault(v)==v
 
 
 def test_bounded_small_font_fits_crowded_column_without_deleting_lines():

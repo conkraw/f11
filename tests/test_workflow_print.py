@@ -298,7 +298,8 @@ def test_same_print_stamp_on_each_room_and_continuation():
 def test_html_stamp_updates_only_on_print_event():
     html=handoffs_html([clinical_sheet(),clinical_sheet('P4104')],datetime(2026,11,7,1,tzinfo=timezone.utc))
     assert html.count('data-print-time>')==2
-    assert html.count('11/06/2026 08:00:00 PM EST')==2
+    assert html.count('data-print-time>11/06/2026 08:00:00 PM EST')==2
+    assert html.count('Lab windows evaluated: 11/06/2026 08:00:00 PM EST')==2
     assert "window.addEventListener('beforeprint'" in html
     assert "timeZone: 'America/New_York'" in html
     assert 'Saved (UTC)' not in html

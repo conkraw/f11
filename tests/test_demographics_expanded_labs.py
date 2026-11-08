@@ -208,6 +208,7 @@ def test_albumin_latest_in_hepatic_not_generic_other():
 
 def test_coag_below_hepatic_and_inflammation_in_id_with_original_dates():
     s=imp(block('g',G)+'\n'+block('e','Temp: 36.9 C'))
+    s['admission_date']='10/01/2026'  # v6.30: both marker dates are after admission
     s['fields']['Infectious Disease']='Manual ID note'
     f=fields_with_medications(s)
     text=f['Infectious Disease']
@@ -282,7 +283,7 @@ def legacy_v8():
 
 def test_schema8_migration_preserves_all_fields_rules_and_cultures():
     old=legacy_v8();before=deepcopy(old);new=upgrade_vault(old)
-    assert new['schema']==23 and old==before and new['settings']==dict(before['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
+    assert new['schema']==24 and old==before and new['settings']==dict(before['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
     for k,val in before['rooms']['P4102'].items():assert new['rooms']['P4102'][k]==val
     assert new['rooms']['P4102']['admission_date']=='' and new['rooms']['P4102']['dosing_weight']==''
     key=generate_key();encrypted=Fernet(key.encode()).encrypt(json.dumps(old).encode())

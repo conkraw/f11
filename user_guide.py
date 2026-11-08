@@ -49,6 +49,12 @@ The app organizes the supported sections into the draft. Read any warnings. A sk
 
 Use Medications, Labs / Vitals, Cultures, Labs/Imaging, and Edit handoff to correct the draft. Check doses and infusion rates, respiratory support, result dates, weight and dosing weight, and any retained information. Unmapped medications appear in Other Medications. You can assign their system or hide an entry without deleting it. Remembered mapping and hiding choices can affect later imports for the team. Open Preview / print and compare the finished sheet with Epic. Add your assessment, tasks, and follow-up notes where needed. The handoff supports communication and does not replace the chart or current orders.
 
+## Suggested problems and result time windows
+
+Open Suggested problems to review automatic prompts and their supporting evidence. These are not diagnoses. An ID-mapped medication does not establish sepsis, respiratory support does not establish acute hypoxemia, and bowel medications may be preventive. Confirm, edit or dismiss each prompt after checking the chart. Changed evidence requires review again. These choices never rewrite the source Diagnoses section. Optional patient-specific low-result limits require clinician verification and the source units. An abnormal asterisk alone does not mean low.
+
+Lactate, theophylline and CK use a rolling 24-hour display window. CRP and procalcitonin use the admission date onward. NT-proBNP uses the latest result from all supplied dates. Previous-day results without collection times may overlap the cutoff and are labeled timing unverified. Raw rows stay available in Labs / Vitals. Downloaded files are snapshots and cannot refresh lab windows after download. Generate a new PDF for updated filters.
+
 ## 8. Save and confirm
 
 Click Save handoff. Confirm the saved status and the Last saved to GitHub date and time. Changing rooms also saves the current imported draft when storage is enabled, but text only pasted into the box is not imported or saved until you click Create / update handoff. Save before logging out or closing the tab. A failed save is not a saved handoff. Session-only testing does not persist data to GitHub.

@@ -37,7 +37,9 @@ from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
+from problem_review import validate_review, empty_review
+from lab_windows import cardiac_labs_summary, theophylline_summary, id_summary, laboratory_data
 from anthropometrics import empty_anthropometrics, validate_anthropometrics, measurements_text
 
 
@@ -80,7 +82,7 @@ def new_vault() -> dict:
 
 
 def validate_sheet(sheet: dict) -> None:
-    if not isinstance(sheet, dict) or set(sheet) - {"anthropometrics"} != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "devices", "neuro_devices", "pacemaker", "diet", "import_warnings"}:
+    if not isinstance(sheet, dict) or set(sheet) - {"anthropometrics", "problem_review"} != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "devices", "neuro_devices", "pacemaker", "diet", "import_warnings"}:
         raise ValidationError("The handoff structure is invalid.")
     if not isinstance(sheet["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", sheet["id"]):
         raise ValidationError("The handoff identifier is invalid.")
@@ -118,6 +120,7 @@ def validate_sheet(sheet: dict) -> None:
         validate_diet(sheet["diet"])
         validate_anthropometrics(sheet.get("anthropometrics", empty_anthropometrics()))
         validate_import_warnings(sheet["import_warnings"])
+        validate_review(sheet.get("problem_review", empty_review()))
     except ValueError as exc:
         raise ValidationError(str(exc)) from None
     ids = set()
@@ -192,6 +195,11 @@ def upgrade_vault(vault: dict) -> dict:
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
+    if version == 23:
+        candidate = deepcopy(vault)
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     if version == 22:
         candidate = deepcopy(vault)
         candidate["schema"] = SCHEMA_VERSION
@@ -421,13 +429,13 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
     result["Cardiovascular"] = cardiovascular_body(sheet["fields"]["Cardiovascular"], sheet["medications"])
     result["Hematology"] = hematology_body(sheet["fields"]["Hematology"], sheet["medications"])
     result["Respiratory"] = respiratory_body(sheet["fields"]["Respiratory"], sheet["medications"])
-    theophylline = theophylline_text(sheet["labs"])
+    theophylline = theophylline_summary(sheet)
     if theophylline:
         result["Respiratory"] = theophylline + ("\n-----\n" + result["Respiratory"] if result["Respiratory"].strip() else "")
     vent = respiratory_text(sheet)
     if vent:
         result["Respiratory"] = vent + "\n-----" + ("\n" + result["Respiratory"] if result["Respiratory"].strip() else "")
-    lactate = lactate_text(sheet["labs"])
+    lactate = cardiac_labs_summary(sheet)
     if lactate:
         result["Cardiovascular"] = lactate + ("\n-----\n" + result["Cardiovascular"] if result["Cardiovascular"].strip() else "")
     id_notes = result["Infectious Disease"]
@@ -435,7 +443,7 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
     for section, text in auto_vitals.items():
         result[section] = text + ("\n-----\n" + result[section] if result[section].strip() else "")
     culture_block = cultures_text(sheet["cultures"])
-    id_labs = id_labs_text(sheet["labs"])
+    id_labs = id_summary(sheet)
     if culture_block or id_labs:
         id_vitals = auto_vitals.get("Infectious Disease", "")
         parts = [part for part in (id_vitals, id_labs, culture_block, id_notes) if part.strip()]
@@ -454,7 +462,7 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
     if positive:
         result["Diagnoses"] = result["Diagnoses"].rstrip() + ("\n" if result["Diagnoses"].strip() else "") + "----\n" + positive
     if include_lab_text:
-        laboratory = labs_text(sheet["labs"], include_id_panels=False, blood_gas=sheet["blood_gas"], cbc=sheet["cbc"])
+        laboratory = labs_text(laboratory_data(sheet), include_id_panels=False, blood_gas=sheet["blood_gas"], cbc=sheet["cbc"])
         if laboratory:
             result["Lab Results / Trends"] = laboratory + ("\n" + result["Lab Results / Trends"] if result["Lab Results / Trends"].strip() else "")
     return result
