@@ -1,3 +1,32 @@
+# Version 6.31: compact Problems and age-aware BMI
+
+Save open work. Extract PICU631.zip and upload the contents of
+PICU_Handoff_v6_31_Compact_Problems into the existing application code repository.
+Replace matching files and keep app.py at the root. Keep the current Streamlit
+Secrets, both passwords, encryption key, GitHub token, medication mappings,
+private data repository, and public BMI reference file unchanged.
+Do not run the setup generators. No new dependencies or archive schema change.
+
+Problems now prints as a single comma-separated paragraph with an inline label.
+It wraps only when needed. No supporting evidence, one-item-per-line list,
+review-required heading or review status is printed. Details and optional edits
+remain in the Problems tab. Unconfirmed inference-based conditions retain a
+short Possible qualifier. Existing source diagnoses and saved decisions are not
+rewritten, and dismissed entries remain hidden.
+
+BMI and BMI percentile do not print below 24 months or without an established
+age. Height/BSA and the weight Z-score are unchanged. The original BMI remains
+stored and editable. At/above age 2 the BMI can print, with a percentile only
+when age in months, explicit sex and the reference data permit calculation.
+
+Sex: Male / Female / M / F is read in I or N, on the same or following line.
+Read COMPACT_PROBLEMS_UPDATE.md and TEST_REPORT.md for details.
+Sidebar: Version 6.31 | Compact problems and age-aware BMI
+
+The following release notes are historical.
+
+---
+
 # Version 6.30: laboratory windows and suggested-problem review
 
 Save current work. Extract PICU630.zip and upload the contents of

@@ -154,7 +154,7 @@ def test_source_diagnoses_never_changed_by_suggestions():
     before=deepcopy(s)
     assert {'K','sepsis'} <= keys(s)
     text=review_text(s,NOW)
-    assert 'Review for: Sepsis' in text and 'not' in text.lower()
+    assert 'Possible sepsis' in text and 'Review for:' not in text
     assert s==before
 
 
@@ -255,7 +255,7 @@ def test_dismiss_then_restore_and_hide_print_only():
     s=set_decision(s,'K',item['fingerprint'],'dismissed','Hypokalemia')
     assert review_text(s,NOW)=='' and len(suggestions(s,NOW))==1
     s=set_decision(s,'K',item['fingerprint'],'review','Hypokalemia')
-    assert 'Review for:' in review_text(s,NOW)
+    assert review_text(s,NOW) == 'Hypokalemia'
     s['problem_review']['enabled']=False
     assert review_text(s,NOW)=='' and len(suggestions(s,NOW))==1
 
@@ -299,8 +299,8 @@ def test_all_formats_keep_review_separate_and_do_not_mutate():
         result=fn(s,printed_at=NOW)
         if isinstance(result,bytes):
             result='\n'.join(x.extract_text() for x in PdfReader(BytesIO(result)).pages)
-        assert 'Suggested Problems' in result or 'SUGGESTED PROBLEMS' in result
-        assert 'Review for:' in result and 'Hypokalemia' in result and 'Not added' in result
+        assert 'Problems:' in result
+        assert 'Hypokalemia' in result and 'Review for:' not in result and 'Not added' not in result
         assert 'NT-proBNP' in result and '421' in result and '173' in result
     assert s==before
 

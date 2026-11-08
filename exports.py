@@ -46,7 +46,7 @@ def handoff_text(sheet: dict, printed_at: datetime | None = None) -> str:
     if review_summary(sheet):
         parts.extend(["", review_summary(sheet)])
     if problem_text(sheet):
-        parts.extend(["", PROBLEM_TITLE.upper(), problem_text(sheet)])
+        parts.extend(["", PROBLEM_TITLE + ": " + problem_text(sheet)])
     for section in SYSTEMS:
         content = fields[section].strip()
         if content:
@@ -128,7 +128,7 @@ def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
     problems = problem_text(sheet, rich=True)
     if problems:
         bands.append('<div class="band problem-review"><strong>' + escape(PROBLEM_TITLE) +
-                     ':</strong><div class="content">' + problems + '</div></div>')
+                     ':</strong> <span class="content">' + problems + '</span></div>')
     for key in BOTTOM:
         bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(laboratory_data(sheet), blood_gas=sheet['blood_gas'], cbc=sheet['cbc']) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
     extra = '\n'.join(k + ': ' + fields[k] for k in ('Skin / Wounds', 'Tasks', 'Other') if fields[k].strip())
@@ -283,7 +283,7 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: b
              for name, text in band_items]
     problems = problem_text(sheet, rich=True, esc=_clinical_markup)
     if problems:
-        bands.insert(0, (PROBLEM_TITLE, paragraphs(problems, rich=True)))
+        bands.insert(0, (PROBLEM_TITLE, paragraphs('<b>' + PROBLEM_TITLE + ':</b> ' + problems, rich=True)))
     device_summary = devices_markup(sheet, _clinical_markup)
     if device_summary:
         bands.append(('Devices', paragraphs(device_summary, rich=True)))
@@ -307,8 +307,8 @@ def _plan_heights(plan: dict) -> tuple[float, list[float], float]:
     width = plan['width']
     pad = plan['cell_padding']
     main = max(20, max((_queue_height(q, w-2*pad) for q, w in zip(plan['columns'], plan['widths'])), default=0)+2*pad)
-    bands = [max(plan['empty_band'], _queue_height(q, width-6) + plan['band_label'] + plan['band_padding'])
-             for _, q in plan['bands']]
+    bands = [max(plan['empty_band'], _queue_height(q, width-6) + (0 if label == PROBLEM_TITLE else plan['band_label']) + plan['band_padding'])
+             for label, q in plan['bands']]
     access = max(plan['access_min'], max((_queue_height(q, width/4-6) for _, q in plan['access']), default=0)+14) if plan['access'] else 0
     return main, bands, access
 
@@ -492,17 +492,18 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
             remaining = parts[1:] + remaining[1:]
         return remaining
 
-    def minimum_band(queue):
+    def minimum_band(label, queue):
         if not queue:
             return plan['empty_band']
-        minimum = label_height+band_padding+2*leading
+        local_label_height = 0 if label == PROBLEM_TITLE else label_height
+        minimum = local_label_height+band_padding+2*leading
         # A fishbone row must fit intact. Reserve its preceding short note too,
         # so a large Other Medications band cannot starve the lab row forever.
         before = 0.0
         for item in queue:
             h = item.wrap(total_width-6, 100000)[1]
             if isinstance(item, LabRow):
-                return min(195, max(minimum, before+h+label_height+band_padding))
+                return min(195, max(minimum, before+h+local_label_height+band_padding))
             before += h
             if before > 30:
                 break
@@ -532,7 +533,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
             main_height = body_height-sum(band_heights)-access_height
         else:
             access_height = min(54, access_need)
-            minimums = [minimum_band(q) for _, q in bands]
+            minimums = [minimum_band(label, q) for label, q in bands]
             main_cap = max(24, body_height-access_height-sum(minimums))
             main_height = min(main_need, main_cap)
             remaining_height = body_height-main_height-access_height
@@ -569,11 +570,14 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
                 c.rect(margin, y-bh, total_width, bh, fill=1, stroke=0)
                 c.restoreState()
             c.rect(margin, y-bh, total_width, bh)
-            c.setFont('Times-Bold', 7.5)
-            c.drawString(margin+3, y-8, label + (':' if page == 1 else ' (continued):'))
-            rest = draw_queue(queue, margin+3, y-label_height-2,
-                              total_width-6, bh-label_height-band_padding)
-            updated_bands.append((label, rest))
+            local_label_height = 0 if label == PROBLEM_TITLE else label_height
+            if label != PROBLEM_TITLE:
+                c.setFont('Times-Bold', 7.5)
+                c.drawString(margin+3, y-8, label + (':' if page == 1 else ' (continued):'))
+            rest = draw_queue(queue, margin+3, y-local_label_height-2,
+                              total_width-6, bh-local_label_height-band_padding)
+            if label != PROBLEM_TITLE or rest:
+                updated_bands.append((label, rest))
             y -= bh
         bands = updated_bands
         aw = total_width/4

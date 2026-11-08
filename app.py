@@ -595,7 +595,7 @@ def neuro_weight_editor(sheet: dict) -> None:
                   on_change=demographic_change, args=(sheet["room"], field, key))
     attributes = sheet.get("anthropometrics", empty_anthropometrics())
     with st.expander("Age, BMI, height and BSA", expanded=True):
-        st.caption("Age prints directly below the room. For BMI percentile, supply age AT THE BMI MEASUREMENT in months or years and months, plus growth-chart sex. Age and sex are never inferred from diagnoses or a weight-chart footnote.")
+        st.caption("Age prints directly below the room. For BMI percentile, supply age AT THE BMI MEASUREMENT in months or years and months, plus growth-chart sex. Age and sex are never inferred from diagnoses or a weight-chart footnote. BMI and BMI percentile are hidden from handoff output below age 2, or until age is documented. Imported values stay editable.")
         for field, label in (("age", "Age (for example 5 years 2 months)"), ("sex", "Sex for BMI growth chart (Male / Female, or blank)"), ("bmi", "Recorded BMI (kg/m²)"), ("height", "Recorded Height (for example 100 cm)"), ("bsa", "Recorded BSA (for example 0.65 m²)")):
             key = "anthro_" + sheet["id"] + "_" + field
             if key not in st.session_state:
@@ -1291,7 +1291,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.30 | Lab windows and suggested problem review")
+        st.caption("Version 6.31 | Compact problems and age-aware BMI")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1526,7 +1526,7 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.button("Start blank for new patient", on_click=start_new_patient)
         st.button("Load saved handoff", on_click=load_saved_into_editor)
         st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
-    paste_tab, meds_tab, labs_tab, cultures_tab, orders_tab, problems_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Labs/Imaging", "Suggested problems", "Edit handoff", "Preview / print"])
+    paste_tab, meds_tab, labs_tab, cultures_tab, orders_tab, problems_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Labs/Imaging", "Problems", "Edit handoff", "Preview / print"])
     with paste_tab:
         st.caption("Paste your SmartPhrase and click Create / update handoff. Imported results and edits save automatically before you change rooms.")
         st.button("Clear pasted text", on_click=clear_paste)
@@ -2852,29 +2852,29 @@ def save_problem_limits(room: str, prefix: str) -> None:
 
 
 def problem_review_editor(sheet: dict) -> None:
-    st.subheader('Suggested problems')
-    st.caption('These are review prompts, not diagnoses or treatment advice. Source diagnoses stay unchanged. Review the evidence, then keep, edit, confirm or dismiss each prompt. Changed evidence needs a new review.')
+    st.subheader('Problems')
+    st.caption('The handoff prints a compact, comma-separated Problems line. Supporting details stay here. You can edit or hide items without a required confirmation step. Medication or device triggers alone do not confirm a diagnosis.')
     data = sheet.get('problem_review', empty_review())
     key = 'problem_' + sheet['id'] + '_enabled'
     st.session_state.setdefault(key, data['enabled'])
-    st.checkbox('Show the separate suggested-problem band on the handoff', key=key,
+    st.checkbox('Show the compact Problems line on the handoff', key=key,
                 on_change=problem_display_change, args=(sheet['room'], key))
     items = suggestions(sheet)
     if not items:
-        st.info('No review prompts were generated from the available evidence. This is not a normal-results check or a complete problem list.')
+        st.info('No automatic problems to display. This does not confirm normal results or a complete problem list.')
     for item in items:
         prefix = 'problem_' + sheet['id'] + '_' + item['key'] + '_' + item['fingerprint'][:12]
         text_key, status_key = prefix + '_text', prefix + '_status'
         st.session_state.setdefault(text_key, item['label'])
         st.session_state.setdefault(status_key, item['status'])
-        with st.expander(item['label'] + ' (' + item['status'] + ')', expanded=item['status'] == 'review'):
+        with st.expander(item['label'] + (' (hidden)' if item['status'] == 'dismissed' else ''), expanded=False):
             st.text(item['evidence'])
             st.caption(item['caution'])
             args = (sheet['room'], item['key'], item['fingerprint'], status_key, text_key)
             st.text_input('Problem wording', key=text_key, max_chars=200,
                           on_change=problem_decision_change, args=args)
-            st.selectbox('Review decision', PROBLEM_STATUSES, key=status_key,
-                         format_func=lambda x: {'review':'Needs review', 'confirmed':'Confirmed by me', 'dismissed':'Dismiss / do not print'}[x],
+            st.selectbox('Display choice', PROBLEM_STATUSES, key=status_key,
+                         format_func=lambda x: {'review':'Show automatic wording', 'confirmed':'Confirmed by me', 'dismissed':'Hide from handoff'}[x],
                          on_change=problem_decision_change, args=args)
     for message in limitation_notes(sheet):
         st.caption(message)

@@ -49,11 +49,15 @@ The app organizes the supported sections into the draft. Read any warnings. A sk
 
 Use Medications, Labs / Vitals, Cultures, Labs/Imaging, and Edit handoff to correct the draft. Check doses and infusion rates, respiratory support, result dates, weight and dosing weight, and any retained information. Unmapped medications appear in Other Medications. You can assign their system or hide an entry without deleting it. Remembered mapping and hiding choices can affect later imports for the team. Open Preview / print and compare the finished sheet with Epic. Add your assessment, tasks, and follow-up notes where needed. The handoff supports communication and does not replace the chart or current orders.
 
-## Suggested problems and result time windows
+## Problems and result time windows
 
-Open Suggested problems to review automatic prompts and their supporting evidence. These are not diagnoses. An ID-mapped medication does not establish sepsis, respiratory support does not establish acute hypoxemia, and bowel medications may be preventive. Confirm, edit or dismiss each prompt after checking the chart. Changed evidence requires review again. These choices never rewrite the source Diagnoses section. Optional patient-specific low-result limits require clinician verification and the source units. An abnormal asterisk alone does not mean low.
+Open Problems to edit or hide automatic items and inspect their supporting evidence. The printed handoff uses one compact comma-separated Problems line, without evidence paragraphs or a review-required heading. No confirmation step blocks importing or printing. Medication and device triggers alone do not establish a diagnosis, so unconfirmed inference-based conditions retain a short Possible qualifier. Source Diagnoses remain unchanged. Existing confirmations and hidden choices are retained for unchanged evidence. Optional patient-specific low-result limits require clinician verification and the source units. An abnormal asterisk alone does not mean low.
 
 Lactate, theophylline and CK use a rolling 24-hour display window. CRP and procalcitonin use the admission date onward. NT-proBNP uses the latest result from all supplied dates. Previous-day results without collection times may overlap the cutoff and are labeled timing unverified. Raw rows stay available in Labs / Vitals. Downloaded files are snapshots and cannot refresh lab windows after download. Generate a new PDF for updated filters.
+
+## Age, sex and BMI
+
+Place Age and Sex lines inside the I / NUTRITION or N / admission dividers. Sex: Male, Female, M and F are accepted, including a value on the next line. BMI and its percentile are omitted from the handoff for children under 24 months and when age is not established. Source measurements remain in the editor and archive. At age 2 or older, the recorded BMI can print. A percentile requires age at measurement in months, explicit growth-chart sex and the configured CDC reference. Missing-percentile explanations stay in the editor rather than taking space on the printed sheet.
 
 ## 8. Save and confirm
 

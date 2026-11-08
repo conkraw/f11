@@ -79,7 +79,8 @@ def test_i_extract_keeps_measured_and_dosing_separate():
 def test_no_sex_or_age_inferred_from_weight_footnote():
     s=imported('i','NUTRITION:\n01/02/2026 10 kg (50%, Z= 0.1)*\n* Growth percentiles are based on WHO (Boys, 0-2 years) data.\nBMI:\nBody mass index is 17.14 kg/m².')
     assert not s['anthropometrics']['age'] and not s['anthropometrics']['sex']
-    assert 'unavailable (age/sex needed)' in fields_with_medications(s)['Diagnoses']
+    assert 'BMI' not in fields_with_medications(s)['Diagnoses']
+    assert 'age/sex needed' in bmi_percentile_summary(s['anthropometrics'])[0]
 
 
 def test_n_demographics_do_not_confuse_admission_date():
@@ -129,7 +130,9 @@ def test_percentile_no_extrapolation(age,sex):
 def test_missing_reference_does_not_block_sheet_export():
     s=new_sheet('P4102');s['anthropometrics']=dict(age='5 years 2 months',sex='Female',bmi='17.14 kg/m²',height='',bsa='')
     with patch('bmi_reference.load_reference',side_effect=OSError):
-        assert 'reference needed' in handoff_text(s)
+        assert 'BMI: 17.14' in handoff_text(s)
+        assert 'reference needed' not in handoff_text(s)
+        assert 'reference needed' in bmi_percentile_summary(s['anthropometrics'])[0]
         assert handoff_pdf(s).startswith(b'%PDF')
 
 

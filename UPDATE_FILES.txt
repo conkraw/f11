@@ -1,9 +1,8 @@
-COMPLETE VERSION 6.30 PACKAGE
-Replace matching files using this complete folder, with app.py at the root.
-New runtime modules: lab_windows.py, problem_review.py.
-Updated integration: app.py, models.py, exports.py, error_store.py.
-Updated valid Epic BSA spelling support: anthropometrics.py.
-Default guide updates: user_guide.py.
-Keep all current secrets, credentials, encryption key and public BMI data file.
-Do not run generators or downgrade after saving.
-Read LAB_WINDOWS_PROBLEMS_UPDATE.md and TEST_REPORT.md.
+COMPLETE VERSION 6.31 PACKAGE
+Replace matching files, keeping app.py at the root.
+Changed runtime modules: app.py, anthropometrics.py, problem_review.py,
+exports.py, error_store.py, user_guide.py.
+No new runtime module, dependency, or archive schema change.
+Keep both passwords, encryption key, token, settings, private data repository,
+and your existing public CDC BMI reference CSV unchanged.
+No generators need to run. See COMPACT_PROBLEMS_UPDATE.md and TEST_REPORT.md.

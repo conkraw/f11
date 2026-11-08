@@ -44,6 +44,13 @@ def age_bounds(text: str) -> tuple[float, float] | None:
     if match:
         days = int(match.group(1)) * (7 if re.search(r'w', text, re.I) else 1)
         return days / 31, days / 28
+    match = re.fullmatch(r'(\d+)\s*(months?|mos?|m|weeks?|wks?|w)\s*(?:,|and)?\s*(\d+)\s*(?:days?|d)', text.strip(), re.I)
+    if match:
+        number, unit, days = int(match[1]), match[2].lower(), int(match[3])
+        if unit.startswith('m'):
+            return float(number), number + days / 28
+        total_days = number * 7 + days
+        return total_days / 31, total_days / 28
     return None
 
 
@@ -138,14 +145,27 @@ def extract_anthropometrics(block: str) -> AnthropometricResult:
     return out
 
 
+def bmi_output_allowed(data: dict) -> bool:
+    """Only print BMI when the documented age establishes age >=24 months.
+
+    Missing age is not inferred from a growth-chart footnote or diagnosis.
+    Retain imported BMI in the editor/storage even when it is not printed.
+    """
+    bounds = age_bounds(data.get('age', ''))
+    return bounds is not None and bounds[0] >= 24
+
+
 def measurements_text(data: dict) -> str:
     from bmi_reference import bmi_percentile_summary
     validate_anthropometrics(data)
     rows = []
-    for key, label in (('height', 'Height'), ('bsa', 'BSA'), ('bmi', 'BMI')):
+    for key, label in (('height', 'Height'), ('bsa', 'BSA')):
         if data[key]:
             rows.append(label + ': ' + data[key])
-    if data['bmi']:
+    if data['bmi'] and bmi_output_allowed(data):
+        rows.append('BMI: ' + data['bmi'])
         text, _ = bmi_percentile_summary(data)
-        rows.append('BMI percentile: ' + text)
+        # Missing-data messages belong to the editor, not the compact handoff.
+        if text.endswith(' (CDC)'):
+            rows.append('BMI percentile: ' + text)
     return '\n'.join(rows)

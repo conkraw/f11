@@ -20,7 +20,7 @@ from medications import visible
 from fen_gi import effective_section, group_for as gi_group
 from lab_windows import clock, eligible_time
 
-TITLE = 'Suggested Problems / Review Required'
+TITLE = 'Problems'
 STATUSES = ('review', 'confirmed', 'dismissed')
 RULES = {
     'sepsis': 'Sepsis',
@@ -226,28 +226,28 @@ def set_decision(sheet: dict, key: str, fingerprint: str, status: str, text: str
 
 
 def review_text(sheet: dict, as_of: datetime | None = None, rich: bool = False, esc=escape) -> str:
+    """Compact handoff names only. Detailed evidence remains in suggestions().
+
+    Broad medication/device/biochemistry triggers still need clinical context.
+    Preserve that uncertainty in a short qualifier, not a multi-line explanation.
+    No stored decision or imported diagnosis is changed by this display function.
+    """
     if not sheet.get('problem_review', empty_review())['enabled']:
         return ''
-    rows = [r for r in suggestions(sheet, as_of) if r['status'] != 'dismissed']
-    if not rows:
-        return ''
-    lines = ['Review prompts only. Not added to the source diagnoses.']
-    for row in rows:
-        heading = ('Reviewed by user: ' if row['status'] == 'confirmed' else 'Review for: ') + row['label']
-        evidence = row['evidence']
-        # Compact medicine trigger, without truncating the accessible evidence in UI.
-        if row['key'] in ('sepsis','constipation'):
-            evidence = ('ID-mapped medication present, verify indication and organ dysfunction'
-                        if row['key'] == 'sepsis' else 'Bowel regimen present, verify indication')
-        if row['key'] == 'respiratory':
-            evidence += ', acuity/hypoxemia not established by device alone'
-        if row['key'] == 'CO2':
-            evidence += ', acid-base disorder requires review'
-        if rich:
-            lines.append('<b>' + esc(heading) + '</b>: ' + esc(evidence))
-        else:
-            lines.append(heading + ': ' + evidence)
-    return '\n'.join(lines)
+    names = []
+    seen = set()
+    uncertain = {'sepsis', 'respiratory', 'aki', 'CO2', 'constipation'}
+    for row in suggestions(sheet, as_of):
+        if row['status'] == 'dismissed':
+            continue
+        name = re.sub(r'\s+', ' ', row['label']).strip()
+        if (row['status'] != 'confirmed' and row['key'] in uncertain
+                and not re.match(r'^(?:possible|suspected|potential)\b', name, re.I)):
+            name = 'Possible ' + name[0].lower() + name[1:]
+        if name.casefold() not in seen:
+            seen.add(name.casefold())
+            names.append(esc(name) if rich else name)
+    return ', '.join(names)
 
 
 def limitation_notes(sheet: dict, as_of: datetime | None = None) -> list[str]:
