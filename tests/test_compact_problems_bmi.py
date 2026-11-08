@@ -133,11 +133,11 @@ def test_problem_band_has_no_separate_heading_height():
     assert len(plan['bands'][i][1]) == 1
 
 
-def test_unconfirmed_proxy_triggers_stay_possible_but_compact():
+def test_unconfirmed_proxy_triggers_use_names_but_keep_editor_evidence():
     s = lab_sheet('CO2\t16 (L)\t11/08/2026')
     med(s)
-    assert 'Possible sepsis' in review_text(s,NOW)
-    assert 'Possible metabolic acidosis' in review_text(s,NOW)
+    assert 'Sepsis' in review_text(s,NOW) and 'Possible' not in review_text(s,NOW)
+    assert 'Metabolic acidosis' in review_text(s,NOW)
     assert 'organ dysfunction' not in review_text(s,NOW)
     item = next(x for x in suggestions(s,NOW) if x['key']=='sepsis')
     assert 'organ dysfunction' in item['caution']

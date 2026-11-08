@@ -1,12 +1,10 @@
-COMPLETE VERSION 6.33 PACKAGE
+COMPLETE VERSION 6.34 PACKAGE
 Replace matching files and keep app.py at the root.
-New modules: infusion_rates.py, medication_columns.py.
-Updated modules: app.py, medications.py, infusions.py, fen_gi.py, models.py,
-exports.py, error_store.py.
-No new Python dependencies. Encrypted archive schema 25 automatically accepts
-and upgrades schema 24. Do not downgrade after saving with this version.
+Changed runtime modules: anthropometrics.py, problem_review.py, app.py, user_guide.py.
+No new modules, Python dependencies, or archive schema changes.
 Keep both passwords, encryption key, GitHub token, mappings, private storage,
 and existing public CDC BMI reference data. Do not rerun generators.
-Re-paste the complete B section or full SmartPhrase to capture Last Admin,
-then Create / update handoff and Save handoff.
-Read INFUSION_RATES_UPDATE.md and TEST_REPORT.md.
+Re-paste the complete A section or full SmartPhrase to recover previously
+rejected week-old age/sex values. Then Create / update handoff and Save handoff.
+The compact problem labels and starred-CBC thresholds apply to existing results.
+Read AGE_COUNTS_UPDATE.md and TEST_REPORT.md.

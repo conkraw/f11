@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.33: documented infusion rates and Antiemetics."""
+"""PICU SmartPhrase v6.34: week-old age parsing and compact problem rules."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -1300,7 +1300,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.33 | Last Admin infusion rates and Antiemetics")
+        st.caption("Version 6.34 | Age/sex and flagged blood counts")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -2902,7 +2902,7 @@ def problem_review_editor(sheet: dict) -> None:
     for message in limitation_notes(sheet):
         st.caption(message)
     with st.expander('Patient-specific low-result limits (optional)', expanded=False):
-        st.caption('By default, only explicit L / LL / LOW flags count as low. An asterisk alone does not identify the direction. Enter a clinician-verified cutoff for this patient only, in the same units as the source. Missing or mismatched units prevent comparison. Leave blank to use source flags only. These are not universal pediatric reference ranges.')
+        st.caption('Source L / LL / LOW flags still count as low. Asterisk-flagged hemoglobin below 11.5 g/dL adds Anemia, and asterisk-flagged platelets below 175 K/uL adds Thrombocytopenia. These are your configured workflow cutoffs, not age-specific diagnostic reference ranges. A patient-specific limit below overrides the default for that component. Other asterisk-only results need a verified low limit. Missing or mismatched units prevent numeric comparison.')
         prefix = 'problem_limit_' + sheet['id'] + '_'
         with st.form('problem_limits_' + sheet['id']):
             for component in LOW_RULES:

@@ -34,6 +34,12 @@ LOW_RULES = tuple(k for k in RULES if k in ('NA','K','ALBUMIN','CO2','MG','PHOS'
 LABELS = {'NA':'Sodium', 'K':'Potassium', 'ALBUMIN':'Albumin', 'CO2':'Serum CO2',
           'MG':'Magnesium', 'PHOS':'Phosphorus', 'HGB':'Hemoglobin', 'PLT':'Platelets'}
 LOW = re.compile(r'\((?:L|LL|LOW)\)', re.I)
+# Clinician-requested workflow cutoffs, not age-specific reference ranges.
+# These defaults apply only to asterisk-flagged values with documented units.
+STAR_LOW_LIMITS = {
+    'HGB': {'value': '11.5', 'unit': 'g/dL'},
+    'PLT': {'value': '175', 'unit': 'K/uL'},
+}
 NUMBER = re.compile(r'^\s*([<>≤≥]?)\s*([+-]?(?:\d[\d,]*(?:\.\d*)?|\.\d+))(.*)$')
 
 
@@ -85,15 +91,39 @@ def unit_key(value):
     return re.sub(r'\s+', '', value).replace('µ','u').replace('μ','u').casefold()
 
 
-def _is_low(row: dict, limit: dict | None) -> tuple[bool, str]:
+def _star_limit(row: dict, key: str) -> dict | None:
+    """Use the configured starred-CBC rule only in explicitly compatible units.
+
+    Equivalent platelet count units share the same numeric scale. No unit is
+    inferred from the name, and no numeric conversion is performed.
+    """
+    if key not in STAR_LOW_LIMITS or '*' not in row.get('value', ''):
+        return None
+    parsed = numeric(row['value'])
+    if parsed is None or parsed[1] < 0:
+        return None
+    raw_unit = row.get('unit') or parsed[2]
+    normalized = unit_key(raw_unit).replace('×', 'x').replace('³', '^3').replace('⁹', '^9')
+    allowed = ({'g/dl'} if key == 'HGB' else
+               {'k/ul', '10^3/ul', 'x10^3/ul', '10^9/l', 'x10^9/l'})
+    if normalized not in allowed:
+        return None
+    return {'value': STAR_LOW_LIMITS[key]['value'], 'unit': raw_unit}
+
+
+def _is_low(row: dict, limit: dict | None, key: str = '') -> tuple[bool, str]:
     parsed = numeric(row['value'])
     if parsed is None:
         return False, ''
     if LOW.search(row['value']):
         return True, 'source marked low'
+    # Explicit patient-specific limits retain precedence over the defaults.
+    default = False
+    if not limit:
+        limit = _star_limit(row, key)
+        default = bool(limit)
     if not limit:
         return False, ''
-    # A clinician supplies a cutoff for this patient, in documented source units.
     source_unit = row.get('unit') or parsed[2]
     if not source_unit or unit_key(source_unit) != unit_key(limit['unit']):
         return False, ''
@@ -101,7 +131,8 @@ def _is_low(row: dict, limit: dict | None) -> tuple[bool, str]:
     comparator, number, _ = parsed
     low = (number < cutoff if not comparator or comparator == '≤' else
            number <= cutoff if comparator == '<' else False)
-    return low, 'below your limit ' + limit['value'] + ' ' + limit['unit'] if low else ''
+    reason = ('asterisk-flagged result below configured cutoff ' if default else 'below your limit ')
+    return low, reason + limit['value'] + ' ' + limit['unit'] if low else ''
 
 
 def _medication_active(row: dict, now: datetime) -> bool:
@@ -187,7 +218,7 @@ def suggestions(sheet: dict, as_of: datetime | None = None) -> list[dict]:
         row = latest.get(key)
         if not row:
             continue
-        low, why = _is_low(row, config['low_limits'].get(key))
+        low, why = _is_low(row, config['low_limits'].get(key), key)
         if low:
             units = (' ' + row['unit']) if row.get('unit') else ''
             evidence = LABELS[key] + ' ' + row['value'] + units + ' [' + row['date'] + '], ' + why
@@ -228,22 +259,18 @@ def set_decision(sheet: dict, key: str, fingerprint: str, status: str, text: str
 def review_text(sheet: dict, as_of: datetime | None = None, rich: bool = False, esc=escape) -> str:
     """Compact handoff names only. Detailed evidence remains in suggestions().
 
-    Broad medication/device/biochemistry triggers still need clinical context.
-    Preserve that uncertainty in a short qualifier, not a multi-line explanation.
-    No stored decision or imported diagnosis is changed by this display function.
+    Names print without an automatically added qualifier, as requested. These
+    remain rule-generated suggestions in the editor, not verified diagnoses.
+    Evidence, limitations, decision status, and imported diagnoses are unchanged.
     """
     if not sheet.get('problem_review', empty_review())['enabled']:
         return ''
     names = []
     seen = set()
-    uncertain = {'sepsis', 'respiratory', 'aki', 'CO2', 'constipation'}
     for row in suggestions(sheet, as_of):
         if row['status'] == 'dismissed':
             continue
         name = re.sub(r'\s+', ' ', row['label']).strip()
-        if (row['status'] != 'confirmed' and row['key'] in uncertain
-                and not re.match(r'^(?:possible|suspected|potential)\b', name, re.I)):
-            name = 'Possible ' + name[0].lower() + name[1:]
         if name.casefold() not in seen:
             seen.add(name.casefold())
             names.append(esc(name) if rich else name)
@@ -256,7 +283,8 @@ def limitation_notes(sheet: dict, as_of: datetime | None = None) -> list[str]:
     notes = []
     for key in LOW_RULES:
         row = latest.get(key)
-        if row and '*' in row['value'] and not LOW.search(row['value']) and key not in config['low_limits']:
+        if (row and '*' in row['value'] and not LOW.search(row['value'])
+                and key not in config['low_limits'] and not _star_limit(row, key)):
             notes.append(LABELS[key] + ': an asterisk does not specify low versus high. Supply a patient-appropriate low limit in documented units or review manually.')
     if not sheet.get('admission_date'):
         notes.append('Admission date is missing. Problem prompts use the latest supplied results with their dates, not a verified admission interval.')

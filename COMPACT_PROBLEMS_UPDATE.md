@@ -1,3 +1,5 @@
+Current v6.34 behavior is described in AGE_COUNTS_UPDATE.md. Automatic Possible prefixes in the older notes below are no longer printed.
+
 # Compact Problems and BMI output: Version 6.31
 
 ## Printed handoff

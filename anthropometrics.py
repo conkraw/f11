@@ -23,9 +23,9 @@ def _age_for_math(text: str) -> str:
     """Interpret Epic age abbreviations without changing the displayed wording."""
     text = re.sub(r'\s+', ' ', text.strip().lower())
     for pattern, unit in (
-        (r'\by\.?\s*o\.?(?!\w)', 'years'),
-        (r'\bm\.?\s*o\.?(?!\w)', 'months'),
-        (r'\bw\.?\s*o\.?(?!\w)', 'weeks'),
+        (r'\b(?:yrs?|y)\.?\s*o\.?(?!\w)', 'years'),
+        (r'\b(?:mos?|m)\.?\s*o\.?(?!\w)', 'months'),
+        (r'\b(?:wks?|w)\.?\s*o\.?(?!\w)', 'weeks'),
         (r'\bd\.?\s*o\.?(?!\w)', 'days'),
     ):
         text = re.sub(pattern, unit, text)

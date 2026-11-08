@@ -154,7 +154,7 @@ def test_source_diagnoses_never_changed_by_suggestions():
     before=deepcopy(s)
     assert {'K','sepsis'} <= keys(s)
     text=review_text(s,NOW)
-    assert 'Possible sepsis' in text and 'Review for:' not in text
+    assert 'Sepsis' in text and 'Possible' not in text and 'Review for:' not in text
     assert s==before
 
 
@@ -418,12 +418,12 @@ def test_limits_callback_rejects_missing_units_and_does_not_cross_rooms(app):
     assert ss['drafts']['P4104']==before
 
 
-def test_q_asterisk_hgb_needs_patient_cutoff_not_assumed_low():
+def test_q_asterisk_counts_use_configured_defaults_and_allow_override():
     s=sheet()
     data=parse_cbc('Results from last 7 days\nLab\tUnits\t11/08/26\n1300\nWBC AUTO\tK/uL\t5.5\nHEMOGLOBIN\tg/dL\t8.5*\nHEMATOCRIT\t%\t26*\nPLATELETS AUTO\tK/uL\t90*')
     assert not data.error
     s['cbc']=data.data
-    assert not keys(s)
+    assert {'HGB','PLT'} <= keys(s)
     s['problem_review']=empty_review()
     s['problem_review']['low_limits']={'HGB':{'value':'9','unit':'g/dL'},'PLT':{'value':'100','unit':'K/uL'}}
     assert {'HGB','PLT'} <= keys(s)
