@@ -128,6 +128,18 @@ def format_ventilation(data: dict | None) -> str:
     add("Resp Rate (Set)", "Set RR")
     if family == "PC":
         add("PIP Set (cm H2O)", "Set PIP", "cm H2O")
+    elif family in {"PRVC", "VC", "AVAPS", "VSV"}:
+        add("Vt (Set, mL)", "Set TV", "mL")
+    elif family != "PS":
+        # No mode-specific interpretation is invented for other supported modes.
+        add("PIP Set (cm H2O)", "Set PIP", "cm H2O")
+        add("Vt (Set, mL)", "Set TV", "mL")
+    # A measured PIP remains relevant in a volume-targeted mode or home vent.
+    # Keep it separate from the set PIP. Never derive or substitute a setting.
+    observed_pip = values.get("PIP Observed (cm H2O)", "")
+    if is_present(observed_pip):
+        lines.append("Observed PIP: " + _observed(observed_pip, "cm H2O"))
+    if family == "PC":
         # Preserve source selection and phase in stored values. The compact handoff
         # uses the generic TV label for either phase, never relabeling Insp as Exp.
         if is_present(values.get("Vt Exp ml", "")):
@@ -136,12 +148,6 @@ def format_ventilation(data: dict | None) -> str:
             lines.append("Observed TV: " + _observed(values["Vt Insp ml"]))
         elif is_present(values.get("Vt (observed, mL)", "")):
             lines.append("Observed TV: " + _observed(values["Vt (observed, mL)"]))
-    elif family in {"PRVC", "VC", "AVAPS", "VSV"}:
-        add("Vt (Set, mL)", "Set TV", "mL")
-    elif family != "PS":
-        # No mode-specific interpretation is invented for other supported modes.
-        add("PIP Set (cm H2O)", "Set PIP", "cm H2O")
-        add("Vt (Set, mL)", "Set TV", "mL")
     add("PEEP (cm H2O)", "Set PEEP", "cm H2O")
     add("Insp Time (sec)", "Inspiratory Time", "sec")
     add("Pressure Support (cm H2O)", "Pressure Support", "cm H2O")

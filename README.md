@@ -1,108 +1,82 @@
-# Version 6.40: Neurologic groups and compact trends
+# Version 6.41: Measurement notes and observed PIP
 
-Built directly from the delivered 6.39 ZIP. Keeps the compact landscape layout,
-automatic page fitting, PDF-only downloads, difficult-airway section, and all
-other 6.39 features. There is no manual font-size picker.
+Built directly from the delivered Version 6.40 package. Retains the compact
+landscape handoff, 8-point starting text, automatic fitting, PDF-only download
+controls, difficult-airway section, and all medication categories. There is no
+manual font-size picker or Labs/Imaging print column.
 
-## TV
+## Measurement import fix
 
-The observed tidal-volume summary uses `Observed TV` instead of TVi or TVe.
-The original inspiratory, expiratory or generic observed source field and value
-remain stored and editable. Source selection is unchanged. Set TV remains Set TV.
+The height parser previously accepted one feet/inches parenthetical, but not a
+second chart-transfer note. That rejected the I / NUTRITION section even when
+measured weight and dosing weight were valid. The import-review message meant
+that this section was not refreshed and any previous measurements were retained.
 
-## Compact lactate trend
+The parser now accepts a recorded primary height with its matching imperial
+equivalent and recognized Epic/Cerner migration or recharting notes, for example:
 
-The cardiovascular summary uses the earliest and latest eligible lactates within
-the existing rolling 24-hour window:
+    Height: 120 cm (3' 11.24") (Imported from Cerner and recharted in Epic)
 
-```
-Lactate 1.0 -> 1.1 [11/8/2026]
-```
+The handoff displays Height: 120 cm. The charting comment does not print. A note
+can also follow a height without an imperial equivalent. Repeated Height/Length
+headings and split heading/value lines remain supported.
 
-The bracket contains the latest selected result's date. A single eligible result
-prints `Lactate 1.1 [11/8/2026]`. More than two results still display only the two
-endpoints. The text wraps naturally to the available column width.
+This is not a blanket removal of parentheses. Conflicting heights, unbalanced
+parentheses, unknown notes, and notes that invalidate a measurement still produce
+an in-app warning. The primary and imperial values must agree within the existing
+rounding tolerance. Height is never derived from BMI or weight.
 
-Time-based ordering and date-only source-order handling are unchanged. A
-previous-day result without a collection time can overlap the cutoff, as before.
-There is no new timing message on the handoff. Supplied flags and units remain
-attached to each result, without conversion. Result codes do not print. Full
-source values, dates and supplied times remain in Labs / Vitals. Older results
-are filtered from the summary, not deleted.
+A successful I reimport replaces the old measurements and clears only its own
+import warning. Other warnings remain. The existing dosing-weight-based intake
+and output calculations become available after that warning clears.
 
-## New neurologic medication groups
+## Observed PIP on the handoff
 
-| Group | Automatic medication names |
-|---|---|
-| Airway/Cerebral Steroids | Systemic dexamethasone |
-| Insomnia | Melatonin, trazodone |
-| Antispasmodic | Baclofen |
-| Neuromodulation | Gabapentin, pregabalin |
+Observed PIP was already parsed and stored, but omitted from the mode-specific
+printed summary. It now prints whenever the invasive ventilation record contains
+it, including PRVC, VC, PC, PS-CPAP and Home Vent summaries.
 
-Local eye, ear and topical dexamethasone preparations do not receive the automatic
-steroid group. The headings are display categories chosen for this workflow, not
-inferred medication indications. Original doses, routes, frequencies, start/held
-labels and administration-rate fields remain unchanged.
+    Mode: PRVC-IMV
+    Set RR: 16
+    Set TV: 160 mL
+    Observed PIP: Avg: 22.4 Min: 18.2 Max: 28 cm H2O
+    Set PEEP: 6 cm H2O
+    Inspiratory Time: 0.8 sec
+    Pressure Support: 8 cm H2O
 
-The automatic steroid category defaults to Neurologic. A deliberate Medication
-group or system override can change the placement. Existing explicit overrides
-and hidden/excluded medication choices are retained.
+A scalar displays as Observed PIP: 22.5 cm H2O. Supplied statistics are retained,
+not calculated. Blank or No data recorded entries do not produce a placeholder.
+Set PIP and Observed PIP remain separate. The app does not add PEEP, substitute
+one for the other, or infer a measurement from the ventilator mode.
 
-## Neurologic sequence
+The change applies to the on-screen handoff, PDF and Print all. Stored observed
+PIP values display without re-pasting. The existing TV source-selection rules,
+mode abbreviations and noninvasive-device detection are unchanged.
 
-Recorded neurologic observations (SBS/RASS, WAT, and any ICP/CPP/EVD information)
-remain first. The medication blocks then appear as:
+## Installation and refresh
 
-```
-Infusions
-PRN
-Paralytic Infusions
-Paralytic PRN
-Airway/Cerebral Steroids
-Antiepileptic
-Antispasmodic
-Fever Control
-Insomnia
-Neuromodulation
-```
+Extract PICU641.zip and open PICU_Handoff_v6_41_Measurements_PIP. Upload that
+folder's contents into the existing application code repository, replacing
+matching files. Keep app.py at the root. Restart the deployment and refresh the
+browser. The sidebar should read:
 
-The first blocks keep bedside sedation and paralytic information together.
-The remaining named categories are sorted alphabetically by heading.
-Only nonempty blocks print. Notes and other uncategorized neurologic medications
-follow. Medicines within the neurologic blocks are sorted by the leading medication
-name. The same medicine's orders and taper steps keep their relative source
-order, including when Epic embeds a different dose in the product name.
+    Version 6.41 | Measurement notes and observed PIP
 
-Continuous IV rocuronium, cisatracurium and vecuronium appear under Paralytic
-Infusions. Their PRN orders stay in Paralytic PRN. One-time boluses are not
-classified as continuous infusions. Sedative infusion display retains the
-existing system mappings and Last Admin emphasis. Antiepileptic infusions remain
-inside Antiepileptic, with their infusion emphasis, instead of printing twice.
+Keep the current Secrets, both passwords, encryption key, medication mappings,
+BMI reference data and shared storage. Do not rerun setup generators. No new
+Python dependencies, secret fields or saved-archive schema changes are required.
 
-## Editing and installation
+For the rejected measurements, re-paste the complete paired I section or full
+SmartPhrase, click Create / update handoff, check the displayed values, then Save
+handoff. Installation alone cannot recover values from a rejected import.
 
-The new choices are available in Medications > Medication group and in the
-existing Admin medication subgroup controls. Choices are remembered through the
-existing settings. Setting a group explicitly overrides its automatic default.
-The No special grouping choice permits the ordinary system mapping to apply.
+For respiratory data already stored, open Preview / print or regenerate Print all.
+Re-paste complete C and D sections only when refreshing the source settings.
 
-Extract PICU640.zip and open PICU_Handoff_v6_40_Neuro_Groups. Upload that folder's
-contents into the existing application code repository, replacing matching
-files. Keep app.py at the root. Restart the app and refresh the browser.
+## Scope and testing
 
-Keep current Secrets, both passwords, the encryption key, medication mappings,
-BMI reference data and the existing data repository. Do not rerun generators.
-There are no new dependencies, secret fields or archive-schema changes.
-
-Look for `Version 6.40 | Neurologic groups and compact trends`.
-
-No re-pasting is needed for existing stored values or medication orders. An
-explicit old override can still suppress a new automatic group. Change its
-Medication group to Automatic or the desired category to use the new placement.
-New subgroup choices are not understood by older releases. Do not downgrade
-after saving them without restoring a compatible backup.
-
-## Validation
-
-See TEST_REPORT.md for the checks actually performed. The app was not deployed
-to or tested against the user's live storage. Changes are delivered as this ZIP.
+Production changes are limited to anthropometrics.py, the formatting function in
+ventilation.py, the version caption in app.py, and the technical-report version
+constant in error_store.py. No source patient records or private settings are
+bundled. The preview and new regression-test fixtures use synthetic records.
+See TEST_REPORT.md for the actual test results and limitations.

@@ -14,6 +14,7 @@ BLOCK=parse_smartphrase(SAMPLE).blocks['c']
 EXPECTED='''Mode: PRVC-PS
 Set RR: 16
 Set TV: 160 mL
+Observed PIP: 24 cm H2O
 Set PEEP: 5 cm H2O
 Inspiratory Time: 1 sec
 Pressure Support: 10 cm H2O
@@ -24,7 +25,7 @@ def test_exact_requested_fields_and_order():
     result=parse_ventilation(BLOCK)
     assert result.status=='included' and not result.error
     assert format_ventilation(result.data)==EXPECTED
-    assert len(format_ventilation(result.data).splitlines())==7
+    assert len(format_ventilation(result.data).splitlines())==8
 
 
 def test_noise_and_unrequested_values_excluded():

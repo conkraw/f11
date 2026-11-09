@@ -33,6 +33,7 @@ Timax:
 PC_EXPECTED = '''Mode: PC-IMV
 Set RR: 12
 Set PIP: 35 cm H2O
+Observed PIP: Avg: 35 Min: 35 Max: 35 cm H2O
 Observed TV: Avg: 70.5 Min: 69 Max: 72 mL
 Set PEEP: 14 cm H2O
 Inspiratory Time: 1 sec
@@ -98,10 +99,11 @@ def test_prvc_cmv_requested_profile():
     assert text=='''Mode: PRVC
 Set RR: 18
 Set TV: 35 mL
+Observed PIP: Avg: 19.7 Min: 8.8 Max: 26 cm H2O
 Set PEEP: 5 cm H2O
 Inspiratory Time: 0.9 sec
 Pressure Support: 10 cm H2O'''
-    assert 'Observed' not in text and 'PIP' not in text and 'No data' not in text
+    assert 'Observed PIP:' in text and 'Set PIP:' not in text and 'Observed TV:' not in text and 'No data' not in text
 
 
 def test_prvc_imv_keeps_subtype_but_uses_volume_target():
@@ -117,6 +119,7 @@ def test_home_device_and_all_four_bounds():
 Mode: PRVC
 Set RR: 10
 Set TV: 450 mL
+Observed PIP: Avg: 15.6 Min: 15 Max: 16 cm H2O
 Set PEEP: 5 cm H2O
 Pmin: 10 cm H2O
 Pmax: 20 cm H2O
@@ -199,7 +202,7 @@ def test_expiratory_volume_preferred_when_both_exist_without_merging():
 def test_single_observed_value_does_not_invent_range():
     c=PC.replace('Vt Insp ml  Avg: 70.5  Min: 69  Max: 72','Vt Insp ml: 70')
     text=format_ventilation(parse_ventilation(c).data)
-    assert 'Observed TV: 70 mL' in text and 'Avg:' not in text
+    assert 'Observed TV: 70 mL' in text and 'Observed TV: Avg:' not in text
 
 
 def test_last_observed_rate_and_target_volume_never_replace_set_values():

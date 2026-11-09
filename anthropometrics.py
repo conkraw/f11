@@ -68,39 +68,105 @@ def age_bounds(text: str) -> tuple[float, float] | None:
     return None
 
 
-def _clean_height(value: str) -> str:
-    """Use the primary recorded height, accepting Epic's imperial equivalent.
+def _height_parentheticals(suffix: str) -> list[str]:
+    """Split balanced trailing notes without discarding unrecognized content."""
+    groups: list[str] = []
+    rest = suffix.strip()
+    while rest:
+        if not rest.startswith('('):
+            raise ValueError('Unexpected text follows the recorded height. Verify the height and its annotations.')
+        depth = 0
+        end = None
+        for index, char in enumerate(rest):
+            if char == '(':
+                depth += 1
+                if depth > 8:
+                    raise ValueError('The height annotation has too many nested parentheses.')
+            elif char == ')':
+                depth -= 1
+                if depth == 0:
+                    end = index
+                    break
+        if end is None:
+            raise ValueError('The height annotation has unmatched parentheses.')
+        groups.append(rest[1:end].strip())
+        rest = rest[end + 1:].strip()
+    return groups
 
-    For example, 114.5 cm (3' 9.08") becomes 114.5 cm. The parenthetical
-    must be an explicitly labelled feet/inches value and agree within the
-    rounding precision of both recorded measurements. No height is derived
-    from weight or BMI, and unrelated parenthetical content is not stripped.
+
+def _height_charting_note(note: str) -> bool:
+    """Recognize chart-transfer notes only, not alternate measurements.
+
+    This accepts Epic/Cerner migration and recharting provenance. It does not
+    ignore unknown annotations, a second height, or language invalidating the
+    recorded measurement. No free-text note is copied into error messages.
     """
-    match = re.fullmatch(
-        rf'({NUMBER})\s*(cm|m|in(?:ches)?)(?:\s*\(([^()]*)\))?', value, re.I)
-    if not match or Decimal(match.group(1)) <= 0:
+    provenance = re.search(
+        r"\b(?:epic|cerner|go[ -]?live|re[ -]?charted|re[ -]?charting|"
+        r"transcribed|transcription|migrated|migration|imported|"
+        r"copied (?:from|over)|carried forward)\b", note, re.I)
+    if not provenance:
+        return False
+    if re.search(
+        r"\b(?:unknown|unavailable|unable|unreliable|invalid|inaccurate|"
+        r"incorrect|wrong|error|erroneous|conflicting|uncertain|corrected|correction|correct|"
+        r"remeasur\w*|recheck\w*|verify|unverified|estimated|approximate|"
+        r"not measured|not verified|do not use|should be|instead)\b",
+        note, re.I,
+    ):
+        return False
+    # Check quantities before stripping dates or years: a four-digit height
+    # must never be mistaken for a provenance year.
+    if re.search(
+        rf"(?<!\w){NUMBER}\s*(?:cm|mm|m(?:et(?:er|re)s?)?|in(?:ch(?:es)?)?|ft|feet|foot|kg|g|lbs?)\b",
+        note, re.I,
+    ) or re.search(r"\d\s*[\"'′″]", note):
+        return False
+    # Dates in a provenance note are harmless, but a second quantity is not.
+    # Also reject unitless numeric assertions other than dates/clock times.
+    numeric_free = re.sub(r"\b\d{1,4}[/-]\d{1,2}[/-]\d{1,4}\b", "", note)
+    numeric_free = re.sub(r"\b\d{1,2}:\d{2}(?::\d{2})?\b", "", numeric_free)
+    numeric_free = re.sub(r"\b(?:19|20)\d{2}\b", "", numeric_free)
+    if re.search(r"[0-9<>]", numeric_free):
+        return False
+    return True
+
+
+def _clean_height(value: str) -> str:
+    """Keep primary height, validate an imperial equivalent, omit charting notes.
+
+    Only recognized documentation provenance is omitted. Different heights,
+    malformed parentheses and unknown or invalidating annotations still fail.
+    No height is calculated from weight or BMI.
+    """
+    match = re.fullmatch(rf'({NUMBER})\s*(cm|m|in(?:ches)?)(.*)', value, re.I)
+    if not match or len(match.group(1)) > 96 or Decimal(match.group(1)) <= 0:
         raise ValueError('Enter recorded height with a unit, for example 100 cm. An Epic feet/inches equivalent in parentheses is also accepted.')
-    number, unit, alternate = match.groups()
+    number, unit, suffix = match.groups()
     unit = unit.lower()
-    if alternate is not None:
-        # Epic copy/paste may use straight quotes, typographic quotes or primes.
-        alternate = alternate.translate(str.maketrans({
+    equivalent_seen = False
+    for annotation in _height_parentheticals(suffix):
+        alternate = annotation.translate(str.maketrans({
             '\u2032': "'", '\u2018': "'", '\u2019': "'",
             '\u2033': '"', '\u201c': '"', '\u201d': '"',
         }))
         imperial = re.fullmatch(
             rf"\s*(\d+)\s*(?:'|ft\.?|feet|foot)\s*({NUMBER})\s*(?:\"|in\.?|inch(?:es)?)\s*",
             alternate, re.I)
-        if not imperial or not 0 <= Decimal(imperial.group(2)) < 12:
-            raise ValueError('The height parenthetical is not a supported feet/inches equivalent. Verify the primary height and units.')
-        feet, inches = imperial.groups()
-        factor = Decimal('100') if unit == 'm' else Decimal('2.54') if unit.startswith('in') else Decimal('1')
-        primary_cm = Decimal(number) * factor
-        alternate_cm = (Decimal(feet) * 12 + Decimal(inches)) * Decimal('2.54')
-        primary_rounding = Decimal(1).scaleb(Decimal(number).as_tuple().exponent) * factor / 2
-        alternate_rounding = Decimal(1).scaleb(Decimal(inches).as_tuple().exponent) * Decimal('2.54') / 2
-        if abs(primary_cm - alternate_cm) > primary_rounding + alternate_rounding:
-            raise ValueError('The primary height and its feet/inches equivalent disagree. Verify the recorded height before importing this section.')
+        if imperial:
+            if equivalent_seen or not 0 <= Decimal(imperial.group(2)) < 12:
+                raise ValueError('The height has a duplicate or invalid feet/inches equivalent. Verify the recorded height.')
+            equivalent_seen = True
+            feet, inches = imperial.groups()
+            factor = Decimal('100') if unit == 'm' else Decimal('2.54') if unit.startswith('in') else Decimal('1')
+            primary_cm = Decimal(number) * factor
+            alternate_cm = (Decimal(feet) * 12 + Decimal(inches)) * Decimal('2.54')
+            primary_rounding = Decimal(1).scaleb(Decimal(number).as_tuple().exponent) * factor / 2
+            alternate_rounding = Decimal(1).scaleb(Decimal(inches).as_tuple().exponent) * Decimal('2.54') / 2
+            if abs(primary_cm - alternate_cm) > primary_rounding + alternate_rounding:
+                raise ValueError('The primary height and its feet/inches equivalent disagree. Verify the recorded height before importing this section.')
+        elif not _height_charting_note(annotation):
+            raise ValueError('The height annotation is not a recognized charting note or feet/inches equivalent. Verify the primary height and units.')
     return number + ' ' + unit
 
 
@@ -108,7 +174,8 @@ def clean_field(key: str, value: str) -> str:
     value = re.sub(r'\s+', ' ', value.replace('\u00a0', ' ').strip())
     if value.casefold().rstrip('.') in MISSING:
         return ''
-    if len(value) > 100:
+    # A copied charting note can be longer than the normalized measurement.
+    if len(value) > (2000 if key == 'height' else 100):
         raise ValueError('A demographic field is too long.')
     if key == 'age':
         if not re.fullmatch(r'\d+(?:\.\d+)?\s*(?:years?|yrs?|y|months?|mos?|m|weeks?|wks?|w|days?|d)(?:\s*(?:,|and)?\s*\d+\s*(?:months?|mos?|m|days?|d))?', _age_for_math(value), re.I):

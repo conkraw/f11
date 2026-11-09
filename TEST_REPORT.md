@@ -1,67 +1,72 @@
-# Version 6.40 validation report
+# Version 6.41 validation report
 
-## Baseline and regression checks
+## Baseline
 
-The input was the actual delivered PICU639.zip. ZIP integrity and its SHA-256
-file manifest were verified before editing. Its original suite passed:
+The actual delivered PICU640.zip was unpacked and its SHA-256 manifest verified.
+The unmodified original suite passed: 3,374 tests in 50.12 seconds.
 
-3247 passed in 42.25 seconds.
+## Updated suite
 
-The updated suite passed after the requested display expectations were updated:
+The updated working copy passed: 3,448 tests in 42.43 seconds.
+Seventy-four new regression cases cover charting-note height imports and observed
+PIP presentation. No tests were removed. Historical exact-output assertions in
+two ventilator tests were updated to include the newly requested observed PIP.
 
-3374 test cases. See the extracted-delivery validation run.
+The final delivery ZIP is checked for integrity, every manifest hash is verified,
+and the full suite is rerun on an extracted copy before delivery.
 
-The added test module supplies 122 synthetic cases. Five additional cases come
-from the existing parametrized group-choice tests expanding to the new choices.
-No tests were removed. Historical assertions were changed only where the user
-requested new labels, category placement, or a different presentation order.
+## Reproduced user patterns
 
-The coverage includes generic-name and source-annotation matching, case handling,
-nonmatching suffixes, local dexamethasone exclusions, hidden/excluded medications,
-explicit group overrides, new grouping callbacks and encrypted rule round trips,
-continuous vs PRN paralytics, no duplicate medication entries, stable same-name
-taper order, alphabetic category/medication order, preserved Last Admin emphasis,
-TV source-field preservation, single/multiple/same-day/cross-day lactates, old and
-future result exclusion, time-window boundaries, result exclusion, flags/units,
-PDF/HTML/text agreement, and a two-room PDF packet.
+The supplied I-section pattern was checked before and after the change. Original
+6.40 rejected the additional parenthetical chart-transfer note after a primary
+height and feet/inches equivalent. Updated 6.41 imported measured weight, Z-score,
+dosing weight, height, BSA and BMI without an I-section error. Only the relevant
+provided excerpts were used for these private checks, not an end-to-end live
+patient or Epic integration test.
+
+The supplied C/D pattern was also checked before and after. Original 6.40 stored
+the observed pressure statistics but did not render them. Version 6.41 includes
+them in the summary, retaining the set tidal volume and other source settings.
+No set pressure is invented when that source field is blank.
+
+## Coverage
+
+Tests cover primary height with/without an imperial equivalent, smart quotes,
+repeated headings, charting notes and dates, nested parentheses, long notes,
+invalidating comments, extra quantities, imperial mismatch, unmatched delimiters,
+length bounds, unchanged source data, successful reimport clearing only I, other
+section recovery, preserved save timestamps, and restored mL/kg calculations.
+
+Observed PIP cases cover PRVC/VC/PC/PS and other supported invasive mode names,
+home-vent bounds, averages/ranges, single values, zero, missing/placeholder values,
+no set/observed substitution, no PEEP addition, existing stored records, later
+missing-data imports clearing previous observations, text/HTML/PDF agreement,
+and separate pages for separate rooms in Print all.
 
 ## Compatibility and scope
 
-A synthetic archive was created and encrypted with the unmodified 6.39 code.
-The updated code opened it using the same key, with exact equality to the saved
-original fields, mappings, custom room and timestamps.
+A synthetic archive was created and encrypted with the original 6.40 code.
+Version 6.41 opened it with the same key with exact equality to the original
+archive, including a custom room, medication mapping and saved timestamp.
+Rendering its stored observed PIP did not mutate the archive.
 
-Changed production files:
-
-app.py
-infusions.py
-lab_windows.py
-medication_groups.py
-ventilation.py
-
-The schema/model file, medication source parser, lab parser, CBC parser,
-blood-gas parser, security and storage implementation are byte-for-byte unchanged.
-An AST comparison confirmed that format_ventilation is the only changed
-function/class in ventilation.py. Ventilator input parsing is unchanged.
-
-No new dependencies or secret settings were added. New enum/group choices require
-this or a compatible later version after they have been saved.
+Changed production files: anthropometrics.py, ventilation.py, app.py,
+error_store.py. In ventilation.py only format_ventilation changed (AST check).
+The technical error-report version constant was corrected to 6.41.
+Models/schema, dependencies, source medication/lab/CBC/blood-gas parsers, storage,
+security, ventilation input parsing, and print layout engine are unchanged.
 
 ## Rendering
 
-The delivered synthetic preview renders to one landscape page at 8-point body
-text. It was rasterized with the PDF rendering utility and visually inspected.
-The PDF opens correctly in PyMuPDF and has no encryption, XFA, or scanned pages.
-The preview demonstrates the new neurologic order, preserved infusion emphasis,
-Observed TV, and the compact lactate trend. Actual clinical handoffs can need
-more than one page depending on their contents. No clinical text is removed to
-force a page target.
+The final synthetic preview was generated by the application's PDF renderer,
+rasterized and visually inspected. It fits on one landscape page at 8-point body
+text, with the normalized height, dosing-weight fluid calculations and observed
+PIP visible. This does not guarantee that every long handoff will fit one page.
+No data is removed to force a page target.
 
 ## Limits
 
-The UI checks use a Streamlit widget stub, not a live browser deployment. Storage
-and conflict tests are simulated. The user's running application, repository,
-credentials and live patient archive were not accessed or modified. Patient
-uploads and private runtime inputs are not included in the delivery package.
-The tests use synthetic records and do not validate medication indications or
-clinical treatment choices. This update changes presentation and group defaults.
+The tests use local and mocked interfaces. The live Streamlit deployment, Epic
+integration, real clinician accounts and private shared-storage connection were
+not accessed or modified. No new clinical validation is claimed. No source
+patient records, private configuration, encryption keys, or fonts are bundled.
