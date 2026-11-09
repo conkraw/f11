@@ -11,23 +11,20 @@ from security import generate_key, seal_vault, open_vault
 
 SAMPLE=(Path(__file__).parents[1]/'examples'/'synthetic_smartphrase.txt').read_text()
 BLOCK=parse_smartphrase(SAMPLE).blocks['c']
-EXPECTED='''Vent Mode: Volume Targeted Pressure Control - PS
-Resp Rate (Set): 16
-Vt (Set, mL): 160 mL
-PEEP (cm H2O): 5 cm H2O
-Mean Airway Pressure: 10
-Insp Time (sec): 1 sec
-PIP Observed (cm H2O): 24 cm H2O
-Pressure Support (cm H2O): 10 cm H20
-Trigger Sensitivity Flow (L/min): 0.4 L/min
-FiO2 (%): 35 %'''
+EXPECTED='''Mode: PRVC-PS
+Set RR: 16
+Set TV: 160 mL
+Set PEEP: 5 cm H2O
+Inspiratory Time: 1 sec
+Pressure Support: 10 cm H2O
+FiO2: 35 %'''
 
 
 def test_exact_requested_fields_and_order():
     result=parse_ventilation(BLOCK)
     assert result.status=='included' and not result.error
     assert format_ventilation(result.data)==EXPECTED
-    assert len(format_ventilation(result.data).splitlines())==10
+    assert len(format_ventilation(result.data).splitlines())==7
 
 
 def test_noise_and_unrequested_values_excluded():
@@ -68,8 +65,9 @@ def test_missing_set_rate_does_not_use_observed_rate():
 def test_values_not_recalculated_or_units_invented():
     block=BLOCK.replace('FiO2 (%): 35 %','FiO2 (%): 0.35').replace('Insp Time (sec): 1 sec','Insp Time (sec): (S) 1 sec')
     text=format_ventilation(parse_ventilation(block).data)
-    assert 'FiO2 (%): 0.35' in text and 'Insp Time (sec): (S) 1 sec' in text
-    assert 'Mean Airway Pressure: 10\n' in text
+    assert 'FiO2: 0.35 %' in text and 'Inspiratory Time: 1 sec' in text
+    assert 'Mean Airway Pressure' not in text
+    assert parse_ventilation(block).data['values']['Insp Time (sec)'] == '(S) 1 sec'
 
 
 def test_duplicate_identical_fields_not_repeated():

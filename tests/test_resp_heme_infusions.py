@@ -96,7 +96,7 @@ def test_unmapped_respiratory_name_not_silently_mapped():
 def test_respiratory_order_vitals_support_theophylline_infusions_notes_other():
     s = example(); before = deepcopy(s)
     text = fields_with_medications(s)['Respiratory']
-    tokens = ['Resp:', 'Vent Mode:', 'Theophylline level:', 'Respiratory Infusions', 'RESP_IV', 'RESP_CONT', 'Respiratory note', 'Other Medications', 'RESP_PRN']
+    tokens = ['Resp:', 'Mode:', 'Theophylline level:', 'Respiratory Infusions', 'RESP_IV', 'RESP_CONT', 'Respiratory note', 'Other Medications', 'RESP_PRN']
     assert [text.index(t) for t in tokens] == sorted(text.index(t) for t in tokens)
     assert text.count('Theophylline level:') == 1
     assert s == before

@@ -1,8 +1,9 @@
-COMPLETE VERSION 6.37 PACKAGE, BASED ON 6.35
-Replace matching files. Keep app.py at the root. Include difficult_airway.py.
-No Version 6.36 font picker or print_options dependency is included.
-Keep existing Secrets, both passwords, encryption key, token, private storage,
-medication rules and CDC BMI reference data. Do not rerun generators.
-Schema 25 upgrades to 26. Do not downgrade after saving with this release.
-No new Python dependencies. No re-pasting needed for these layout changes.
-Read README.md, COMPACT_AIRWAY_UPDATE.md and TEST_REPORT.md.
+COMPLETE VERSION 6.38 PACKAGE, BASED ON 6.37
+Keep app.py at the root. Replace matching files and include ventilator_modes.py.
+No Version 6.36 font picker. No new Python dependencies.
+Keep Secrets, both passwords, encryption key, mappings, private data repository
+and CDC BMI reference data. Do not rerun any generator.
+Re-paste the full SmartPhrase or complete paired C and D sections to capture the
+new ventilator fields. Click Create / update handoff, inspect and save.
+Existing schema-26 archives open unchanged. Do not downgrade after saving the
+new ventilation fields. Read VENTILATOR_UPDATE.md and TEST_REPORT.md.

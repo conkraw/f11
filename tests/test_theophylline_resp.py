@@ -112,7 +112,7 @@ def test_respiratory_order_and_single_occurrence():
     before = deepcopy(s)
     fields = fields_with_medications(s)
     text = fields['Respiratory']
-    for left, right in [('Resp:', 'Vent Mode:'), ('Vent Mode:', 'Theophylline level:'),
+    for left, right in [('Resp:', 'Mode:'), ('Mode:', 'Theophylline level:'),
                         ('Theophylline level:', 'Respiratory note sentinel'),
                         ('Respiratory note sentinel', 'albuterol')]:
         assert text.index(left) < text.index(right)
@@ -186,7 +186,7 @@ def test_pdf_has_the_level_in_resp_above_meds_and_below_support():
     level = p.search_for('Theophylline level:')[0]
     resp = p.search_for('RESP')[0]
     meds = p.search_for('albuterol')[0]
-    mode = p.search_for('Vent Mode:')[0]
+    mode = p.search_for('Mode:')[0]
     lab_area = p.search_for('Other Medications')[0]
     from exports import PRINT_MARGIN, WIDTHS
     width = p.rect.width - 2 * PRINT_MARGIN

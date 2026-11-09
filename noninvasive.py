@@ -9,13 +9,16 @@ labels, never a numerical flow threshold. Values are not recalculated.
 from __future__ import annotations
 from dataclasses import dataclass, field
 import re
-from ventilation import normalize, parse_ventilation
+from ventilation import normalize, parse_ventilation, unwrap_vent_line
+from ventilator_modes import spec
 
 DEVICE_FIELDS = {
     "BiPAP": ("IPAP", "EPAP", "FiO2"),
     "CPAP": ("EPAP", "FiO2"),
     "HFNC": ("Flow", "FiO2"),
     "Nasal cannula": ("Flow", "FiO2"),
+    "AVAPS NIV": ("Set RR", "Set TV", "IPAP", "EPAP", "FiO2"),
+    "NAVA NIV": ("Set RR", "EPAP", "FiO2"),
 }
 
 
@@ -28,10 +31,13 @@ ALIASES = {
     "delivery": ("O2 Delivery Method", "Oxygen Delivery Method"),
     "ipap": ("Total Inspiratory Pressure (cm H2O)", "IPAP (cm H2O)", "IPAP"),
     "epap": ("Expiratory Positive Airway Pressure (EPAP) (cmH20)", "EPAP (cm H2O)", "EPAP"),
-    "peep": ("PEEP (cm H2O)",),
+    "peep": ("PEEP (cm H2O)", "CPAP (cm H2O)"),
     "fio2": ("FiO2 (%)", "FiO2"),
+    "fio2_set": ("FiO2 set (%)",),
     "flow": ("O2 Flow Rate (L/min)", "Oxygen Flow Rate (L/min)"),
     "on": ("Ventilator On",),
+    "rr": ("Resp Rate (Set)",),
+    "tv": ("Vt (Set, mL)",),
 }
 LOOKUP = {key(label): canonical for canonical, labels in ALIASES.items() for label in labels}
 MISSING = {"", "--", "-", "n/a", "na", "none", "not documented"}
@@ -44,14 +50,17 @@ def clean(value: str) -> str:
 
 def read_fields(block: str | None, block_name: str) -> dict[str, str]:
     entries = {}
-    for line in (block or "").splitlines():
+    for raw in (block or "").splitlines():
+        line = unwrap_vent_line(raw) if block_name == "C" else raw
         if ":" not in line:
             continue
         label, raw = line.split(":", 1)
         name = LOOKUP.get(key(label))
         if name is None:
             continue
-        value = clean(raw)
+        value = clean(raw.lstrip(":"))
+        if normalize(value) in MISSING or normalize(value) == "no data recorded":
+            continue
         if len(value) > 500:
             raise ValueError("A respiratory field is too long. Nothing was imported.")
         if name in entries and entries[name] != value:
@@ -82,6 +91,9 @@ def valid_setting(value: str, setting: str) -> bool:
 
 def mode_kind(mode: str) -> str | None:
     text = normalize(mode)
+    known = spec(mode)
+    if known and known[0] in ("AVAPS NIV", "NAVA NIV"):
+        return known[0]
     bilevel = bool(re.search(r"\b(?:bi[ -]?level|bi[ -]?pap)\b", text))
     cpap = bool(re.search(r"\bcpap\b|continuous positive airway pressure", text))
     if bilevel == cpap:
@@ -159,6 +171,11 @@ def parse_respiratory(c_block: str | None, d_block: str | None) -> SupportResult
             result.error = parsed.error
             return result
         result.invasive = parsed.data
+        if spec(c.get("mode", "")) and spec(c["mode"])[1] == "PS":
+            delivered = normalize(d.get("delivery", ""))
+            if re.search(r"high[ -]?flow|nasal cannula|mask", delivered):
+                result.invasive = None
+                result.issues.append("PS-CPAP settings coexist with a non-invasive delivery label. The non-invasive display rules were used; verify any carried-forward ventilator fields.")
         if parsed.status != "excluded" and kind is None:
             result.issues.extend(parsed.issues)
     if result.invasive is not None:
@@ -183,6 +200,8 @@ def parse_respiratory(c_block: str | None, d_block: str | None) -> SupportResult
 
     ipap, epap = setting(d, "ipap"), setting(d, "epap")
     c_fio2, d_fio2 = setting(c, "fio2"), setting(d, "fio2")
+    if not c_fio2 and valid_setting(c.get("fio2_set", ""), "fio2"):
+        c_fio2 = c["fio2_set"]
     pressure_fio2 = c_fio2 or d_fio2
     delivery = normalize(d.get("delivery", "")).replace("-", " ")
     invasive_airway = bool(re.search(r"endotracheal|\bett\b|tracheostomy|\btrach\b", delivery))
@@ -204,6 +223,14 @@ def parse_respiratory(c_block: str | None, d_block: str | None) -> SupportResult
             add_device("CPAP", {"EPAP": pressure, "FiO2": pressure_fio2})
         else:
             result.issues.append("CPAP mode is present without EPAP or PEEP. No CPAP entry was added.")
+    elif kind in ("AVAPS NIV", "NAVA NIV"):
+        # Preserve explicit NIV mode names. Do not recast these as BiPAP or infer
+        # undisclosed target volumes, pressure bounds, or NAVA gain.
+        values = {"Set RR": setting(c, "rr"), "EPAP": epap or setting(c, "peep"), "FiO2": pressure_fio2}
+        if kind == "AVAPS NIV":
+            values.update({"Set TV": setting(c, "tv"), "IPAP": ipap})
+        add_device(kind, values)
+        result.issues.append("Only the documented conventional settings for this NIV mode were retained. Review any additional device-specific settings in Epic.")
     elif not mode_present and ipap and epap and not invasive_airway:
         # Preserve the documented pair, but do not assert that BiPAP is current.
         # D is the source of these pressures, so prefer its FiO2 for this fallback.

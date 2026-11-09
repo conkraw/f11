@@ -1,48 +1,60 @@
-# Version 6.37 validation report
+# Version 6.38 validation report
 
-## Baseline and changes
+## Baseline and scope
 
-The package was built by extracting the original PICU635.zip. The unmodified
-baseline suite was run first: 2,924 tests passed. No Version 6.36 font-size
-control or print_options.py module was used.
+Source package: original PICU637.zip, extracted as the base for this update.
+Baseline suite: 3,004 tests passed.
+Updated full suite: 3,082 tests passed, including 78 new cases in
+`tests/test_mode_specific_ventilator.py`.
 
-Current full suite: 3,004 tests passed, including 80 new synthetic cases in
-test_compact_airway.py. Existing assertions for explicitly removed output
-(headings, printed warnings, timing annotations, order column), the new default
-font, and the new current schema were updated to the requested behavior.
-Legacy input fixtures, clinical result-selection expectations and parser tests
-remain in the suite. The legacy schema fixtures were not changed into new data.
+The new tests cover the supplied PC, PRVC and home-vent source patterns, nested
+labels, Avg/Min/Max parsing, set vs observed separation, inspiratory vs expiratory
+volume labels, blank and zero-valued home settings, all supplied mode-name
+mappings, synthetic VC cases, original C/D NIV combinations, named advanced NIV,
+unknown/missing values, partial import recovery, retained source values,
+encryption round trips, editor callbacks, room snapshots, and PDF/HTML/text
+output with no cross-room ventilator content.
 
-The new coverage includes optional/disabled airway output, all ventilation and
-passage responses, field limits, escaping, no invented normal answers, per-room
-callbacks, new-patient clearing, clear-all clearing, room-switch capture,
-encryption round trips, no cross-room print leakage, failed saves retaining
-pending edits, displayed publication times and rejected publications, source
-note suppression, NGTD display-only abbreviation and deduplication, unchanged
-lab window eligibility, retained lab values/dates/labels, seven-column printing,
-and medication fallback when an old mapping used the removed Labs column.
+Existing test expectations were changed only where the user explicitly changed
+printed labels or which parameters print for a mode. The original input fixtures
+and standard-vs-ISTAT, CBC, lab, medication, and vital-value selection rules were
+not changed. Printed-mode label assertions now use Mode rather than Vent Mode.
+Legacy observed TV data remain saved even when the new volume-targeted profile
+prints only set TV.
 
-## Migration
+The three attached examples' C/D ranges were read through Files. Tests exercise
+those source patterns plus the home-vent C section pasted in the conversation.
+This release was not tested against every byte of every historical patient paste.
+No complete patient sample is added to the package. New PDF previews use existing
+synthetic fixtures, not the actual patients' full handoffs.
 
-A synthetic encrypted archive was created with the unmodified original 6.35
-code and opened using this release with the same key. Schema 25 became 26.
-Every previous room field, mapping, setting, custom room, reset generation and
-saved timestamp compared equal. An added difficult-airway record was then
-saved, encrypted, reopened and compared equal.
+## Compatibility
+
+A synthetic encrypted archive was created with the unmodified Version 6.37
+modules. It was opened with this version and compared against its original JSON.
+Every saved field, difficult-airway value, medication rule and timestamp matched.
+It was then re-encrypted and reopened with the same generated test key, again
+matching exactly. New ventilator values also have encryption round-trip tests.
+
+Schema remains 26. Additional ventilation-value keys and supported NIV labels
+mean that an older release may reject data saved with this release. Do not
+roll back after saving newly captured ventilator fields.
 
 ## Printed output
 
-The app generated a two-room synthetic preview. Both rooms occupy one landscape
-page at the default 8-point body font. One has an enabled airway alert and one
-does not. The final PDF was rendered to PNGs and visually checked. Lab labels,
-values, dates, organism formatting, seven columns, and the final airway band
-were inspected. No patient input is bundled with this release.
+The app generated PC, PRVC and Home Vent synthetic handoffs. The PDF preflight
+reported one landscape page per room and 8-point body text for all three, without
+requiring tighter spacing or balanced columns. All three rendered pages were
+visually inspected. The middle example includes the retained difficult-airway
+alert at the end. No clipped text or overlapping fields were seen.
 
-## Limits
+## Unchanged components
 
-Callback/interface tests use widget stubs and storage tests use simulations.
-They are not live-browser or production deployment tests. No live GitHub
-repository, Epic session, institution network or deployed app was accessed or
-modified. The airway form is clinician-entered documentation, not a validated
-clinical decision algorithm. Auto-fitting cannot guarantee one page for every
-possible volume of content and never crops text to force that target.
+The CBC, blood-gas, medication, laboratory, vital-sign, feeding, device,
+pacemaker, anthropometric, export/page-fitting, encryption and GitHub storage
+modules are unchanged from 6.37. The changed production files are app.py,
+ventilation.py and noninvasive.py, plus new ventilator_modes.py.
+
+No live Streamlit deployment, private repository, live device or patient record
+was queried or modified. Interface/storage tests use the existing mocks and
+synthetic data. This is software regression testing, not clinical validation.

@@ -241,7 +241,9 @@ def test_two_room_print_keeps_observed_vt_and_neuro_values_separate():
     reader=PdfReader(BytesIO(handoffs_pdf([first,second])))
     assert len(reader.pages)==2
     assert '72 mmHg' in reader.pages[0].extract_text() and '162 mL' not in reader.pages[0].extract_text()
-    assert '162 mL' in reader.pages[1].extract_text() and '72 mmHg' not in reader.pages[1].extract_text()
+    assert '160 mL' in reader.pages[1].extract_text() and '72 mmHg' not in reader.pages[1].extract_text()
+    assert second['ventilation']['values']['Vt (observed, mL)'] == '162 mL'
+    assert '162 mL' not in reader.pages[1].extract_text()  # Volume-targeted print profile uses set TV.
     assert all(float(p.mediabox.width)>float(p.mediabox.height) for p in reader.pages)
     assert handoffs_html([first,second]).count('Weight:')==2
 
@@ -266,7 +268,9 @@ def test_observed_tidal_volume_separate_from_set_and_target():
     result=parse_ventilation(source)
     assert not result.error
     text=format_ventilation(result.data)
-    assert text.index('Vt (Set, mL): 160 mL')<text.index('Vt (observed, mL): 162 mL')<text.index('PEEP')
+    assert 'Set TV: 160 mL' not in text  # PC print profile uses set pressure instead.
+    assert result.data['values']['Vt (Set, mL)'] == '160 mL'
+    assert text.index('Observed TV: 162 mL') < text.index('Set PEEP')
     assert '170' not in text
 
 

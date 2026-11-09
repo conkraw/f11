@@ -1305,7 +1305,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.37 | Compact handoff and Difficult airway")
+        st.caption("Version 6.38 | Mode-specific ventilator summaries")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1419,6 +1419,7 @@ def invasive_editor(sheet: dict) -> None:
         return
     st.text(format_ventilation(data))
     with st.expander("Edit ventilator values"):
+        st.caption("The source mode stays editable. The handoff abbreviates it and prints mode-specific settings. Set and observed values are never substituted for one another. Pmin with a number uses your Home Vent display rule. Vt Insp prints as TVi, and Vt Exp as TVe.")
         for index, label in enumerate(LABELS):
             key = "vent_" + sheet["id"] + "_" + str(index)
             if key not in st.session_state:

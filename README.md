@@ -1,27 +1,28 @@
-# Version 6.37: compact handoff and Difficult airway
+# Version 6.38: mode-specific ventilator summaries
 
-This update was built from the original Version 6.35 ZIP, not Version 6.36.
-It does not include the numeric font-size picker or its print_options module.
-The 6.35 height/weight fix and existing clinical parsers are retained.
+Built directly from Version 6.37, retaining its Version 6.35-based print layout.
+Read VENTILATOR_UPDATE.md for the new C-block patterns and their exact display rules.
 
-## Install
+## Install this release
 
-Save open work. Extract PICU637.zip. Upload the contents of
-PICU_Handoff_v6_37_Compact_Airway into the existing application code repository,
-replacing matching files. Keep app.py at the root and include difficult_airway.py.
-Restart the deployment and refresh the browser.
+Extract PICU638.zip and upload the contents of PICU_Handoff_v6_38_Ventilator
+into the existing application code repository, replacing matching files.
+Keep app.py at the root and include ventilator_modes.py. Restart and refresh.
+Keep existing Secrets, both passwords, encryption key, mappings, BMI reference
+data and private storage. Do not rerun the generators. No new dependencies.
 
-Keep current Streamlit Secrets, both passwords, encryption key, GitHub token,
-medication mappings, private data repository and public CDC BMI reference file.
-Do not rerun the password or encryption-key generators. No new dependencies.
+Look for: Version 6.38 | Mode-specific ventilator summaries
 
-Look for: Version 6.37 | Compact handoff and Difficult airway
+Existing saved fields open unchanged. Re-paste the complete C and D sections
+or full SmartPhrase to import the newly available measurements and home-vent
+limits. New labels cannot be recovered from an older saved record that never
+captured them. Do not downgrade after saving the expanded ventilator fields.
 
-Existing handoffs use the new layout without re-pasting. The clinical archive
-migrates from schema 25 to 26 to support optional difficult-airway notes.
-Every existing field and saved time is retained. Once saved in this version,
-do not downgrade the app, as older versions do not understand the new schema.
-If a spare print_options.py remains from 6.36, this app does not import it.
+The source mode and raw settings stay available in Edit ventilator values.
+Vt Insp is TVi, not TVe. Set PIP is not calculated from observed PIP or PEEP.
+Pmin-based Home Vent identification and PRVC naming are local display rules.
+
+## Features retained from Version 6.37
 
 ## Handoff screen: published SmartPhrase time
 
