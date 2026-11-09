@@ -28,7 +28,6 @@ from cultures import cultures_text
 from viral import viral_text
 from microbiology_display import culture_markup, viral_markup
 from print_time import eastern_print_time, PRINT_TIME_SCRIPT
-from print_options import validated_font_size, font_candidates
 
 COLUMNS = (("PATIENT", None), ("NEURO", "Neurologic"), ("RESP", "Respiratory"),
            ("CARDIAC", "Cardiovascular"), ("FEN / GI", "FEN / GI"),
@@ -127,8 +126,7 @@ def patient_markup(sheet: dict, fields: dict, esc=escape) -> str:
 
 
 @stable_window_clock
-def handoff_html(sheet: dict, printed_at: datetime | None = None, *, font_size: float | None = None) -> str:
-    font_size = validated_font_size(font_size)
+def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
     fields = fields_with_medications(sheet, include_lab_text=False)
     headers = ''.join('<th>' + escape(label) + '</th>' for label, _ in COLUMNS)
     cells = ''.join('<td><div class="content">' + (patient_markup(sheet, fields) if section is None else field_markup(sheet, fields, section)) + '</div></td>' for _, section in COLUMNS)
@@ -139,7 +137,7 @@ def handoff_html(sheet: dict, printed_at: datetime | None = None, *, font_size: 
         bands.append('<div class="band problem-review"><strong>' + escape(PROBLEM_TITLE) +
                      ':</strong> <span class="content">' + problems + '</span></div>')
     for key in BOTTOM:
-        bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(laboratory_data(sheet), blood_gas=sheet['blood_gas'], cbc=sheet['cbc'], font_size=font_size) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
+        bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(laboratory_data(sheet), blood_gas=sheet['blood_gas'], cbc=sheet['cbc']) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
     extra = '\n'.join(k + ': ' + fields[k] for k in ('Skin / Wounds', 'Tasks', 'Other') if fields[k].strip())
     if extra:
         bands.insert(2, '<div class="band"><strong>Additional notes:</strong> <span class="content">' + escape(extra) + '</span></div>')
@@ -148,14 +146,6 @@ def handoff_html(sheet: dict, printed_at: datetime | None = None, *, font_size: 
         bands.append('<div class="band"><strong>Devices:</strong><div class="content">' + device_summary + '</div></div>')
     access = ''.join('<td><strong>' + escape(key) + ':</strong> <span class="content">' + escape(fields[key]) + '</span></td>' for key in ACCESS_FIELDS)
     access_table = ('<table class="access"><tbody><tr>' + access + '</tr></tbody></table>') if (not device_summary or any(fields[k].strip() for k in ACCESS_FIELDS)) else ''
-    font_css = ""
-    if font_size is not None:
-        small = 6.1 * font_size / 7.2
-        font_css = (
-            f".systems td,.band,.access,.lab-summary{{font-size:{font_size:g}pt}}"
-            f".import-review{{font-size:{font_size:g}pt;line-height:1.14}}"
-            f".labnote{{font-size:{small:g}pt;line-height:1.15}}"
-        )
     return '''<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>PICU handoff</title>
 <style>
@@ -170,7 +160,7 @@ table{border-collapse:collapse;width:100%;table-layout:fixed}th{font-size:8pt;te
 footer{font:6.1pt/1.2 Arial,sans-serif;margin-top:4px}
 @page{size:letter landscape;margin:.25in}
 @media print{body{margin:0;padding:0;background:white}main{width:100%;min-height:0;padding:0;margin:0}.systems td{height:auto}thead{display:table-header-group}footer{font-size:6.1pt}.band{break-inside:auto}}
-''' + font_css + '''</style></head><body><main><div class="meta"><span><span data-print-label>Print prepared: </span><span data-print-time>''' + escape(eastern_print_time(printed_at)) + '''</span> | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | PICU HANDOFF' + '</span></div>' + ('<div class="import-review">' + escape(review_summary(sheet)) + '</div>' if review_summary(sheet) else '') + '''
+</style></head><body><main><div class="meta"><span><span data-print-label>Print prepared: </span><span data-print-time>''' + escape(eastern_print_time(printed_at)) + '''</span> | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | PICU HANDOFF' + '</span></div>' + ('<div class="import-review">' + escape(review_summary(sheet)) + '</div>' if review_summary(sheet) else '') + '''
 <table class="systems"><colgroup>''' + cols + '</colgroup><thead><tr>' + headers + '</tr></thead><tbody><tr>' + cells + '</tr></tbody></table>' + ''.join(bands) + access_table + '''
 <footer>Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted. Infusion rates reflect the source Last Rate, not a live feed. Lab windows evaluated: ''' + escape(eastern_print_time(window_clock())) + '''. Download again to refresh filtered results.</footer>
 </main>''' + PRINT_TIME_SCRIPT + '</body></html>'
@@ -184,13 +174,10 @@ def _pdf_text(text: str) -> str:
 
 
 @stable_window_clock
-def handoffs_pdf(sheets: list[dict], printed_at: datetime | None = None, *, target_pages: int = 1, font_size: float | None = None, auto_fit: bool = True) -> bytes:
+def handoffs_pdf(sheets: list[dict], printed_at: datetime | None = None, *, target_pages: int = 1) -> bytes:
     """One landscape document. Each room starts on a new page, in memory only."""
     from reportlab.lib.pagesizes import landscape, letter
     from reportlab.pdfgen import canvas
-    font_size = validated_font_size(font_size)
-    if type(auto_fit) is not bool:
-        raise ValueError("Automatic fitting must be on or off.")
     if not sheets or len(sheets) > 100:
         raise ValueError("Select between 1 and 100 handoffs to print.")
     for sheet in sheets:
@@ -204,14 +191,14 @@ def handoffs_pdf(sheets: list[dict], printed_at: datetime | None = None, *, targ
     c.setAuthor("")
     stamp = eastern_print_time(printed_at)
     for position, sheet in enumerate(sheets, 1):
-        _draw_sheet(c, sheet, width, height, position, len(sheets), stamp, target_pages=target_pages, font_size=font_size, auto_fit=auto_fit)
+        _draw_sheet(c, sheet, width, height, position, len(sheets), stamp, target_pages=target_pages)
     c.save()
     return output.getvalue()
 
 
 @stable_window_clock
-def handoff_pdf(sheet: dict, printed_at: datetime | None = None, *, target_pages: int = 1, font_size: float | None = None, auto_fit: bool = True) -> bytes:
-    return handoffs_pdf([sheet], printed_at, target_pages=target_pages, font_size=font_size, auto_fit=auto_fit)
+def handoff_pdf(sheet: dict, printed_at: datetime | None = None, *, target_pages: int = 1) -> bytes:
+    return handoffs_pdf([sheet], printed_at, target_pages=target_pages)
 
 
 # Print layout is independent of persisted handoff content or encryption schema.
@@ -236,7 +223,7 @@ def _clinical_markup(text: str) -> str:
     return re.sub(r"\b(SBS|RASS)\s+([+-]?\d+(?:\.\d+)?)", r"\1&#160;\2", value)
 
 
-def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: bool = False, scale_fonts: bool = False) -> dict:
+def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: bool = False) -> dict:
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph, Spacer
     fields = fields_with_medications(sheet, include_lab_text=False)
@@ -298,7 +285,7 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: b
                       if fields[name].strip())
     if extra:
         band_items.insert(2, ('Additional notes', extra))
-    bands = [(name, (laboratory_flowables(laboratory_data(sheet), total_width-6, font_size, blood_gas=sheet['blood_gas'], cbc=sheet['cbc'], tree_font_size=font_size if scale_fonts else None)
+    bands = [(name, (laboratory_flowables(laboratory_data(sheet), total_width-6, font_size, blood_gas=sheet['blood_gas'], cbc=sheet['cbc'])
                     if name == 'Lab Results / Trends' else []) + paragraphs(text))
              for name, text in band_items]
     problems = problem_text(sheet, rich=True, esc=_clinical_markup)
@@ -311,16 +298,14 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: b
     if device_summary and not any(fields[k].strip() for k in ACCESS_FIELDS):
         access = []
     review = review_summary(sheet)
-    banner = Paragraph(escape(review), ParagraphStyle('review', fontName='Helvetica-Bold', fontSize=max(7, font_size) if scale_fonts else 7, leading=max(8, font_size+1) if scale_fonts else 8)) if review else None
+    banner = Paragraph(escape(review), ParagraphStyle('review', fontName='Helvetica-Bold', fontSize=7, leading=8)) if review else None
     review_height = banner.wrap(total_width, 10000)[1] + 4 if banner else 0
-    label_size = max(7.5, font_size) if scale_fonts else 7.5
-    return {'label_font_size': label_size, 'access_label_height': label_size+3.5,
-            'scale_fonts': scale_fonts, 'review_banner': banner, 'review_height': review_height,
+    return {'review_banner': banner, 'review_height': review_height,
             'font_size': font_size, 'leading': style.leading, 'width': total_width,
             'tight': tight, 'balanced': False, 'cell_padding': 2.0 if tight else 3.0,
-            'band_label': max(label_size + 2.5, 8.5 if tight else BAND_LABEL_HEIGHT) if scale_fonts else (8.5 if tight else BAND_LABEL_HEIGHT),
+            'band_label': 8.5 if tight else BAND_LABEL_HEIGHT,
             'band_padding': 3.5 if tight else BAND_PADDING,
-            'empty_band': max(label_size + 3, 10.0 if tight else 15.0) if scale_fonts else (10.0 if tight else 15.0),
+            'empty_band': 10.0 if tight else 15.0,
             'access_min': 20.0 if tight else 24.0,
             'widths': widths, 'columns': columns, 'bands': bands, 'access': access}
 
@@ -331,7 +316,7 @@ def _plan_heights(plan: dict) -> tuple[float, list[float], float]:
     main = max(20, max((_queue_height(q, w-2*pad) for q, w in zip(plan['columns'], plan['widths'])), default=0)+2*pad)
     bands = [max(plan['empty_band'], _queue_height(q, width-6) + (0 if label == PROBLEM_TITLE else plan['band_label']) + plan['band_padding'])
              for label, q in plan['bands']]
-    access = max(plan['access_min'], max((_queue_height(q, width/4-6) for _, q in plan['access']), default=0)+plan.get('access_label_height', 11)+3) if plan['access'] else 0
+    access = max(plan['access_min'], max((_queue_height(q, width/4-6) for _, q in plan['access']), default=0)+14) if plan['access'] else 0
     return main, bands, access
 
 
@@ -412,14 +397,9 @@ def _measure_pdf_plan(sheet: dict, plan: dict, width: float, height: float) -> i
                        plan=deepcopy(plan))
 
 
-def _select_pdf_plan(sheet: dict, width: float, height: float, target_pages: int = 1, *, font_size: float | None = None, auto_fit: bool = True) -> tuple[dict, bool]:
+def _select_pdf_plan(sheet: dict, width: float, height: float, target_pages: int = 1) -> tuple[dict, bool]:
     if type(target_pages) is not int or target_pages not in (1, 2):
         raise ValueError('Choose a one-page or two-page print target.')
-    font_size = validated_font_size(font_size)
-    if type(auto_fit) is not bool:
-        raise ValueError('Automatic fitting must be on or off.')
-    if font_size is not None:
-        return _select_sized_pdf_plan(sheet, width, height, target_pages, font_size, auto_fit)
     original = _make_pdf_plan(sheet, width, PRINT_FONT_SIZES[0])
     # Keep already-fitting sheets exactly as before. A two-page target allows
     # the largest existing print size when it already meets that target.
@@ -460,27 +440,6 @@ def _select_pdf_plan(sheet: dict, width: float, height: float, target_pages: int
     return best, best['pages'] == 1
 
 
-def _select_sized_pdf_plan(sheet: dict, width: float, height: float, target_pages: int,
-                           font_size: float, auto_fit: bool) -> tuple[dict, bool]:
-    """Try spacing at the requested size before any permitted font reduction."""
-    measured = []
-    for size in font_candidates(font_size, auto_fit):
-        for tight, balance in ((False, False), (True, False), (True, True)):
-            plan = _make_pdf_plan(sheet, width, size, tight=tight, scale_fonts=True)
-            if balance:
-                plan = _balanced_plan(plan)
-                if not plan['balanced']:
-                    continue
-            pages = 1 if _fits_one(plan, height) else _measure_pdf_plan(sheet, plan, width, height)
-            plan.update(pages=pages, target_pages=target_pages)
-            measured.append(plan)
-            if pages <= target_pages:
-                return plan, pages == 1
-    # A page target is not permission to crop. Keep selected size in fixed mode.
-    best = min(measured, key=lambda p: (p['pages'], -p['font_size'], p['tight'], p['balanced']))
-    return best, best['pages'] == 1
-
-
 @stable_window_clock
 def print_layout_info(sheet: dict) -> dict:
     """Legacy compact status. New UI uses the full render-verified report."""
@@ -489,26 +448,23 @@ def print_layout_info(sheet: dict) -> dict:
 
 
 @stable_window_clock
-def print_fit_report(sheet: dict, target_pages: int = 1, *, font_size: float | None = None, auto_fit: bool = True) -> dict:
+def print_fit_report(sheet: dict, target_pages: int = 1) -> dict:
     """Private in-memory preflight using exactly the PDF renderer's layout."""
     validate_sheet(sheet)
-    plan, fits = _select_pdf_plan(sheet, 792, 612, target_pages, font_size=font_size, auto_fit=auto_fit)
+    plan, fits = _select_pdf_plan(sheet, 792, 612, target_pages)
     pages = _measure_pdf_plan(sheet, plan, 792, 612)
     return {'page_count': pages, 'font_size': plan['font_size'],
-            'requested_font_size': font_size, 'auto_fit': auto_fit,
             'fits_one_page': pages == 1, 'target_pages': target_pages,
             'target_met': pages <= target_pages,
             'tight_spacing': plan['tight'], 'balanced_columns': plan['balanced']}
 
 
-def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, count: int = 1, print_stamp: str | None = None, *, target_pages: int = 1, plan: dict | None = None, font_size: float | None = None, auto_fit: bool = True) -> int:
+def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, count: int = 1, print_stamp: str | None = None, *, target_pages: int = 1, plan: dict | None = None) -> int:
     print_stamp = print_stamp or eastern_print_time()
     if plan is None:
-        plan, _ = _select_pdf_plan(sheet, width, height, target_pages, font_size=font_size, auto_fit=auto_fit)
+        plan, _ = _select_pdf_plan(sheet, width, height, target_pages)
     pad = plan["cell_padding"]
     label_height = plan["band_label"]
-    label_font_size = plan.get("label_font_size", 7.5)
-    access_label_height = plan.get("access_label_height", 11)
     band_padding = plan["band_padding"]
     margin = PRINT_MARGIN
     total_width = plan['width']
@@ -554,7 +510,7 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         for item in queue:
             h = item.wrap(total_width-6, 100000)[1]
             if isinstance(item, LabRow):
-                return min(body_height-100 if plan.get('scale_fonts') else 195, max(minimum, before+h+local_label_height+band_padding))
+                return min(195, max(minimum, before+h+local_label_height+band_padding))
             before += h
             if before > 30:
                 break
@@ -623,8 +579,8 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
             c.rect(margin, y-bh, total_width, bh)
             local_label_height = 0 if label == PROBLEM_TITLE else label_height
             if label != PROBLEM_TITLE:
-                c.setFont('Times-Bold', label_font_size)
-                c.drawString(margin+3, y-label_font_size-0.5, label + (':' if page == 1 else ' (continued):'))
+                c.setFont('Times-Bold', 7.5)
+                c.drawString(margin+3, y-8, label + (':' if page == 1 else ' (continued):'))
             rest = draw_queue(queue, margin+3, y-local_label_height-2,
                               total_width-6, bh-local_label_height-band_padding)
             if label != PROBLEM_TITLE or rest:
@@ -636,9 +592,9 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         for index, (label, queue) in enumerate(access):
             x = margin+index*aw
             c.rect(x, y-access_height, aw, access_height)
-            c.setFont('Times-Bold', label_font_size)
-            c.drawString(x+3, y-label_font_size-0.5, label+':')
-            rest = draw_queue(queue, x+3, y-access_label_height, aw-6, access_height-access_label_height-3)
+            c.setFont('Times-Bold', 7.5)
+            c.drawString(x+3, y-8, label+':')
+            rest = draw_queue(queue, x+3, y-11, aw-6, access_height-14)
             updated_access.append((label, rest))
         access = updated_access
         c.setFont('Helvetica', 6.1)
@@ -650,14 +606,14 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
 
 
 @stable_window_clock
-def handoffs_html(sheets: list[dict], printed_at: datetime | None = None, *, font_size: float | None = None) -> str:
+def handoffs_html(sheets: list[dict], printed_at: datetime | None = None) -> str:
     if not sheets or len(sheets) > 100:
         raise ValueError("Select between 1 and 100 handoffs to print.")
     if len({s["room"] for s in sheets}) != len(sheets):
         raise ValueError("A room cannot be included twice in one print packet.")
     from datetime import timezone
     printed_at = printed_at or datetime.now(timezone.utc)
-    docs = [handoff_html(sheet, printed_at, font_size=font_size) for sheet in sheets]
+    docs = [handoff_html(sheet, printed_at) for sheet in sheets]
     head = docs[0].split("</head>", 1)[0]
     head += """<style>
 main{margin-bottom:24px}.printbar{font:15px Arial,sans-serif;max-width:11in;margin:0 auto 18px}
@@ -668,7 +624,7 @@ main{margin-bottom:24px}.printbar{font:15px Arial,sans-serif;max-width:11in;marg
     return head + '<body><div class="printbar"><button onclick="window.print()">Print all handoffs</button> Landscape Letter. Each room starts on a new page.</div>' + "".join(pages) + PRINT_TIME_SCRIPT + "</body></html>"
 
 
-def download_payload(sheets: list[dict], kind: str, expires_at: float | None = None, *, target_pages: int = 1, cancelled=None, font_size: float | None = None, auto_fit: bool = True):
+def download_payload(sheets: list[dict], kind: str, expires_at: float | None = None, *, target_pages: int = 1, cancelled=None):
     """Return a zero-argument generator for Streamlit >=1.52 downloads.
 
     A private snapshot is captured on render, not a shared cache. The timestamp
@@ -679,9 +635,6 @@ def download_payload(sheets: list[dict], kind: str, expires_at: float | None = N
         raise ValueError("Unknown handoff download format.")
     if kind == "text" and len(sheets) != 1:
         raise ValueError("Text export expects one handoff.")
-    font_size = validated_font_size(font_size)
-    if type(auto_fit) is not bool:
-        raise ValueError("Automatic fitting must be on or off.")
     snapshot = deepcopy(sheets)
     for sheet in snapshot:
         validate_sheet(sheet)
@@ -693,9 +646,9 @@ def download_payload(sheets: list[dict], kind: str, expires_at: float | None = N
             raise ValueError("The session expired. Sign in and prepare a new download.")
         try:
             if kind == "pdf":
-                return handoffs_pdf(snapshot, target_pages=target_pages, font_size=font_size, auto_fit=auto_fit)
+                return handoffs_pdf(snapshot, target_pages=target_pages)
             if kind == "html":
-                return handoffs_html(snapshot, font_size=font_size).encode("utf-8")
+                return handoffs_html(snapshot).encode("utf-8")
             return handoff_text(snapshot[0]).encode("utf-8")
         except Exception:
             raise ValueError("The print file could not be generated. Refresh the app and try again.") from None
