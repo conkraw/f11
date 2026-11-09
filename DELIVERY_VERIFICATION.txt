@@ -1,7 +1,9 @@
-PICU647.zip delivery verification
-
-Full suite: 3936 passed in 230.33s (0:03:50) from a clean extraction of the staged
-package. Every final Python source is checked against that verified extraction.
-The ZIP includes SHA256SUMS.txt and passes ZIP member integrity and hash checks.
-No patient archive, test encryption key, credentials, runtime cache or fonts
-are included. Requirements and schema are unchanged from 6.46.
+PICU Handoff 6.48
+Base package: PICU647.zip (original manifest verified)
+4054 passed in 93.68s (0:01:33)
+118 new mode-gated SBS regression cases included.
+Original 6.47 encrypted synthetic archive migration verified.
+Two synthetic landscape preview pages inspected, one page per room at 8 pt.
+Archive schema: 32. Existing data preserved. No new dependencies.
+No live deployment or shared patient archive was accessed or modified.
+SHA256SUMS.txt covers all other packaged files.

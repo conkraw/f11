@@ -54,7 +54,7 @@ jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
 kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
 Target Arousal Level:
 SBS Last 24 Hours: [Insert your existing Epic SmartLink for the latest SBS in the past 24 hours.]
-Last SBS Ever: [Optional existing historical SBS SmartLink. This field is ignored by the app.]
+Last SBS Ever: [Existing historical SBS SmartLink. Used only when no recent SBS is available and a recognized ventilator mode is present.]
 kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
 
 llllllllllllllllllllllllllllllll

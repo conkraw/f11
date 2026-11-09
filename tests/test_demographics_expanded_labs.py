@@ -277,13 +277,14 @@ def test_two_room_print_and_privacy_boundaries():
 def legacy_v8():
     v=save_sheet_in(new_vault(),example());v['schema']=8;v.pop("reset_generation", None);v["settings"].pop("medication_groups", None);v["settings"].pop("medication_gi_groups", None);v['settings'].pop('medication_infusions', None)
     for s in v['rooms'].values():
+        s.pop('sbs_vent_mode', None)  # Not present in the historical schema-8 fixture.
         s.pop("feeds", None);s.pop("devices", None);s.pop("neuro_devices", None);s.pop("pacemaker", None);s.pop("diet", None);s.pop("import_warnings", None);s.pop("intake_output", None);s.pop("recurring_orders", None);s.pop("cbc", None);s.pop('blood_gas', None);s.pop('viral_panel', None);s.pop('admission_date');s.pop('dosing_weight')
     return v
 
 
 def test_schema8_migration_preserves_all_fields_rules_and_cultures():
     old=legacy_v8();before=deepcopy(old);new=upgrade_vault(old)
-    assert new['schema']==31 and old==before and new['settings']==dict(before['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
+    assert new['schema']==32 and old==before and new['settings']==dict(before['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
     for k,val in before['rooms']['P4102'].items():assert new['rooms']['P4102'][k]==val
     assert new['rooms']['P4102']['admission_date']=='' and new['rooms']['P4102']['dosing_weight']==''
     key=generate_key();encrypted=Fernet(key.encode()).encrypt(json.dumps(old).encode())

@@ -1,17 +1,21 @@
-# PICU Handoff 6.47
+# PICU Handoff 6.48
 
-Built from Version 6.46. This release adds the rolling 24-hour VANCOTROUGH
-filter, brief instructions at the top of Handoff, an accessible password-protected
-Delete all handoff data action, and bold labels for empty medication groups.
-The separate instructions workspace is removed.
+Built from Version 6.47. Recent SBS stays first choice. When no recent result is
+available, the last available SBS can display only with a recognized documented
+ventilator mode. Historical values are labelled last available. Source-labelled
+targets remain targets.
 
 ## Install
 
 Replace matching application files with this folder's contents. Keep app.py at
-the root, restart the app, and refresh the browser. Keep existing Secrets, both
+the root, restart the app, and refresh your browser. Keep existing Secrets, both
 passwords, the encryption key, medication mappings, categories, BMI reference
 data and shared archive unchanged. Do not rerun setup generators. No new Python
-dependencies or archive-schema changes are required. No re-pasting is needed.
+dependencies are required.
+
+Re-paste the complete C, D and K sections or the full SmartPhrase to capture the
+Last SBS Ever value that earlier versions discarded. Archives upgrade to schema
+32 with existing fields preserved. Do not downgrade after saving with this release.
 
 ## Daily use
 
@@ -22,15 +26,8 @@ click Create / update handoff, and review the preview. Move to the next room to
 save automatically or press Save handoff. Check the saved time before closing.
 Print all prepares the team's PDF.
 
-## Delete the current census
-
-Open Delete all handoff data on Handoff. Enter the separate Admin password and
-press Delete all handoff data. This clears all saved handoffs and current-session
-drafts, removes custom rooms, and leaves preset rooms blank. Categories, rules,
-SmartPhrase settings and passwords remain. Other users must reload the archive.
-Earlier archive versions, downloaded copies, backups and printouts are not erased.
-
-See WORKFLOW_RECENT_TROUGH_UPDATE.md for exact behavior and TEST_REPORT.md for
-local verification and limitations. Historical release notes describe prior
-versions and are superseded by this release note where behavior has changed.
-This package contains no live deployment credentials or patient archive.
+The protected Delete all handoff data action and other 6.47 changes are retained.
+See SBS_VENT_FALLBACK_UPDATE.md for the exact new behavior and TEST_REPORT.md for
+local verification. Historical release notes describe prior versions and are
+superseded by this note where behavior has changed. No live deployment credentials
+or patient archive are included.

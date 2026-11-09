@@ -285,4 +285,4 @@ def test_add_sbs_callback_and_room_guard(app):
 def test_new_groups_catalog_and_current_archive_validation():
     ids={r['id'] for r in default_categories()}
     assert {'group:antiplatelet','group:antibiotic','gi:tpn'}<=ids
-    v=new_vault();assert upgrade_vault(v) is v and SCHEMA_VERSION==31
+    v=new_vault();assert upgrade_vault(v) is v and SCHEMA_VERSION==32

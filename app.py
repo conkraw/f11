@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.47: short workflow, recent troughs, and protected census reset."""
+"""PICU SmartPhrase v6.48: recent SBS first, mode-gated last-available fallback."""
 from __future__ import annotations
 from copy import deepcopy
 from empty_groups import refresh_empty_group_layout
@@ -275,6 +275,18 @@ def editor_snapshot(room: str) -> dict:
                     value = str(value).strip()
                     value = "" if not value or value.casefold() == "none" else score(value)
                 window[field] = value
+    historical = (sheet.get("sbs_observations") or {}).get("last_available")
+    if historical is not None:
+        for field in ("value", "recorded_at", "include"):
+            key = "sbs_history_" + sheet["id"] + "_" + field
+            if key in ss:
+                value = ss[key]
+                if field == "value":
+                    from sbs import score
+                    value = score(str(value))
+                elif field == "recorded_at":
+                    value = str(value).strip()
+                historical[field] = value
     if sheet["pacemaker"] is not None:
         for field in PACER_FIELDS:
             key = "pacer_" + sheet["id"] + "_" + field
@@ -309,6 +321,7 @@ def editor_snapshot(room: str) -> dict:
             value = ss[key].strip()
             if index == 0:
                 sheet["ventilation"]["mode"] = value
+                sheet["sbs_vent_mode"] = value
             elif value:
                 sheet["ventilation"]["values"][label] = value
             else:
@@ -668,23 +681,46 @@ def sbs_window_change(room: str, field: str, key: str) -> None:
         note(str(exc), "error")
 
 
+def sbs_history_change(room: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    candidate = deepcopy(ss["drafts"][room].get("sbs_observations"))
+    if not candidate or "last_available" not in candidate or field not in ("value", "recorded_at", "include"):
+        return
+    from sbs import score, validate_sbs
+    previous = candidate["last_available"][field]
+    try:
+        value = ss[key]
+        if field == "value":
+            value = score(str(value))
+        elif field == "recorded_at":
+            value = str(value).strip()
+        candidate["last_available"][field] = value
+        validate_sbs(candidate)
+        ss["drafts"][room]["sbs_observations"] = candidate
+    except ValueError as exc:
+        ss[key] = previous
+        note(str(exc), "error")
+
+
 def sbs_editor(sheet: dict) -> None:
-    from sbs import latest_sbs, sbs_display_rows
+    from sbs import latest_sbs, sbs_display_rows, recognized_vent_mode
     data = sheet.get("sbs_observations")
     latest = latest_sbs(data) if "k" not in sheet["import_warnings"] else None
     window = (data or {}).get("source_window")
+    rendered = sbs_display_rows(sheet)
+    st.caption((rendered[0]["label"] + ": " + rendered[0]["value"]) if rendered else "No eligible SBS is displayed, or its import needs review.")
     if window is not None:
-        rendered = sbs_display_rows(sheet)
-        st.caption((rendered[0]["label"] + ": " + rendered[0]["value"]) if rendered else "The imported SBS snapshot is hidden pending review.")
-        st.caption("Using SBS Last 24 Hours only. Last SBS Ever is ignored. Snapshot time: " + window["reported_as_of"] + ". This is not the recording time of an individual observation.")
+        st.caption("24-hour snapshot time: " + window["reported_as_of"] + ". This is not an individual observation's recording time.")
     elif latest:
-        st.caption("Latest eligible observed SBS: " + latest["value"] + " [" + latest["recorded_at"] + "]")
-    else:
-        st.caption("No timestamped observed SBS in the past 24 hours is available. Target SBS is not a measured score.")
+        st.caption("Recorded at: " + latest["recorded_at"])
     with st.expander("Observed SBS / recording time"):
-        st.caption("The explicit SBS Last 24 Hours field is accepted as an Epic-filtered snapshot, including a blank result. Last SBS Ever is never a fallback. Other observations need source recording times. Explicit targets keep a target label.")
+        st.caption("Recent SBS takes priority. When no recent value is available, Last SBS Ever can display only with a recognized documented ventilator mode. It is labelled last available. Explicit targets keep a target label.")
+        mode = recognized_vent_mode(sheet)
+        st.caption("Fallback mode: " + mode if mode else "No qualifying ventilator mode for historical SBS fallback.")
         if window is not None:
-            for field, label in (("value", "SBS Last 24 Hours value (blank means None)"), ("include", "Include the imported 24-hour SBS field")):
+            for field, label in (("value", "SBS Last 24 Hours value (blank allows mode-gated fallback)"), ("include", "Include the imported 24-hour SBS field")):
                 key = "sbs_window_" + sheet["id"] + "_" + field
                 if key not in st.session_state:
                     st.session_state[key] = window[field]
@@ -695,6 +731,18 @@ def sbs_editor(sheet: dict) -> None:
                     st.text_input(label, max_chars=10, **opts)
             if window["kind"] == "target":
                 st.caption("Epic labelled this value as a target. It prints as SBS target, not as an observed score.")
+        historical = (data or {}).get("last_available")
+        if historical is not None:
+            st.caption("Last SBS Ever is a target." if historical["kind"] == "target" else "Last SBS Ever is a recorded score.")
+            for field, label in (("value", "Last SBS Ever value"), ("recorded_at", "Historical recording date / time (if supplied)"), ("include", "Allow this last-available value when ventilator mode qualifies")):
+                key = "sbs_history_" + sheet["id"] + "_" + field
+                if key not in st.session_state:
+                    st.session_state[key] = historical[field]
+                opts = dict(key=key, on_change=sbs_history_change, args=(sheet["room"], field, key))
+                if field == "include":
+                    st.checkbox(label, **opts)
+                else:
+                    st.text_input(label, max_chars=80, **opts)
         for message in (data or {}).get("notes", []):
             st.caption(message)
         for index, row in enumerate((data or {}).get("readings", [])):
@@ -716,7 +764,7 @@ def sbs_editor(sheet: dict) -> None:
 
 def neuro_weight_editor(sheet: dict) -> None:
     st.subheader("Neurologic observations")
-    st.caption("K: SBS Last 24 Hours or latest timestamped SBS, Y: CAPD, L: WAT-1, M: ICP/CPP. Targets remain editable but do not print as observed scores. CAPD always prints between SBS and WAT-1. None means no available score, not a zero score. ICP/CPP show the documented range and Last reading in brackets. Range and Last fields can be edited separately.")
+    st.caption("K: recent SBS first, last available only with a recognized ventilator mode. Y: CAPD, L: WAT-1, M: ICP/CPP. Targets remain editable but do not print as observed scores. CAPD always prints between SBS and WAT-1. None means no available score, not a zero score. ICP/CPP show the documented range and Last reading in brackets. Range and Last fields can be edited separately.")
     sbs_editor(sheet)
     present = False
     for source, title in NEURO_SECTIONS.items():
@@ -1351,12 +1399,15 @@ def ventilation_change(room: str, label: str, key: str) -> None:
         note(str(exc), "error")
         return
     ss["drafts"][room]["ventilation"] = updated
+    if label == "Vent Mode":
+        ss["drafts"][room]["sbs_vent_mode"] = updated["mode"]
 
 
 def clear_ventilation() -> None:
     if require_session():
         ss = st.session_state
         ss["drafts"][ss["current_room"]]["ventilation"] = None
+        ss["drafts"][ss["current_room"]]["sbs_vent_mode"] = ""
         for key in list(ss):
             if key.startswith("vent_"):
                 ss.pop(key, None)
@@ -1472,7 +1523,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.47 | Short workflow, recent troughs and delete all")
+        st.caption("Version 6.48 | Ventilator-gated SBS fallback")
         # Retire the old instructions workspace without discarding room drafts.
         if st.session_state.get("page") == "Instructions / SmartPhrase":
             st.session_state["page"] = "Handoff"
@@ -1608,6 +1659,8 @@ def remove_support_device(room: str, device: str) -> None:
     ss = st.session_state
     sheet = ss["drafts"][room]
     sheet["noninvasive"] = [item for item in sheet["noninvasive"] if item["device"] != device]
+    if device in ("CPAP", "BiPAP", "AVAPS NIV", "NAVA NIV") and not sheet["ventilation"]:
+        sheet["sbs_vent_mode"] = ""
     for key in list(ss):
         if key.startswith("niv_" + sheet["id"] + "_" + device + "_"):
             ss.pop(key, None)

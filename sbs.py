@@ -2,7 +2,9 @@
 
 Timestamped observations are filtered to a rolling 24-hour window. The explicit
 Epic field "SBS Last 24 Hours" is a separately stored, source-filtered snapshot.
-Its report time is NOT a measurement time. "Last SBS Ever" is never a fallback.
+Its report time is NOT a measurement time. A separately retained last-available
+value is used only with a recognized documented ventilator mode when recent
+readings are unavailable. Historical values stay labelled as last available.
 An explicitly labelled target keeps a target label. UTC arithmetic makes the
 rolling window independent of daylight-saving transitions.
 
@@ -51,10 +53,12 @@ def score(value: str) -> str:
 def validate_sbs(data: dict | None) -> None:
     if data is None:
         return
-    if not isinstance(data, dict) or set(data) - {'source_window'} != {'readings', 'notes'}:
+    if not isinstance(data, dict) or set(data) - {'source_window', 'last_available'} != {'readings', 'notes'}:
         raise ValueError('The observed SBS record has an invalid structure.')
     if 'source_window' in data:
         validate_source_window(data['source_window'])
+    if 'last_available' in data:
+        validate_last_available(data['last_available'])
     if not isinstance(data['readings'], list) or len(data['readings']) > 500:
         raise ValueError('The observed SBS history is invalid or too large.')
     for row in data['readings']:
@@ -259,6 +263,112 @@ def latest_sbs(data: dict | None, as_of: datetime | None = None) -> dict | None:
     return choices[0]
 
 
+def validate_last_available(row: dict) -> None:
+    """Validate compact historical metadata without inventing a recording time."""
+    if not isinstance(row, dict) or set(row) != {'value', 'recorded_at', 'kind', 'include'}:
+        raise ValueError('The last-available SBS record has an invalid structure.')
+    if not isinstance(row['value'], str) or score(row['value']) != row['value']:
+        raise ValueError('The last-available SBS value is invalid.')
+    if row['kind'] not in ('score', 'target') or type(row['include']) is not bool:
+        raise ValueError('The last-available SBS metadata is invalid.')
+    if not isinstance(row['recorded_at'], str) or len(row['recorded_at']) > 80:
+        raise ValueError('The last-available SBS recording time is invalid.')
+    if row['recorded_at']:
+        date_parts(row['recorded_at'])
+
+
+def validate_sbs_vent_mode(value: str) -> None:
+    if not isinstance(value, str) or len(value) > 500 or '\n' in value or '\r' in value:
+        raise ValueError('The recorded SBS ventilator-mode condition is invalid.')
+
+
+def recognized_vent_mode(sheet: dict) -> str:
+    """Owner-specified mode-presence gate, not a bedside airway diagnosis.
+
+    A successful C/D import retains its explicit mode independently of whether
+    there are enough settings to render a device. Oxygen delivery alone is not
+    a mode. A failed respiratory import cannot authorize historical SBS output.
+    """
+    if 'cd' in sheet.get('import_warnings', {}):
+        return ''
+    from ventilator_modes import spec
+    from ventilation import mode_rule
+    if 'sbs_vent_mode' in sheet:
+        mode = sheet['sbs_vent_mode']
+    else:
+        # Old archives retain invasive mode names. Do not infer an absent source
+        # mode from a nasal-cannula label, a tracheostomy, or pressure-only BiPAP.
+        mode = (sheet.get('ventilation') or {}).get('mode', '')
+    validate_sbs_vent_mode(mode)
+    return mode if mode and (spec(mode) is not None or mode_rule(mode) == 'included') else ''
+
+
+def _pick_historical(readings: list[dict], kind: str,
+                     as_of: datetime | None = None) -> dict | None:
+    """Pick only a source-ordered latest value, never the minimum/maximum score."""
+    now = clock(as_of).astimezone(timezone.utc)
+    candidates, undated = [], []
+    for row in readings:
+        if not row.get('include', True):
+            continue
+        value = score(row['value'])
+        when = row.get('recorded_at', '')
+        if not when:
+            undated.append(dict(value=value, recorded_at='', kind=kind, include=True))
+            continue
+        dt, timed = date_parts(when)
+        a, b = dt.replace(tzinfo=EASTERN, fold=0), dt.replace(tzinfo=EASTERN, fold=1)
+        if a.utcoffset() != b.utcoffset() or a.astimezone(timezone.utc) > now:
+            continue
+        candidates.append((a.astimezone(timezone.utc), timed,
+                           dict(value=value, recorded_at=when, kind=kind, include=True)))
+    if undated:
+        # A single explicit Last SBS Ever is sufficient even without a date.
+        # Mixed dated/undated history is not silently ordered by text position.
+        return undated[0] if not candidates and len({r['value'] for r in undated}) == 1 else None
+    if not candidates:
+        return None
+    newest = max(item[0] for item in candidates)
+    choices = [row for when, _, row in candidates if when == newest]
+    return choices[0] if len({row['value'] for row in choices}) == 1 else None
+
+
+def latest_available_sbs(sheet: dict, as_of: datetime | None = None) -> dict | None:
+    data = sheet.get('sbs_observations') or {'readings': [], 'notes': []}
+    validate_sbs(data)
+    historical = data.get('last_available')
+    if historical is not None:
+        # Respect a deliberately excluded historical result.
+        if not historical['include']:
+            return None
+        rows = [historical]
+        reading_kind = (data.get('source_window') or {}).get('kind', 'score')
+        if historical['recorded_at'] and historical['kind'] == reading_kind:
+            # A usable timestamped observation already in the recent-field
+            # history may now be older than 24h yet newer than Last SBS Ever.
+            # Compare actual source times when both are known and same-kind.
+            rows += [r for r in data['readings'] if r.get('recorded_at')]
+        return _pick_historical(rows, historical['kind'], as_of)
+    window = data.get('source_window')
+    kind = window['kind'] if window else 'score'
+    candidate = _pick_historical(data['readings'], kind, as_of)
+    if candidate:
+        return candidate
+    if window and window['value'] and window['include']:
+        reported = datetime.fromisoformat(window['reported_as_of']).astimezone(timezone.utc)
+        if reported <= clock(as_of).astimezone(timezone.utc):
+            # A past recent snapshot can be historical, but its report time is
+            # still NOT an observation time and must not appear as one.
+            return dict(value=window['value'], recorded_at='', kind=window['kind'], include=True)
+    # Existing legacy targets can be retained without a re-paste. An explicit new
+    # source-window record (including empty) takes precedence and clears them.
+    if not window and not data['readings']:
+        rows = sheet.get('neuro_vitals', {}).get('k', [])
+        body = '\n'.join(r['label'] + ': ' + r['value'] for r in rows if r.get('include', True))
+        return _parse_historical_body(body, as_of) if body else None
+    return None
+
+
 def sbs_display_rows(sheet: dict, as_of: datetime | None = None) -> list[dict]:
     if 'k' in sheet.get('import_warnings', {}):
         return []
@@ -269,18 +379,25 @@ def sbs_display_rows(sheet: dict, as_of: datetime | None = None) -> list[dict]:
         return []
     row = latest_sbs(data, as_of)
     label = 'SBS target' if window and window['kind'] == 'target' else 'SBS'
+    value = ''
     if row:
         value = score(row['value'])
     elif window is not None:
-        # An undated source-filtered value is only a snapshot. Never stamp it as
-        # a measured reading, and do not extend its age on save or room changes.
         reported = datetime.fromisoformat(window['reported_as_of']).astimezone(timezone.utc)
         now = clock(as_of).astimezone(timezone.utc)
-        value = window['value'] if timedelta(0) <= now - reported <= timedelta(hours=24) else ''
-        if not value:
-            label, value = 'SBS', 'None'
-    else:
-        return []
+        if timedelta(0) <= now - reported <= timedelta(hours=24):
+            value = window['value']
+    if not value and recognized_vent_mode(sheet):
+        previous = latest_available_sbs(sheet, as_of)
+        if previous:
+            label = 'SBS target' if previous['kind'] == 'target' else 'SBS'
+            value = previous['value'] + ' (last available)'
+            if previous['recorded_at']:
+                value += ' [' + previous['recorded_at'] + ']'
+    if not value:
+        if window is None:
+            return []
+        label, value = 'SBS', 'None'
     return [{'label': label, 'value': value, 'section': 'Neurologic', 'include': True}]
 
 
@@ -329,15 +446,45 @@ def snapshot_reference(blocks: dict) -> tuple[datetime, str]:
     return clock(), 'import'
 
 
+def _parse_historical_body(body: str, as_of: datetime | None = None) -> dict | None:
+    body = body.strip()
+    if not body or MISSING.fullmatch(clean(body)):
+        return None
+    kind = 'target' if TARGET.search(body) else 'score'
+    if kind == 'target':
+        body = re.sub(r'(?im)^[ \t]*(?:Target Arousal Level(?:[ \t]*\(SBS\))?|(?:Target|Goal|Desired)[ \t]+SBS)[ \t]*:[ \t]*', '', body)
+        if TARGET.search(body):
+            return None
+    parsed = _parse_legacy_sbs('SBS observations:\n' + body)
+    if parsed.error or parsed.targets:
+        return None
+    return _pick_historical(parsed.data['readings'], kind, as_of)
+
+
 def parse_sbs(block: str, *, window_as_of: datetime | None = None,
               window_reference: str = 'import') -> SBSResult:
-    """Read the user's K structure without historical fallback or invented times."""
+    """Keep recent and historical K values separate. Display checks the mode gate."""
     source = block.replace('\r\n', '\n').replace('\r', '\n').replace('：', ':')
     recent = list(RECENT_FIELD.finditer(source))
     ever = EVER_FIELD.search(source)
     if not recent and not ever:
         return _parse_legacy_sbs(source)
     out = SBSResult()
+    # A malformed history must not erase a valid recent result. It is retained
+    # only as a static review note, never raw source text or an invented value.
+    if ever:
+        tail = source[ever.end():]
+        later_recent = RECENT_FIELD.search(tail)
+        if later_recent:
+            tail = tail[:later_recent.start()]
+        if not EVER_FIELD.search(tail):
+            previous = _parse_historical_body(tail, clock())
+            if previous:
+                out.data['last_available'] = previous
+            elif tail.strip() and not MISSING.fullmatch(clean(tail)):
+                note = 'Last SBS Ever was not a single usable historical value. No historical fallback was stored.'
+                out.data['notes'].append(note)
+                out.issues.append(note)
     try:
         if len(recent) > 1:
             raise ValueError('More than one last-24-hour SBS field was supplied.')
@@ -346,7 +493,7 @@ def parse_sbs(block: str, *, window_as_of: datetime | None = None,
             following_ever = EVER_FIELD.search(source, start)
             body = source[start:following_ever.start() if following_ever else len(source)]
         else:
-            # A historical-only field cannot refresh any current SBS display.
+            # Historical-only content is retained separately, never as a recent value.
             body = ''
         window = {'value': '', 'reported_as_of': clock(window_as_of).astimezone(timezone.utc).isoformat(),
                   'reference': window_reference, 'kind': 'score', 'include': True}
@@ -380,8 +527,8 @@ def parse_sbs(block: str, *, window_as_of: datetime | None = None,
             # Keep explicit date-only history for editing, without bypassing it
             # based only on the "24 hours" label.
             out.data['readings'] = date_only
-            out.data['notes'] = list(parsed.data['notes'])
-            out.issues = list(parsed.issues)
+            out.data['notes'].extend(parsed.data['notes'])
+            out.issues.extend(parsed.issues)
         elif undated:
             values = {score(r['value']) for r in undated}
             if len(values) != 1:
@@ -389,6 +536,6 @@ def parse_sbs(block: str, *, window_as_of: datetime | None = None,
             window['value'] = values.pop()
         validate_sbs(out.data)
     except (ValueError, TypeError, IndexError):
-        out.error = 'The SBS Last 24 Hours field could not be read safely. Last SBS Ever was not used.'
+        out.error = 'The SBS Last 24 Hours field could not be read safely. Historical fallback was not used for this failed import.'
         out.data = {'readings': [], 'notes': []}
     return out

@@ -8,7 +8,7 @@ from models import validate_sheet, apply_diagnoses, apply_medications, apply_res
 from parser import parse_smartphrase, SECTION_NAMES, MAX_PASTE
 from medications import parse_medications
 from infusions import apply_infusion_rules
-from noninvasive import parse_respiratory
+from noninvasive import parse_respiratory, read_fields
 from labs import parse_labs, is_lactate, is_numeric_lactate
 from vitals import parse_vitals
 from observations import parse_neuro, parse_nutrition
@@ -118,6 +118,9 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                     out.errors.append(vent.error)
                     continue
                 candidate = apply_respiratory(candidate, vent.invasive, vent.devices)
+                source_fields = read_fields(parsed.blocks.get('c'), 'C')
+                candidate['sbs_vent_mode'] = ('' if source_fields.get('on', '').casefold() in ('no', 'off', 'false')
+                                              else source_fields.get('mode', ''))
                 out.notices.extend(vent.issues)
                 out.imported.append("respiratory support" if vent.invasive or vent.devices else "respiratory display cleared")
             elif letter == "e":

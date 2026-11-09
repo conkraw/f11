@@ -1,14 +1,13 @@
-COMPLETE VERSION 6.47 PACKAGE, BASED ON SUPPLIED VERSION 6.46
+COMPLETE VERSION 6.48 PACKAGE, BASED ON SUPPLIED VERSION 6.47
 
 Replace matching code files with this folder's contents. Keep app.py at the root.
-Restart and refresh. No new Python dependencies or archive-schema changes.
+Restart and refresh. No new Python dependencies are required.
 
-Preserve Secrets, both passwords, encryption key, medication/category mappings,
-BMI reference data, and the shared archive. Do not rerun setup generators.
-No re-pasting is required for the display changes.
+Preserve Secrets, passwords, encryption key, medication/category mappings,
+BMI reference data and shared archive. Do not rerun setup generators.
 
-Updates: recent-only vancomycin trough, short top-of-Handoff instructions,
-removal of separate instructions workspace, protected Delete all handoff data
-on Handoff and in Admin, and bold empty-group labels.
+Re-paste full C/D/K sections or the full SmartPhrase to retain Last SBS Ever.
+Old versions discarded that field. The schema upgrades from 31 to 32.
+Do not downgrade after saving with this version.
 
-Version 6.47 | Short workflow, recent troughs and delete all
+Version 6.48 | Ventilator-gated SBS fallback
