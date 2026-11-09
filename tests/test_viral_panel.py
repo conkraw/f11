@@ -204,7 +204,7 @@ def test_summary_prints_below_weights_in_patient_column_only():
     s=imp(block('a','Diagnoses:\n1. Synthetic diagnosis')+'\n'+block('i','NUTRITION:\n01/01/26\t12 kg (Z= -0.2)*\nDosing Weight: 11 kg')+'\n'+block('o',SAMPLE))
     f=fields_with_medications(s)
     assert f['Diagnoses']=='Synthetic diagnosis\n----\nWeight: 12 kg\nZ-score: -0.2\nDosing weight: 11 kg\n----\nRapid Viral Panel: Rhinovirus/enterovirus'
-    assert not f['Infectious Disease'] and not f['Lab Results / Trends']
+    assert f['Infectious Disease'].strip('-\n')=='Cultures: None' and not f['Lab Results / Trends']
     text=patient_column(s,f)
     assert text.index('Weight:') < text.index('Rapid Viral Panel:')
 
@@ -243,7 +243,7 @@ def test_v9_migration_keeps_every_previous_field():
     v['rooms']['P4102'].pop("feeds", None);v['rooms']['P4102'].pop("devices", None);v['rooms']['P4102'].pop("neuro_devices", None);v['rooms']['P4102'].pop("pacemaker", None);v['rooms']['P4102'].pop("diet", None);v['rooms']['P4102'].pop("import_warnings", None);v['rooms']['P4102'].pop("intake_output", None);v['rooms']['P4102'].pop("recurring_orders", None);v['rooms']['P4102'].pop("cbc", None);v['rooms']['P4102'].pop('blood_gas', None)
     del v['rooms']['P4102']['viral_panel']
     before=deepcopy(v);m=upgrade_vault(v)
-    assert v==before and m['schema']==SCHEMA_VERSION==29 and m['settings']==dict(v['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
+    assert v==before and m['schema']==SCHEMA_VERSION==30 and m['settings']==dict(v['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
     for key,value in v['rooms']['P4102'].items():assert m['rooms']['P4102'][key]==value
     assert m['rooms']['P4102']['viral_panel']==empty_viral_panel()
     key=generate_key()

@@ -119,7 +119,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_", "diet_", "anthro_", "problem_", "dairway_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "sbs_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_", "diet_", "anthro_", "problem_", "dairway_")):
             st.session_state.pop(key, None)
 
 
@@ -259,6 +259,11 @@ def editor_snapshot(room: str) -> dict:
             for field, widget in (("value", key), ("include", key + "_include")):
                 if widget in ss:
                     row[field] = ss[widget]
+    for index, row in enumerate((sheet.get("sbs_observations") or {}).get("readings", [])):
+        for field in ("value", "recorded_at", "include"):
+            key = "sbs_" + sheet["id"] + "_" + str(index) + "_" + field
+            if key in ss:
+                row[field] = ss[key].strip() if isinstance(ss[key], str) else ss[key]
     if sheet["pacemaker"] is not None:
         for field in PACER_FIELDS:
             key = "pacer_" + sheet["id"] + "_" + field
@@ -584,9 +589,81 @@ def viral_editor(sheet: dict) -> None:
                 else:
                     st.text_input(label, max_chars={"name": 200, "result": 500, "date": 80}[field], **kwargs)
 
+def sbs_row_change(room: str, index: int, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    candidate = deepcopy(ss["drafts"][room].get("sbs_observations"))
+    if not candidate or field not in ("value", "recorded_at", "include") or not 0 <= index < len(candidate["readings"]):
+        return
+    previous = candidate["readings"][index][field]
+    candidate["readings"][index][field] = ss[key].strip() if isinstance(ss[key], str) else ss[key]
+    from sbs import validate_sbs
+    try:
+        validate_sbs(candidate)
+        ss["drafts"][room]["sbs_observations"] = candidate
+        ss["drafts"][room]["import_warnings"].pop("k", None)
+    except ValueError as exc:
+        ss[key] = previous
+        note(str(exc), "error")
+
+
+def sbs_add_reading(room: str, score_key: str, time_key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    from sbs import score, validate_sbs
+    from labs import date_parts
+    ss = st.session_state
+    try:
+        value = score(str(ss.get(score_key, "")))
+        recorded_at = str(ss.get(time_key, "")).strip()
+        _, has_time = date_parts(recorded_at)
+        if not has_time:
+            raise ValueError("Enter the recording date AND time from Epic, not the time of this upload.")
+        candidate = deepcopy(ss["drafts"][room].get("sbs_observations") or {"readings": [], "notes": []})
+        candidate["readings"].append({"value": value, "recorded_at": recorded_at, "include": True})
+        validate_sbs(candidate)
+        ss["drafts"][room]["sbs_observations"] = candidate
+        ss["drafts"][room]["import_warnings"].pop("k", None)
+        ss[score_key] = ""
+        ss[time_key] = ""
+    except ValueError as exc:
+        note(str(exc), "error")
+
+
+def sbs_editor(sheet: dict) -> None:
+    from sbs import latest_sbs
+    data = sheet.get("sbs_observations")
+    latest = latest_sbs(data) if "k" not in sheet["import_warnings"] else None
+    if latest:
+        st.caption("Latest eligible observed SBS: " + latest["value"] + " [" + latest["recorded_at"] + "]")
+    else:
+        st.caption("No timestamped observed SBS in the past 24 hours is available. Target SBS is not a measured score.")
+    with st.expander("Observed SBS / recording time"):
+        st.caption("Only the newest included reading within the last 24 hours prints. Supply the source recording time in Eastern time. Targets, undated values, and older observations are not used as a current SBS.")
+        for message in (data or {}).get("notes", []):
+            st.caption(message)
+        for index, row in enumerate((data or {}).get("readings", [])):
+            for field, label in (("value", "Recorded SBS"), ("recorded_at", "Recorded date / time"), ("include", "Include this observed SBS")):
+                key = "sbs_" + sheet["id"] + "_" + str(index) + "_" + field
+                if key not in st.session_state:
+                    st.session_state[key] = row[field]
+                opts = dict(key=key, on_change=sbs_row_change, args=(sheet["room"], index, field, key))
+                if field == "include":
+                    st.checkbox(label, **opts)
+                else:
+                    st.text_input(label, max_chars=80, **opts)
+        score_key, time_key = "sbs_add_score_" + sheet["id"], "sbs_add_time_" + sheet["id"]
+        st.text_input("Add observed SBS", key=score_key, max_chars=10)
+        st.text_input("Source date and time (MM/DD/YYYY HH:MM)", key=time_key, max_chars=80)
+        st.button("Add SBS reading", key="sbs_add_" + sheet["id"], on_click=sbs_add_reading,
+                  args=(sheet["room"], score_key, time_key))
+
+
 def neuro_weight_editor(sheet: dict) -> None:
     st.subheader("Neurologic observations")
-    st.caption("K: target arousal, Y: CAPD, L: WAT-1, M: ICP/CPP. CAPD always prints between SBS and WAT-1. None means no available score, not a zero score. ICP/CPP show the documented range and Last reading in brackets. Range and Last fields can be edited separately.")
+    st.caption("K: latest observed SBS in 24 hours, Y: CAPD, L: WAT-1, M: ICP/CPP. Targets remain editable but do not print as observed scores. CAPD always prints between SBS and WAT-1. None means no available score, not a zero score. ICP/CPP show the documented range and Last reading in brackets. Range and Last fields can be edited separately.")
+    sbs_editor(sheet)
     present = False
     for source, title in NEURO_SECTIONS.items():
         if source == "y" and not sheet["neuro_vitals"].get("y"):
@@ -1341,7 +1418,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.44 | Empty medication groups and ICP/CPP trends")
+        st.caption("Version 6.45 | Neuro observations, TPN and ID categories")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Shared storage connected" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1661,12 +1738,12 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.caption("Positive O-block results print below the demographics / weight information. Edit under Labs / Vitals.")
                 st.text_area("Notes: " + section_label(section), key=key, height=100, max_chars=MAX_FIELD,
                              on_change=update_field, args=(room, section, key))
-                if section == "Infectious Disease" and cultures_text(sheet["cultures"]):
-                    st.markdown('<div style="white-space:pre-wrap">------\n' + culture_markup(sheet["cultures"]) + '</div>', unsafe_allow_html=True)
+                if section == "Infectious Disease" and "f" not in sheet["import_warnings"] and cultures_text(sheet["cultures"], empty_none=True):
+                    st.markdown('<div style="white-space:pre-wrap">------\n' + culture_markup(sheet["cultures"], empty_none=True) + '</div>', unsafe_allow_html=True)
                     st.caption("Edit imported specimens and results in Cultures. Temperature stays first in the printed ID column.")
                 if section == "FEN / GI":
                     st.markdown('<div style="white-space:pre-wrap">' + fen_gi_body("", sheet["medications"], None, True, sheet=sheet) + "</div>", unsafe_allow_html=True)
-                    st.caption("Printed order: Intake/Output/Net, Diet, Feeds, GI prophylaxis, Bowel Regimen, Diuretics, Antiemetics, Endocrine Medications, then separate notes and remaining FEN/GI medications.")
+                    st.caption("Printed order: Intake/Output/Net, Diet, Feeds, TPN, GI prophylaxis, Bowel Regimen, Diuretics, Antiemetics, Endocrine Medications, then separate notes and remaining FEN/GI medications.")
                 elif section in INFUSION_SECTIONS:
                     render_body = {"Neurologic": neuro_body, "Cardiovascular": cardiovascular_body, "Hematology": hematology_body, "Respiratory": respiratory_body}[section]
                     st.markdown('<div style="white-space:pre-wrap">' + render_body("", sheet["medications"], True, sheet=sheet) + '</div>', unsafe_allow_html=True)

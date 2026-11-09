@@ -43,9 +43,11 @@ def test_one_group_preserves_order_and_emphasizes_only_infusions(order):
     before = deepcopy(rows)
     blocks = system_body_blocks('Hematology', '', rows)
     assert blocks[0] == ('heading', 'DVT Prophylaxis')
-    assert len(blocks) == 4
-    assert [r['id'] for kind, r in blocks[1:]] == [r['id'] for r in rows]
-    for kind, r in blocks[1:]:
+    assert len(blocks) == 6
+    assert [r['id'] for kind, r in blocks if kind in {'medication','infusion'}] == [r['id'] for r in rows if not r['name'].startswith('cangrelor')] + [r['id'] for r in rows if r['name'].startswith('cangrelor')]
+    for kind, r in blocks:
+        if kind not in {'medication','infusion'}:
+            continue
         assert kind == ('medication' if r['name'].startswith('enoxaparin') else 'infusion')
     assert rows == before
 
@@ -93,14 +95,14 @@ def test_explicit_user_dvt_assignment_kept_alongside_automatic_entries(frequency
     b = system_body_blocks('Hematology', '', rows)
     assert b[0] == ('heading', 'DVT Prophylaxis')
     assert b[1] == (kind, rows[0])
-    assert len([x for x in b if x[0] == 'heading']) == 1
-    assert len(b) == 5
+    assert len([x for x in b if x[0] == 'heading']) == 2
+    assert len(b) == 7
 
 
 def test_non_dvt_infusion_not_folded_into_dvt_group():
     rows = dvt_rows() + [med('synthetic NON_DVT infusion', section='Hematology')]
     b = system_body_blocks('Hematology', 'Heme notes', rows)
-    assert [x for x in b if x[0] == 'heading'] == [('heading', 'DVT Prophylaxis'), ('heading', 'Heme Infusions')]
+    assert [x for x in b if x[0] == 'heading'] == [('heading', 'DVT Prophylaxis'), ('heading', 'Antiplatelet Therapy'), ('heading', 'Heme Infusions')]
     h = hematology_body('Heme notes', rows)
     assert h.index('ENOX_SENTINEL') < h.index('Heme Infusions') < h.index('NON_DVT') < h.index('Heme notes')
 

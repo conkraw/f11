@@ -54,7 +54,7 @@ def legacy_ten():
 
 def test_preset_key_upgrade_preserves_entire_sheet_except_room_and_original_input():
     old=legacy_ten();before=deepcopy(old);new=upgrade_vault(old)
-    assert old==before and new['schema']==SCHEMA_VERSION==29
+    assert old==before and new['schema']==SCHEMA_VERSION==30
     assert new['settings']['rooms']==['P4102','P4201','P4213','4307']
     assert new['rooms']['P4201']==dict(old['rooms']['4201'],room='P4201',blood_gas=None,cbc=None,recurring_orders=None,intake_output=None,import_warnings={},feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None)
     assert new['settings']['medication_mappings']==old['settings']['medication_mappings']
@@ -220,7 +220,8 @@ def test_infusion_group_below_neuro_vitals_above_notes_and_other_meds():
     s['fields']['Neurologic']='NOTE_SENTINEL'
     s['medications']=[med(name='BOLUS',frequency='q30 min PRN'),med(name='INFUSION_NAME')]
     text=fields_with_medications(s)['Neurologic']
-    assert text.index('SBS -1')<text.index('Infusions')<text.index('INFUSION_NAME')<text.index('NOTE_SENTINEL')<text.index('Other Medications')<text.index('BOLUS')
+    assert 'Target Arousal' not in text
+    assert text.index('CAPD:')<text.index('Infusions')<text.index('INFUSION_NAME')<text.index('NOTE_SENTINEL')<text.index('Other Medications')<text.index('BOLUS')
     html=handoff_html(s)
     assert '<b>INFUSION_NAME</b>' in html and '<b><u>Dose: 1.2 mcg/kg/hr</u></b>' in html
     assert 'Recorded rate: 3.48 mL/hr' in html

@@ -116,10 +116,13 @@ def example_sheet():
 
 
 def test_neuro_category_order_and_alphabetical_medicines():
-    s=example_sheet();before=deepcopy(s)
+    s=example_sheet()
+    from sbs_test_helpers import observed
+    observed(s, '-1', NOW)
+    before=deepcopy(s)
     with display_clock(NOW):
         text=fields_with_medications(s)['Neurologic']
-    ordered=['SBS -1','WAT-1 total score (0-12): 0','\nInfusions\n','\nPRN\n',
+    ordered=['SBS: -1','WAT-1 total score (0-12): 0','\nInfusions\n','\nPRN\n',
         'Paralytic Infusions','Paralytic PRN','Antiepileptic',
         'Antispasmodic','Fever Control','Insomnia','Neuromodulation','Synthetic neurologic note']
     assert [text.index(x) for x in ordered]==sorted(text.index(x) for x in ordered)

@@ -52,8 +52,8 @@ Wound Review:
 jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
 
 kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
-Target Arousal Level:
-[Insert your existing Epic SmartLink here. Blank values are omitted.]
+SBS observations:
+[Insert an observed SBS SmartLink with the actual recording date and time. Targets alone do not count as measured scores.]
 kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
 
 llllllllllllllllllllllllllllllll
@@ -63,7 +63,10 @@ llllllllllllllllllllllllllllllll
 
 mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 ICP Trends:
-[Insert your existing Epic SmartLink here. Blank values are omitted.]
+ICP Range: [Insert the recorded ICP range or Avg/Min/Max summary]
+Last ICP: [Insert the last recorded ICP]
+CPP Range: [Insert the recorded CPP range or Avg/Min/Max summary]
+Last CPP: [Insert the last recorded CPP]
 mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 
 nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn

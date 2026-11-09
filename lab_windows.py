@@ -152,6 +152,8 @@ def cardiac_labs_summary(sheet: dict, as_of: datetime | None = None) -> str:
 def id_summary(sheet: dict, as_of: datetime | None = None) -> str:
     from labs import id_labs_text
     now = clock(as_of)
+    if 'g' in sheet.get('import_warnings', {}):
+        return ''
     data = deepcopy(sheet['labs'])
     ids = {r['id'] for key in ADMISSION for r in rows_for(sheet, key, now)}
     data['rows'] = [r for r in data['rows'] if analyte(r['component']) not in ADMISSION or r['id'] in ids]
@@ -159,7 +161,18 @@ def id_summary(sheet: dict, as_of: datetime | None = None) -> str:
     if (not sheet.get('admission_date') or 'n' in sheet.get('import_warnings', {})) and any(
             r['include'] and analyte(r['component']) in ADMISSION for r in sheet['labs']['rows']):
         result += ('\n' if result else '') + 'CRP / procalcitonin: admission date needed.'
+    levels = id_drug_levels(sheet, now)
+    if levels:
+        result += ('\n-----\n' if result else '') + levels
     return result
+
+
+def id_drug_levels(sheet: dict, as_of: datetime | None = None) -> str:
+    now = clock(as_of)
+    values = ordered(rows_for(sheet, 'VANCOTROUGH', now))
+    if not values:
+        return ''
+    return 'Drug Levels\nVancomycin trough: ' + values[0]['value'] + ' ' + stamp(values[0], now)
 
 
 def laboratory_data(sheet: dict, as_of: datetime | None = None) -> dict:
@@ -170,8 +183,8 @@ def laboratory_data(sheet: dict, as_of: datetime | None = None) -> dict:
     out = []
     for row in data['rows']:
         key = analyte(row['component'])
-        if key == 'NTPROBNP':
-            continue  # shown only in the cardiovascular column
+        if key in {'NTPROBNP', 'VANCOTROUGH'}:
+            continue  # shown only in the appropriate system column
         if key == 'CK':
             if row['id'] not in ck:
                 continue
@@ -186,7 +199,7 @@ def window_help(sheet: dict, as_of: datetime | None = None) -> str:
     now = clock(as_of)
     return ('Display windows as of ' + now.strftime('%m/%d/%Y %H:%M %Z') +
             '. Lactate, theophylline and CK: rolling 24 hours. CRP/procalcitonin: admission onward. '
-            'NT-proBNP: latest from all supplied dates. Original rows remain available below.')
+            'NT-proBNP and vancomycin trough: latest from all supplied dates. Original rows remain available below.')
 
 
 @contextmanager

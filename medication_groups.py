@@ -8,6 +8,8 @@ from copy import deepcopy
 import re
 from medications import match_name, normalized
 
+ID_GROUPS = ("antibiotic",)
+HEME_GROUPS = ("dvt", "antiplatelet")
 CV_GROUPS = ("antiarrhythmic", "antihypertensive", "inotrope", "vasopressor", "adrenocortical", "vasodilator")
 RESP_GROUPS = ("airway_cerebral_steroid", "airway_tone", "antisialorrhea", "beta_agonist",
                "anticholinergic", "methylxanthine", "corticosteroid", "inhaled_corticosteroid",
@@ -18,9 +20,10 @@ NEURO_OTHER_GROUPS = ("antiepileptic", "antispasmodic",
 NEURO_PRIORITY_GROUPS = ("sedative_prn", "paralytic_infusion", "paralytic_prn")
 MODES = (("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic",
           "insomnia", "antispasmodic", "neuromodulation",
-          "paralytic_infusion") + RESP_GROUPS + CV_GROUPS + ("other",))
+          "paralytic_infusion") + RESP_GROUPS + CV_GROUPS + ID_GROUPS + ("antiplatelet", "other",))
 MODE_LABELS = {
-    "auto": "Automatic", "dvt": "DVT Prophylaxis", "fever": "Fever Control",
+    "auto": "Automatic", "dvt": "DVT Prophylaxis",
+    "antiplatelet": "Antiplatelet Therapy", "antibiotic": "Antibiotics", "fever": "Fever Control",
     "sedative_prn": "PRN", "paralytic_prn": "Paralytic PRN", "antiepileptic": "Antiepileptic",
     "paralytic_infusion": "Paralytic Infusions",
     "airway_cerebral_steroid": "Airway/Cerebral Steroids",
@@ -38,7 +41,7 @@ MODE_LABELS = {
 }
 GROUP_NAMES = {key: value for key, value in MODE_LABELS.items() if key not in ("auto", "other")}
 GROUP_SECTIONS = {
-    "dvt": "Hematology", "fever": "Neurologic", "sedative_prn": "Neurologic",
+    "dvt": "Hematology", "antiplatelet": "Hematology", "antibiotic": "Infectious Disease", "fever": "Neurologic", "sedative_prn": "Neurologic",
     **{key: "Neurologic" for key in NEURO_PRIORITY_GROUPS + NEURO_OTHER_GROUPS},
     **{key: "Respiratory" for key in RESP_GROUPS},
     **{key: "Cardiovascular" for key in CV_GROUPS},
@@ -91,6 +94,23 @@ def _local_form(row: dict, name: str) -> bool:
 def automatic_system_group(row: dict) -> str:
     """Requested defaults. Explicit per-order choices remain authoritative."""
     name = match_name(row.get("name", ""))
+    if _starts(name, ("aspirin", "cangrelor")):
+        return "antiplatelet"
+    # Organizational defaults only. Existing explicit category assignments win.
+    # Erythromycin retains the user's Prokinetic Agents default.
+    antibiotics = ("cefepime", "ceftriaxone", "cefazolin", "cefotaxime", "ceftazidime",
+        "cefuroxime", "cefdinir", "cephalexin", "ceftaroline", "ampicillin",
+        "ampicillin-sulbactam", "amoxicillin", "amoxicillin-clavulanate", "penicillin",
+        "piperacillin-tazobactam", "meropenem", "imipenem-cilastatin", "ertapenem",
+        "vancomycin", "linezolid", "daptomycin", "clindamycin", "metronidazole",
+        "azithromycin", "clarithromycin", "doxycycline", "minocycline",
+        "sulfamethoxazole-trimethoprim", "trimethoprim-sulfamethoxazole",
+        "gentamicin", "tobramycin", "amikacin", "ciprofloxacin", "levofloxacin",
+        "moxifloxacin", "oxacillin", "nafcillin", "rifampin", "aztreonam")
+    if _starts(name, antibiotics):
+        route = _route(row)
+        if not re.search(r"topical|ophthalm|eyes?|otic|irrigation|apply externally", route) and not re.search(r"\b(?:ophthalmic|otic|ointment|cream)\b", name):
+            return "antibiotic"
     if _starts(name, ("dexamethasone",)):
         # Systemic dexamethasone only. Eye/ear/topical preparations keep their
         # existing mapping. The category is a user-requested display label.
@@ -151,7 +171,7 @@ def automatic_group(row: dict) -> str:
     if system_group:
         return system_group
     name = match_name(row.get("name", ""))
-    if re.match(r"^(?:enoxaparin|cangrelor)\b", name):
+    if re.match(r"^enoxaparin\b", name):
         return "dvt"
     if re.match(r"^heparin\b", name):
         # Avoid flush/lock mixtures even if an unusual source has a misleading dose.
@@ -179,7 +199,7 @@ def group_for(row: dict) -> str:
     mode = row.get("group_mode", "auto")
     # An explicit GI override wins over automatic defaults, not over an explicit
     # special-group choice. UI callbacks clear the competing explicit choice.
-    if mode == "auto" and row.get("gi_mode", "auto") in ("prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "prokinetic"):
+    if mode == "auto" and row.get("gi_mode", "auto") in ("prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "prokinetic", "tpn"):
         return ""
     return automatic_group(row) if mode == "auto" else mode if mode in GROUP_NAMES else ""
 

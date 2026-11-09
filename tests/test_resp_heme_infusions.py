@@ -114,7 +114,7 @@ def test_dvt_infusions_and_scheduled_injections_share_one_category():
     assert 'enoxaparin ENOX_INJ' in injections
     text = fields_with_medications(s)['Hematology']
     assert text.index('DVT Prophylaxis') < text.index('HEP_DRIP')
-    assert text.index('CANG_DRIP') < text.index('ENOX_INJ')
+    assert text.index('ENOX_INJ') < text.index('Antiplatelet Therapy') < text.index('CANG_DRIP')
     for marker in ['HEP_DRIP','CANG_DRIP','ENOX_INJ','HEME_OTHER_DRIP','HEME_TABLET']:
         assert text.count(marker) == 1
     assert s == before
@@ -283,7 +283,7 @@ def test_rendering_saved_data_preserves_archive_every_field_and_timestamp():
     v['settings']['medication_infusions']=set_infusion_rule([],s['medications'][1],'other')
     key=generate_key();encrypted=seal_vault(v,key);before=deepcopy(v)
     restored=open_vault(encrypted,key)
-    assert restored==before and restored['schema']==29==SCHEMA_VERSION
+    assert restored==before and restored['schema']==30==SCHEMA_VERSION
     for sheet in restored['rooms'].values():
         fields_with_medications(sheet);handoff_html(sheet);handoff_pdf(sheet,STAMP)
     assert restored==before and upgrade_vault(restored)==before

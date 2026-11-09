@@ -17,11 +17,13 @@ NUMBER_OR_BULLET = re.compile(r"^\s*(?:\d+[.)]\s+|[•\-]\s+)")
 
 
 def _heading(line: str) -> str | None:
-    text = line.strip().rstrip(":").strip().casefold()
+    text = line.replace("：", ":").strip().rstrip(":").strip().casefold()
     if re.match(r"^date of admission\s*:", text):
         return "n"
     if re.match(r"^(?:capd|cornell assessment of pediatric delirium)(?:\b|:)", text):
         return "y"
+    if text in ("sbs", "sbs score", "sbs observations", "state behavioral scale", "state behavioral scale (sbs)"):
+        return "k"
     if text in ("orders", "recurring orders", "labs/imaging"):
         return "r"
     for key, value in SECTION_NAMES.items():
@@ -112,10 +114,13 @@ def parse_smartphrase(text: str) -> ParseResult:
         # M may now start with a user-added Range or Last wrapper rather than ICP Trends.
         m_start = key == "m" and (not nonempty or bool(re.match(
             r"^(?:(?:Last\s+)?(?:ICP(?:\s+Mean)?|CPP)(?:\s+Range)?(?:\s*\(\s*mm\s*Hg\s*\))?\s*:|no data recorded$)",
+            nonempty[0].replace("：", ":"), re.I)))
+        k_start = key == "k" and (not nonempty or bool(re.match(
+            r"^(?:(?:Last|Observed|Recorded|Actual)\s+)?(?:SBS\b|State\s+Behavio(?:u)?r(?:al)?\s+Scale\b)|^(?:results? from |patient vitals? for |Date(?:/Time)?\s|\d{1,2}/\d{1,2}/\d{2,4}\b)",
             nonempty[0], re.I)))
         # T contains device-prefixed lines and may have no heading at all.
         t_start = key in ("t", "u", "v", "w", "x", "y")
-        if not p_start and not r_start and not s_start and not t_start and not m_start and (not nonempty or _heading(nonempty[0]) != key):
+        if not p_start and not r_start and not s_start and not t_start and not m_start and not k_start and (not nonempty or _heading(nonempty[0]) != key):
             result.invalid.add(key)
             result.issues.append(f"The {SECTION_NAMES[key]} divider pair must begin with its matching heading.")
         elif any(_heading(ln) not in (None, key) and not (key == "g" and _heading(ln) in ("p", "q")) and not (key == "s" and _heading(ln) == "h") for ln in nonempty[1:]):

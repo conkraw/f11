@@ -31,7 +31,7 @@ class ICPResult:
 
 
 def _clean(text: str) -> str:
-    return re.sub(r"\s+", " ", text.replace("\u00a0", " ").replace("\u2212", "-").replace("\u2013", "-").replace("\u2014", "-")).strip()
+    return re.sub(r"\s+", " ", text.replace("\u00a0", " ").replace("：", ":").replace("\u2212", "-").replace("\u2013", "-").replace("\u2014", "-")).strip()
 
 
 def _missing(text: str) -> bool:
@@ -120,6 +120,21 @@ def _key(value: str) -> tuple:
     return tuple(Decimal(n) for n in re.findall(NUMBER, value))
 
 
+def logical_lines(block: str) -> list[str]:
+    """Fold only explicit summary continuations, never another metric's Last line."""
+    lines = []
+    for raw in block.replace("\r\n", "\n").replace("\r", "\n").splitlines():
+        text = _clean(raw)
+        if not text:
+            continue
+        # Pasted summary statistics can wrap at each field.
+        if re.match(r"^(?:avg|average|min|minimum|max|maximum)\s*:", text, re.I) and lines:
+            lines[-1] += " " + text
+        else:
+            lines.append(text)
+    return lines
+
+
 def parse_icp_cpp(block: str) -> ICPResult:
     out = ICPResult()
     values: dict[tuple[str, str], str] = {}
@@ -132,7 +147,7 @@ def parse_icp_cpp(block: str) -> ICPResult:
         values.setdefault(key, value)
 
     try:
-        for raw in block.replace("\r\n", "\n").replace("\r", "\n").splitlines():
+        for raw in logical_lines(block):
             text = _clean(raw)
             if not text or text.rstrip(":").casefold() in {"icp trends", "icp/cpp", "icp / cpp"}:
                 continue

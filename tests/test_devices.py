@@ -140,7 +140,8 @@ def test_evd_below_neuro_observations_before_infusion_notes():
     s=imported(block('Target Arousal Level:\nTarget Arousal Level (SBS): SBS -1','k')+'\n'+block('ICP Trends:\nICP Mean (mmHg): 5 mmHg\nCPP: 65 mmHg','m')+'\n'+block(EVD,'v'))
     s['fields']['Neurologic']='NEURO NOTE'
     text=fields_with_medications(s)['Neurologic']
-    assert text.index('SBS -1') < text.index('ICP Mean') < text.index('EVD: Clamped') < text.index('NEURO NOTE')
+    assert 'Target Arousal' not in text
+    assert text.index('CAPD:') < text.index('ICP Mean') < text.index('EVD: Clamped') < text.index('NEURO NOTE')
     html=handoff_html(s);assert html.index('EVD: Clamped')<html.index('NEURO NOTE')
 
 
@@ -247,7 +248,7 @@ def test_schema19_migration_keeps_every_previous_field_generation_and_times():
     before=deepcopy(v);key=generate_key()
     old=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     migrated=open_vault(old,key)
-    assert v==before and migrated['schema']==SCHEMA_VERSION==29
+    assert v==before and migrated['schema']==SCHEMA_VERSION==30
     assert migrated['settings']==before['settings'] and migrated['reset_generation']==before['reset_generation']
     for room,s in before['rooms'].items():assert migrated['rooms'][room]==dict(s, devices=None,neuro_devices=None,pacemaker=None,diet=None)
     assert open_vault(seal_vault(migrated,key),key)==migrated
@@ -342,7 +343,7 @@ def test_schema19_session_upgrade_preserves_unsaved_draft(app):
     ss['drafts']['P4102']['fields']['Neurologic']='UNSAVED MANUAL NOTE'
     app.upgrade_existing_session()
     assert ss['drafts']['P4102']['fields']['Neurologic']=='UNSAVED MANUAL NOTE'
-    assert ss['drafts']['P4102']['devices'] is None and ss['vault']['schema']==29
+    assert ss['drafts']['P4102']['devices'] is None and ss['vault']['schema']==30
 
 @pytest.mark.parametrize('text', ['Endotracheal Tube: None','Urinary Catheter: --','Intracranial Pressure Monitor: No data recorded','No EVD','No ETT present','Tracheostomy Tube: N/A'])
 def test_empty_headers_and_absence_statements_do_not_invent_devices(text):

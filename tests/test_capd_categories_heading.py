@@ -68,7 +68,8 @@ def test_unreadable_or_conflicting_y_does_not_represent_stale_score(source):
     assert out.errors and out.sheet and 'y' in out.skipped
     assert old==before and out.sheet['neuro_vitals']['y']==old['neuro_vitals']['y']
     text=handoff_text(out.sheet)
-    assert 'SBS 0' in text and 'CAPD: None' in text and 'CAPD: 8' not in text
+    assert out.sheet['neuro_vitals']['k'][0]['value']=='SBS 0'
+    assert 'SBS 0' not in text and 'CAPD: None' in text and 'CAPD: 8' not in text
     assert 'IMPORT REVIEW' not in text
     assert out.diagnostics[0]['section']=='y'
     assert '24 at' not in str(out.diagnostics) and '<script>' not in str(out.diagnostics)
@@ -79,11 +80,13 @@ def test_order_sbs_capd_wat_before_medications_in_all_exports():
                      block('l','WAT Score:\nWAT-1 total score (0-12): 3'),
                      block('y','CAPD: Cornell Assessment of Pediatric Delirium Score: 24')])
     s=imported(source)
+    from sbs_test_helpers import observed
+    observed(s, '0')
     s['medications']=[med('midazolam test infusion')]
     before=deepcopy(s)
     outputs=[handoff_text(s), handoff_html(s), '\n'.join(p.extract_text() for p in PdfReader(BytesIO(handoff_pdf(s))).pages)]
     for text in outputs:
-        assert text.index('SBS 0') < text.index('CAPD: 24') < text.index('WAT-1') < text.index('midazolam test infusion')
+        assert text.index('SBS: 0') < text.index('CAPD: 24') < text.index('WAT-1') < text.index('midazolam test infusion')
         assert text.count('CAPD: 24')==1
     assert s==before
 
@@ -181,7 +184,7 @@ def test_27_archive_adds_only_missing_defaults_and_preserves_customization():
     settings['medication_categories']=[r for r in settings['medication_categories'] if r['id'] not in ('group:allergy_immunology','gi:prokinetic')]
     v['settings']=settings;v['rooms']['P4102']=new_sheet('P4102')
     before=deepcopy(v);u=upgrade_vault(v)
-    assert v==before and u['schema']==29 and u['rooms']==before['rooms']
+    assert v==before and u['schema']==30 and u['rooms']==before['rooms']
     original={x['id']:x for x in before['settings']['medication_categories']}
     updated={x['id']:x for x in u['settings']['medication_categories']}
     assert all(updated[k]==row for k,row in original.items())
@@ -279,7 +282,8 @@ def test_y_missing_closing_divider_keeps_other_successful_sections():
     text=block('k','Target Arousal Level:\nSBS -1')+'\n'+'y'*20+'\nCAPD: 9'
     out=import_sections(old,text,new_vault()['settings'])
     assert out.sheet and out.errors and 'y' in out.sheet['import_warnings']
-    assert 'SBS -1' in handoff_text(out.sheet) and 'CAPD: None' in handoff_text(out.sheet)
+    assert out.sheet['neuro_vitals']['k'][0]['value']=='SBS -1'
+    assert 'SBS -1' not in handoff_text(out.sheet) and 'CAPD: None' in handoff_text(out.sheet)
 
 
 def test_repeated_y_pairs_reject_cross_patient_paste():

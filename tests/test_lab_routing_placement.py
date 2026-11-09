@@ -62,7 +62,7 @@ def test_coagulation_is_visible_without_a_hepatic_result(source):
     f = fields_with_medications(s)
     assert 'Coagulation' in f['Lab Results / Trends']
     assert f'{display_component(source)}: 0.5 (H) [01/06/2026]' in f['Lab Results / Trends']
-    assert not f['Infectious Disease']
+    assert f['Infectious Disease'].strip('-\n') == 'Cultures: None'
 
 
 @pytest.mark.parametrize('source', ['CRP', 'C-REACTIVE PROTEIN', 'PROCAL', 'PROCALCITONIN'])
@@ -113,7 +113,7 @@ def test_no_data_mutation_during_any_export():
     for fn in [handoff_html, handoff_pdf, handoff_text]:
         fn(s)
         assert s == before
-    assert SCHEMA_VERSION ==29
+    assert SCHEMA_VERSION ==30
 
 
 @pytest.mark.parametrize('exporter', [handoff_html, handoff_text])

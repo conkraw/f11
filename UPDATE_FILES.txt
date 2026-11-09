@@ -1,14 +1,16 @@
-COMPLETE VERSION 6.43 PACKAGE, BASED ON DELIVERED VERSION 6.42
+COMPLETE VERSION 6.45 PACKAGE, BASED ON DELIVERED VERSION 6.44
 
-Upload all files inside PICU_Handoff_v6_43_CAPD_Categories into the existing
-application code directory, replacing matching files. Keep app.py at the root.
-New runtime module: capd.py.
+Upload this folder's complete contents into the existing application code
+folder. Replace matching files and keep app.py at the root.
+New runtime module: sbs.py
 
-Keep current private Secrets, both passwords, encryption key, stored mappings,
-BMI reference CSV and shared data archive unchanged. Do not rerun generators.
-No new Python dependencies. No re-paste for stored medication/vent presentation.
-Paste Y or the full SmartPhrase to add CAPD. A missing score displays None.
-Schema 27 upgrades to 28. Do not downgrade after saving the new version.
+Keep private Secrets, both passwords, encryption key, mappings, category
+settings, BMI reference data and shared data archive unchanged. Do not rerun
+the setup generators. No new Python dependencies. Archive schema 29 -> 30.
+Avoid downgrading after saving with this release.
 
-Restart and refresh. Sidebar:
-Version 6.43 | CAPD, Vent Settings and medication categories
+Re-paste complete source sections or the full SmartPhrase to import new
+observed-score timestamps, VANCOTROUGH and ICP/CPP values. Targets do not
+count as measured SBS. Missing source dates/times are never inferred.
+
+Version 6.45 | Neuro observations, TPN and ID categories

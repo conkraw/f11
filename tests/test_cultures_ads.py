@@ -239,7 +239,7 @@ def test_id_vitals_stay_above_cultures_notes_and_medications():
     sheet['medications']=remap(sheet['medications'],upsert_rule([],'ceftriaxone','Infectious Disease'))
     text=fields_with_medications(sheet)['Infectious Disease']
     assert text.startswith('Temp:')
-    assert text.index('Temp:')<text.index('Cultures')<text.index('PLAN_SENTINEL')<text.index('cefTRIAXone')
+    assert text.index('Temp:')<text.index('Cultures')<text.index('Antibiotics')<text.index('cefTRIAXone')<text.index('PLAN_SENTINEL')
     assert '\n------\nCultures\n' in text
 
 
@@ -284,7 +284,7 @@ def test_all_original_fields_preserved_from_schema_seven():
         row.pop("feeds", None);row.pop("devices", None);row.pop("neuro_devices", None);row.pop("pacemaker", None);row.pop("diet", None);row.pop("import_warnings", None);row.pop("intake_output", None);row.pop("recurring_orders", None);row.pop("cbc", None);row.pop('blood_gas', None);row.pop('cultures');row.pop('dosing_weight');row.pop('viral_panel', None);row.pop('admission_date')
     before=deepcopy(vault)
     changed=upgrade_vault(vault)
-    assert changed['schema']==SCHEMA_VERSION==29 and vault==before
+    assert changed['schema']==SCHEMA_VERSION==30 and vault==before
     assert changed['settings']==dict(before['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
     for key,value in before['rooms']['P4102'].items():assert changed['rooms']['P4102'][key]==value
     assert changed['rooms']['P4102']['cultures']==empty_cultures()
@@ -367,6 +367,6 @@ def test_current_session_migration_preserves_unsaved_notes(app):
         sheet.pop('cultures');sheet.pop('dosing_weight');sheet.pop("feeds", None);sheet.pop("devices", None);sheet.pop("neuro_devices", None);sheet.pop("pacemaker", None);sheet.pop("diet", None);sheet.pop("import_warnings", None);sheet.pop("intake_output", None);sheet.pop("recurring_orders", None);sheet.pop("cbc", None);sheet.pop('blood_gas', None);sheet.pop('viral_panel', None);sheet.pop('admission_date')
     ss['drafts']['P4102']['fields']['Neurologic']='Unsaved note'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==29
+    assert ss['vault']['schema']==30
     assert ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved note'
     assert ss['drafts']['P4102']['cultures']==empty_cultures()

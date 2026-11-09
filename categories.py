@@ -28,9 +28,13 @@ def default_categories() -> list[dict]:
             order = 10 + 10 * CV_GROUPS.index(key)
         elif key == "dvt":
             order = 5
+        elif key == "antiplatelet":
+            order = 10
+        elif key == "antibiotic":
+            order = 10
         result.append(dict(id="group:" + key, name=name, section=GROUP_SECTIONS[key], parent="", order=order))
     for n, (key, name) in enumerate(GI_NAMES.items()):
-        result.append(dict(id="gi:" + key, name=name, section="FEN / GI", parent="", order=20 + 10*n))
+        result.append(dict(id="gi:" + key, name=name, section="FEN / GI", parent="", order=10 if key == "tpn" else 20 + 10*n))
     for key, name in INFUSION_HEADINGS.items():
         order = 10 if key == "Neurologic" else 90 if key == "Cardiovascular" else 15
         result.append(dict(id="infusion:" + key, name=name, section=key, parent="", order=order))

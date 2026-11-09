@@ -44,6 +44,8 @@ ALIASES = {
     'TBILI': 'BILITOT', 'TOTAL BILIRUBIN': 'BILITOT',
     'DIRECT BILIRUBIN': 'BILIDIR', 'DBILI': 'BILIDIR',
     'APTT': 'PTT', 'FIBRINOGEN': 'FIB', 'PROCALCITONIN': 'PROCAL',
+    'VANCOMYCIN TROUGH': 'VANCOTROUGH', 'VANCOMYCIN, TROUGH': 'VANCOTROUGH',
+    'VANCO TROUGH': 'VANCOTROUGH', 'VANCOMYCIN TROUGH LEVEL': 'VANCOTROUGH',
     'THEOPHYLLINE': 'THEOPH', 'THEOPHYLLINE LEVEL': 'THEOPH',
     'PHART': 'PHA', 'PHARTERIAL': 'PHA', 'PCO2ART': 'PCO2A',
     'PO2A': 'PO2ART', 'HCO3ART': 'HCO3A', 'BICARBART': 'HCO3A',
@@ -115,6 +117,8 @@ def panel_for(component: str, source_panel: str = 'Other labs') -> str:
     key = canonical(component)
     if is_lactate(component):
         return 'Lactate'
+    if key == 'VANCOTROUGH':
+        return 'ID drug levels'
     if key == 'THEOPH':
         return 'Respiratory drug levels'
     for group, components in PANELS.items():
@@ -218,6 +222,7 @@ def result_cards(data: dict, include_id_panels: bool = True, blood_gas: dict | N
     consumed = {key for key in groups if cbc_component(key)}
     # Theophylline is displayed once in RESP, not again in the bottom lab area.
     consumed.add('THEOPH')
+    consumed.add('VANCOTROUGH')
     for name, components, count, kind in (('BMP', BMP, 2, 'bmp'),):
         if not any(key in groups for key in components):
             continue

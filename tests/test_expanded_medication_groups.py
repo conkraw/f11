@@ -29,7 +29,7 @@ from github_store import StorageError, ConflictError
 
 
 @pytest.mark.parametrize('name,group', [
-    ('enoxaparin (Lovenox) syringe', 'dvt'), ('cangrelor (Kengreal) infusion', 'dvt'),
+    ('enoxaparin (Lovenox) syringe', 'dvt'), ('cangrelor (Kengreal) infusion', 'antiplatelet'),
     ('acetaminophen injection', 'fever'), ('ibuprofen suspension', 'fever'),
     ('fentaNYL NCS infusion syringe', 'sedative_prn'), ('midazolam PF', 'sedative_prn'),
     ('ketamine injection', 'sedative_prn'), ('morphine PF', 'sedative_prn'),
@@ -41,7 +41,7 @@ def test_named_rules_respect_known_prefixes_and_case(name,group,prefix):
     r=med(prefix+name, frequency='q1h PRN', section='Other Medications')
     before=deepcopy(r)
     assert automatic_group(r)==group
-    assert effective_section(r)==('Hematology' if group=='dvt' else 'Neurologic')
+    assert effective_section(r)==('Hematology' if group in ('dvt', 'antiplatelet') else 'Neurologic')
     assert r==before
 
 
@@ -236,7 +236,7 @@ def test_schema16_upgrade_preserves_every_field_and_import_warning():
     v['rooms'][s['room']]=res.sheet;before=deepcopy(v)
     key=Fernet.generate_key().decode();encrypted=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     upgraded=open_vault(encrypted,key)
-    assert upgraded['schema']==SCHEMA_VERSION==29
+    assert upgraded['schema']==SCHEMA_VERSION==30
     assert upgraded['rooms']=={room: dict(sheet, feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None) for room, sheet in before['rooms'].items()}
     assert upgraded['settings']==dict(before['settings'],medication_groups=[])
     assert v==before

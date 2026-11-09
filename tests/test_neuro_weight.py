@@ -205,7 +205,8 @@ def test_neuro_above_manual_notes_medications_weight_below_diagnoses():
 
 def test_target_arousal_order_first():
     text=fields_with_medications(populated())['Neurologic']
-    assert text.index('Target Arousal')<text.index('WAT-1')<text.index('ICP Mean')<text.index('CPP:')
+    assert 'Target Arousal' not in text
+    assert text.index('WAT-1')<text.index('ICP Mean')<text.index('CPP:')
 
 
 def test_neuro_e_vitals_route_to_neuro():
@@ -229,7 +230,7 @@ def test_all_exports_preserve_values_and_omit_growth_metadata():
     html=handoff_html(sheet)
     pdftext='\n'.join(p.extract_text() for p in PdfReader(BytesIO(handoff_pdf(sheet))).pages)
     for output in [text,html,pdftext]:
-        for value in ['15.3 kg','0.41','SBS -1','72 mmHg','5 mmHg']:
+        for value in ['15.3 kg','0.41','72 mmHg','5 mmHg']:
             assert value in output
         assert '66%' not in output and '10/31/26' not in output and 'Growth percentiles' not in output
         assert output.index('Synthetic diagnosis')<output.index('Weight:')<output.index('Z-score:')
@@ -258,7 +259,7 @@ def test_hidden_new_observations_and_weight_not_printed():
 
 
 def test_text_in_neuro_value_is_html_escaped():
-    sheet=populated();sheet['neuro_vitals']['k'][0]['value']='<script>example</script>'
+    sheet=populated();sheet['neuro_vitals']['l'][0]['value']='<script>example</script>'
     html=handoff_html(sheet)
     assert '<script>example</script>' not in html and '&lt;script&gt;' in html
 
@@ -308,7 +309,7 @@ def legacy_v6():
 def test_schema6_migration_preserves_every_old_field_and_does_not_mutate():
     old=legacy_v6();before=deepcopy(old)
     new=upgrade_vault(old)
-    assert old==before and new['schema']==29
+    assert old==before and new['schema']==30
     for key,value in old['rooms']['P4102'].items():assert new['rooms']['P4102'][key]==value
     assert new['settings']==dict(old['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
     assert new['rooms']['P4102']['neuro_vitals']==empty_neuro() and new['rooms']['P4102']['nutrition'] is None
@@ -318,7 +319,7 @@ def test_schema6_encrypted_archive_opens_with_same_key_and_preserves_notes():
     old=legacy_v6();key=Fernet.generate_key().decode()
     ciphertext=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     new=open_vault(ciphertext,key)
-    assert new['schema']==29 and new['rooms']['P4102']['fields']['Other']==old['rooms']['P4102']['fields']['Other']
+    assert new['schema']==30 and new['rooms']['P4102']['fields']['Other']==old['rooms']['P4102']['fields']['Other']
 
 
 def test_new_observations_encrypt_roundtrip():
@@ -364,7 +365,7 @@ def test_session_v6_migration_preserves_unsaved_drafts(app):
     ss['drafts']['P4102']['fields']['Neurologic']='Unsaved edit'
     ss['vent_old']='old index'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==29 and ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved edit'
+    assert ss['vault']['schema']==30 and ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved edit'
     assert 'vent_old' not in ss
 
 
@@ -393,7 +394,7 @@ def test_long_handoff_continuation_keeps_weight_and_observations_once():
     reader=PdfReader(BytesIO(handoff_pdf(sheet)))
     text='\n'.join(p.extract_text() for p in reader.pages)
     assert len(reader.pages)>1
-    for value in ['Weight: 15.3 kg','Z-score: 0.41','CPP: 72 mmHg','SBS -1']:
+    for value in ['Weight: 15.3 kg','Z-score: 0.41','CPP: 72 mmHg']:
         assert text.count(value)==1
     assert 'Synthetic diagnosis line 84' in ' '.join(text.split())
 

@@ -1,0 +1,12 @@
+Version 6.45 local verification
+
+3803 passed in 99.79s (0:01:39)
+
+All Python source and test files in the delivery match the clean ZIP extraction
+used by the full suite. Final documentation, checksums and synthetic preview
+were added after that run. No source or test code was changed afterward.
+
+PASS: Original 6.44 encrypted archive upgrades to schema30. All previous room fields, timestamps and settings unchanged. Three new builtin categories added. Encrypted round trip exact.
+
+Preview: 2 synthetic rooms, 1 landscape page per room, 8-point body text.
+No live deployment or storage connection tested.

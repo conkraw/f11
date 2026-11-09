@@ -198,10 +198,10 @@ def culture_display(value: str) -> str:
     return value
 
 
-def cultures_text(data: dict) -> str:
+def cultures_text(data: dict, empty_none: bool = False) -> str:
     groups = compact_groups(data)
     if not groups:
-        return ''
+        return 'Cultures: None' if empty_none and not data['rows'] else ''
     lines = ['Cultures']
     for group in groups:
         lines.append(short_date(group['date']) + ' | ' + group['specimen'] + ' | ' + ' / '.join(dict.fromkeys(culture_display(v) for v in group['organisms'])))

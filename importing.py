@@ -259,7 +259,18 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 recoveries = diet.diagnostics
                 out.notices.extend(diet.issues)
                 out.imported.append("diet" if diet.data["rows"] else "diet display cleared")
-            elif letter in "klmy":
+            elif letter == "k":
+                from sbs import parse_sbs
+                observation = parse_sbs(parsed.blocks[letter])
+                if observation.error:
+                    out.errors.append(observation.error)
+                    continue
+                candidate["neuro_vitals"]["k"] = observation.targets
+                if observation.data["readings"] or "sbs_observations" in candidate:
+                    candidate["sbs_observations"] = observation.data
+                out.notices.extend(observation.issues)
+                out.imported.append("SBS observations" if observation.data["readings"] else "SBS display cleared")
+            elif letter in "lmy":
                 observations = parse_neuro(parsed.blocks[letter], letter)
                 if observations.error:
                     out.errors.append(observations.error)

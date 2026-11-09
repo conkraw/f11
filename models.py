@@ -37,7 +37,7 @@ from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 29
+SCHEMA_VERSION = 30
 from problem_review import validate_review, empty_review
 from difficult_airway import validate_airway
 from lab_windows import cardiac_labs_summary, theophylline_summary, id_summary, laboratory_data
@@ -83,7 +83,7 @@ def new_vault() -> dict:
 
 
 def validate_sheet(sheet: dict) -> None:
-    if not isinstance(sheet, dict) or set(sheet) - {"anthropometrics", "problem_review", "difficult_airway", "empty_group_layout"} != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "devices", "neuro_devices", "pacemaker", "diet", "import_warnings"}:
+    if not isinstance(sheet, dict) or set(sheet) - {"anthropometrics", "problem_review", "difficult_airway", "empty_group_layout", "sbs_observations"} != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "devices", "neuro_devices", "pacemaker", "diet", "import_warnings"}:
         raise ValidationError("The handoff structure is invalid.")
     if not isinstance(sheet["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", sheet["id"]):
         raise ValidationError("The handoff identifier is invalid.")
@@ -105,6 +105,8 @@ def validate_sheet(sheet: dict) -> None:
         validate_vitals(sheet["vitals"])
         validate_labs(sheet["labs"])
         validate_neuro(sheet["neuro_vitals"])
+        from sbs import validate_sbs
+        validate_sbs(sheet.get("sbs_observations"))
         from empty_groups import validate_empty_group_layout
         validate_empty_group_layout(sheet.get("empty_group_layout", []))
         validate_nutrition(sheet["nutrition"])
@@ -201,6 +203,15 @@ def upgrade_vault(vault: dict) -> dict:
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
+    if version != SCHEMA_VERSION and isinstance(vault.get("settings"), dict) and "medication_categories" in vault["settings"]:
+        from categories import add_missing_builtin_categories
+        vault = deepcopy(vault)
+        vault["settings"] = add_missing_builtin_categories(vault["settings"])
+    if version == 29:
+        candidate = deepcopy(vault)
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     if version == 28:
         candidate = deepcopy(vault)
         candidate["schema"] = SCHEMA_VERSION
@@ -480,7 +491,7 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
     auto_vitals = automatic_vitals(sheet)
     for section, text in auto_vitals.items():
         result[section] = text + ("\n-----\n" + result[section] if result[section].strip() else "")
-    culture_block = cultures_text(sheet["cultures"])
+    culture_block = "" if "f" in sheet["import_warnings"] else cultures_text(sheet["cultures"], empty_none=True)
     id_labs = id_summary(sheet)
     if culture_block or id_labs:
         id_vitals = auto_vitals.get("Infectious Disease", "")
@@ -543,7 +554,12 @@ def automatic_vitals(sheet: dict) -> dict[str, str]:
     if "m" in sheet.get("import_warnings", {}):
         # A failed M paste cannot refresh the retained last pressures.
         neuro = dict(neuro, m=[])
-    result = text_by_system(neuro_rows(neuro) + sheet["vitals"])
+    from sbs import sbs_display_rows
+    neuro = dict(neuro, k=sbs_display_rows(sheet))
+    # A target in the old E section is not an observed, timestamped SBS.
+    unrelated_vitals = [r for r in sheet["vitals"]
+        if not re.search(r"\bSBS\b|target arousal", r["label"], re.I)]
+    result = text_by_system(neuro_rows(neuro) + unrelated_vitals)
     evd = evd_text(sheet)
     if evd:
         old = result.get("Neurologic", "")

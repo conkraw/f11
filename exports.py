@@ -127,9 +127,10 @@ def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
             return esc(text[:-len(plain)]) + viral_markup(sheet["viral_panel"], esc)
     if section == "Infectious Disease":
         markup = esc(text)
-        plain = cultures_text(sheet["cultures"])
+        markup = re.sub(r"(?m)^Drug Levels$", "<b>Drug Levels</b>", markup)
+        plain = "" if "f" in sheet["import_warnings"] else cultures_text(sheet["cultures"], empty_none=True)
         if plain:
-            markup = markup.replace(esc(plain), culture_markup(sheet["cultures"], esc), 1)
+            markup = markup.replace(esc(plain), culture_markup(sheet["cultures"], esc, empty_none=True), 1)
         blocks = medication_blocks(section, sheet["fields"][section], sheet["medications"], sheet)
         body = render_body_blocks(blocks)
         if body:

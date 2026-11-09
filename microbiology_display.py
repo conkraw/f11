@@ -28,11 +28,11 @@ def is_organism_result(value: str) -> bool:
     return True
 
 
-def culture_markup(data: dict, esc=escape) -> str:
+def culture_markup(data: dict, esc=escape, empty_none: bool = False) -> str:
     groups = compact_groups(data)
     if not groups:
-        return ""
-    lines = ["Cultures"]
+        return "<b>Cultures:</b> None" if empty_none and not data["rows"] else ""
+    lines = ["<b>Cultures</b>"]
     for group in groups:
         values = ["<b>" + esc(value) + "</b>" if is_organism_result(value) else esc(culture_display(value))
                   for value in group["organisms"]]

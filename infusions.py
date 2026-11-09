@@ -39,8 +39,8 @@ def supports_infusion_display(row: dict) -> bool:
         return section in INFUSION_HEADINGS or section == "FEN / GI"
     group = special_group(row)
     if section == "FEN / GI":
-        return gi_group(row) == "endocrine"
-    return section in INFUSION_HEADINGS and (not group or group == "dvt"
+        return gi_group(row) in {"endocrine", "tpn"}
+    return section in INFUSION_HEADINGS and (not group or group in {"dvt", "antiplatelet"}
                                             or group in CV_GROUPS + RESP_GROUPS + ("paralytic_infusion",))
 
 
