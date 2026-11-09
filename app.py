@@ -463,6 +463,8 @@ def neuro_row_change(room: str, source: str, index: int, field: str, key: str) -
     try:
         validate_neuro(candidate)
         ss["drafts"][room]["neuro_vitals"] = candidate
+        if source == "y":
+            ss["drafts"][room]["import_warnings"].pop("y", None)
     except ValueError as exc:
         ss[key] = old
         note(str(exc), "error")
@@ -581,10 +583,12 @@ def viral_editor(sheet: dict) -> None:
 
 def neuro_weight_editor(sheet: dict) -> None:
     st.subheader("Neurologic observations")
-    st.caption("K: target arousal, L: WAT-1, M: ICP/CPP. Values print at the top of NEURO. Empty sections add nothing. A zero score is retained.")
+    st.caption("K: target arousal, Y: CAPD, L: WAT-1, M: ICP/CPP. CAPD always prints between SBS and WAT-1. None means no available score, not a zero score.")
     present = False
     for source, title in NEURO_SECTIONS.items():
-        for index, row in enumerate(sheet["neuro_vitals"][source]):
+        if source == "y" and not sheet["neuro_vitals"].get("y"):
+            st.caption("CAPD: None. Paste a Y section to add the recorded score.")
+        for index, row in enumerate(sheet["neuro_vitals"].get(source, [])):
             present = True
             key = "neuro_" + sheet["id"] + "_" + source + "_" + str(index)
             if key not in st.session_state:
@@ -597,7 +601,7 @@ def neuro_weight_editor(sheet: dict) -> None:
             st.checkbox("Include " + row["label"], key=ikey, on_change=neuro_row_change,
                         args=(sheet["room"], source, index, "include", ikey))
     if not present:
-        st.caption("No recorded neurologic observations. Paste K, L and/or M to add them.")
+        st.caption("Paste K, Y, L and/or M to add recorded neurologic observations.")
     st.subheader("Demographics / Weight")
     st.caption("Admission is shown in the patient column. Below Diagnoses: weight, Z-score when supplied, then dosing weight. A blank dosing-weight field prints Dosing weight: none. Clearing admission omits that date.")
     field = "admission_date"
@@ -1333,7 +1337,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.42 | Respiratory and editable medication categories")
+        st.caption("Version 6.43 | CAPD, Vent Settings and medication categories")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Shared storage connected" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)

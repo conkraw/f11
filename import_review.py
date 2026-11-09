@@ -10,7 +10,7 @@ SECTIONS = {
     'e': 'Vitals', 'f': 'Cultures', 'g': 'Labs', 'i': 'Weight / measurements',
     'k': 'Arousal target', 'l': 'WAT', 'm': 'ICP / CPP', 'n': 'Admission',
     'o': 'Viral panel', 'p': 'Blood gas', 'q': 'CBC', 'r': 'Orders',
-    's': 'Intake / output', 't': 'Feeds', 'u': 'Devices', 'v': 'Neuro devices', 'w': 'Pacemaker', 'x': 'Diet', 'document': 'Paste',
+    's': 'Intake / output', 't': 'Feeds', 'u': 'Devices', 'v': 'Neuro devices', 'w': 'Pacemaker', 'x': 'Diet', 'y': 'CAPD', 'document': 'Paste',
 }
 CODES = {
     'diet_multiple': 'Multiple distinct diet orders are listed. All are retained; verify which apply.',

@@ -1,50 +1,33 @@
-# PICU Handoff 6.42
+# PICU Handoff 6.43
 
-Respiratory medication groups, a linked theophylline result, and editable
-categories/subcategories. Built from Version 6.41.
+CAPD from the new Y section, a bold Vent Settings heading, Respiratory
+Allergy/Immunology, and FEN/GI Prokinetic Agents. Built from Version 6.42.
 
-Read DYNAMIC_CATEGORIES_UPDATE.md for the new defaults, mapping priority,
-category management, and installation steps.
+Read CAPD_CATEGORIES_UPDATE.md for behavior, import details and installation.
+TEST_REPORT.md documents local testing. Existing clinical selection rules,
+infusion rates and numeric fields remain unchanged.
 
-## Upgrade an existing deployment
+## Upgrade
 
-Upload the contents of this folder to the existing application code directory.
-Keep app.py at the root. Include categories.py and category_ui.py. Restart the
-application, then refresh the browser.
+Upload this folder's contents into the existing application code directory,
+replacing matching files. Keep app.py at the root. Include capd.py and all existing
+modules. Restart the app and refresh your browser.
 
-Keep your existing private Secrets, both passwords, encryption key, shared data
-archive, and BMI reference CSV unchanged. Do not run the setup generators during
-an upgrade. There are no new Python dependencies. Old handoffs upgrade to schema
-27 automatically. Do not downgrade after saving with this version.
+Keep current private Secrets, both passwords, encryption key, medication mappings,
+BMI reference data and shared storage unchanged. Do not rerun setup generators.
+No new dependencies are needed. Saved archives advance to schema 28. Do not
+downgrade after saving with this version.
 
-## Routine use
+## Use
 
-Choose the room, paste the patient's generated Epic SmartPhrase, and click Create /
-update handoff. Review imported information, edit notes and medication placement,
-and save. The Instructions / SmartPhrase workspace contains the team's published
-SmartPhrase and instructions. An import warning must be reviewed in the app even
-though warnings do not print on the handoff.
+Create or update a handoff with the generated Epic SmartPhrase. The Y section
+holds the documented CAPD total. CAPD always appears between the arousal target
+and WAT-1, with None when unavailable. A zero score remains zero. This does not
+add a delirium diagnosis. Read in-app import warnings before sharing the handoff.
 
-Under Medications, select one Category for order. It can be a category alone or a
-category and one subcategory. That destination is remembered. Source order
-fields, hidden-medication settings and infusion rate formatting remain intact.
+The existing category selector assigns one medication to one destination.
+Custom category definitions, subcategories and assignments stay editable in
+Admin. Each visible order still appears once, and hidden orders stay hidden.
 
-Admin / Medication categories and subcategories creates, renames, moves and
-reorders categories. Admin / Assign medications to categories creates generic
-prefix or exact-formulation rules. It works even when no handoff is open and
-requires the existing separate Admin password.
-
-Theophylline is shown immediately below a visible aminophylline order, once. If
-there is no visible aminophylline order, an eligible result remains in Respiratory.
-The existing 24-hour filter remains unchanged.
-
-## Validation and limits
-
-TEST_REPORT.md records local automated testing and preview checks. No live Epic,
-shared-storage connection or deployed Streamlit app was tested or changed.
-Category labels are local display choices, not an indication determination or
-medication recommendation. Review source values before using a handoff.
-
-For a new deployment, the existing START_HERE.html, ADMIN_SETUP.txt and
-secrets.example.toml cover installation and access configuration. They are not
-steps to repeat when upgrading an existing deployment.
+No live deployment, patient archive or storage connection was tested or changed.
+Use the synthetic examples to check the deployed display before routine use.

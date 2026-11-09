@@ -115,6 +115,8 @@ def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
     if section in INFUSION_SECTIONS:
         body = render_body_blocks(system_body_blocks(section, sheet["fields"][section], sheet["medications"], sheet), True, esc)
         prefix = esc(infusion_section_prefix(sheet, section, bool(body.strip())))
+        if section == "Respiratory":
+            prefix = re.sub(r"(?m)^Vent Settings$", "<b>Vent Settings</b>", prefix)
         pacing = pacemaker_text(sheet) if section == "Cardiovascular" else ""
         if pacing:
             prefix = prefix.replace(esc(pacing), "<b>" + esc(pacing) + "</b>", 1)
@@ -282,6 +284,8 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: b
         prefix_text = infusion_section_prefix(sheet, section, bool(blocks)).rstrip("\n")
         if prefix_text:
             prefix_markup = _clinical_markup(prefix_text)
+            if section == "Respiratory":
+                prefix_markup = re.sub(r"(?m)^Vent Settings$", "<b>Vent Settings</b>", prefix_markup)
             pacing = pacemaker_text(sheet) if section == "Cardiovascular" else ""
             if pacing:
                 prefix_markup = prefix_markup.replace(_clinical_markup(pacing), "<b>" + _clinical_markup(pacing) + "</b>", 1)

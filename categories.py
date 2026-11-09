@@ -37,6 +37,32 @@ def default_categories() -> list[dict]:
     return result
 
 
+def add_missing_builtin_categories(settings: dict) -> dict:
+    """Schema upgrade only. Never overwrite existing category names or placements."""
+    result = deepcopy(settings)
+    if "medication_categories" not in result:
+        return result
+    items = result["medication_categories"]
+    if not isinstance(items, list):
+        raise ValueError("The saved medication categories are invalid.")
+    ids = {item.get("id") for item in items if isinstance(item, dict)}
+    occupied = {(item.get("section"), item.get("parent"), normalized(item.get("name", "")))
+                for item in items if isinstance(item, dict)}
+    for item in default_categories():
+        if item["id"] in ids:
+            continue
+        original_name = item["name"]
+        n = 1
+        while (item["section"], item["parent"], normalized(item["name"])) in occupied:
+            item["name"] = original_name + (" (default)" if n == 1 else " (default " + str(n) + ")")
+            n += 1
+        items.append(item)
+        ids.add(item["id"])
+        occupied.add((item["section"], item["parent"], normalized(item["name"])))
+    validate_settings(result)
+    return result
+
+
 def catalog(settings: dict) -> list[dict]:
     return deepcopy(settings.get("medication_categories", default_categories()))
 

@@ -37,7 +37,7 @@ from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 27
+SCHEMA_VERSION = 28
 from problem_review import validate_review, empty_review
 from difficult_airway import validate_airway
 from lab_windows import cardiac_labs_summary, theophylline_summary, id_summary, laboratory_data
@@ -199,6 +199,14 @@ def upgrade_vault(vault: dict) -> dict:
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
+    if version == 27:
+        candidate = deepcopy(vault)
+        # Existing categories, subcategories and assignments keep their IDs.
+        from categories import add_missing_builtin_categories
+        candidate["settings"] = add_missing_builtin_categories(candidate["settings"])
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     if version == 26:
         candidate = deepcopy(vault)
         candidate["schema"] = SCHEMA_VERSION
@@ -500,7 +508,13 @@ def apply_ventilation(sheet: dict, data: dict | None) -> dict:
 
 def respiratory_text(sheet: dict) -> str:
     """Automatic support only, before the separator, notes and medications."""
-    parts = [format_ventilation(sheet["ventilation"]), format_noninvasive(sheet["noninvasive"])]
+    invasive = format_ventilation(sheet["ventilation"])
+    noninvasive = format_noninvasive(sheet["noninvasive"])
+    has_vent = bool(invasive) or any(
+        d.get("include", True) and d.get("device") in {"BiPAP", "CPAP", "AVAPS NIV", "NAVA NIV"}
+        for d in sheet["noninvasive"]
+    )
+    parts = (["Vent Settings"] if has_vent else []) + [invasive, noninvasive]
     return "\n".join(part for part in parts if part)
 
 
@@ -515,7 +529,11 @@ def apply_respiratory(sheet: dict, invasive: dict | None, devices: list[dict]) -
 
 def automatic_vitals(sheet: dict) -> dict[str, str]:
     """Keep imported neurologic observations before notes and medications."""
-    result = text_by_system(neuro_rows(sheet["neuro_vitals"]) + sheet["vitals"])
+    neuro = sheet["neuro_vitals"]
+    if "y" in sheet.get("import_warnings", {}):
+        # Do not print a retained old score as though a failed Y import refreshed it.
+        neuro = dict(neuro, y=[])
+    result = text_by_system(neuro_rows(neuro) + sheet["vitals"])
     evd = evd_text(sheet)
     if evd:
         old = result.get("Neurologic", "")

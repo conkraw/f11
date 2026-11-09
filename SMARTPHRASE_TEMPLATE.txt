@@ -137,3 +137,8 @@ Diet:
 [Insert your Epic diet-order SmartLink. X imports diet types and NPO exceptions.
 PN and label-only orders are omitted here. T remains the source of feed rates.]
 xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+
+yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+CAPD: [Insert your actual Epic CAPD total-score SmartLink here. Do not use a sample patient score as a reusable template. A blank result displays CAPD: None.]
+yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy

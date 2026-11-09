@@ -9,10 +9,10 @@ SECTION_NAMES = {
     "a": "Diagnoses", "b": "Medications", "c": "Invasive Ventilation",
     "d": "Non-invasive Ventilation", "e": "VITALS", "f": "CULTURES",
     "g": "LABS", "h": "INTAKE/OUTPUT", "i": "NUTRITION", "j": "Wound Review",
-    "k": "Target Arousal Level", "l": "WAT Score", "m": "ICP Trends", "n": "Date of Admission", "o": "Respiratory Viral Panel", "p": "Blood Gas", "q": "Complete Blood Count", "r": "Orders Placed This Encounter", "s": "Intake / Output totals", "t": "Feeds", "u": "Devices", "v": "Intracranial Pressure Monitor", "w": "Pacemaker", "x": "Diet",
+    "k": "Target Arousal Level", "l": "WAT Score", "m": "ICP Trends", "n": "Date of Admission", "o": "Respiratory Viral Panel", "p": "Blood Gas", "q": "Complete Blood Count", "r": "Orders Placed This Encounter", "s": "Intake / Output totals", "t": "Feeds", "u": "Devices", "v": "Intracranial Pressure Monitor", "w": "Pacemaker", "x": "Diet", "y": "CAPD",
 }
 MAX_PASTE = 150_000
-DIVIDER = re.compile(r"^([a-x])\1{7,}$", re.I)
+DIVIDER = re.compile(r"^([a-y])\1{7,}$", re.I)
 NUMBER_OR_BULLET = re.compile(r"^\s*(?:\d+[.)]\s+|[•\-]\s+)")
 
 
@@ -20,6 +20,8 @@ def _heading(line: str) -> str | None:
     text = line.strip().rstrip(":").strip().casefold()
     if re.match(r"^date of admission\s*:", text):
         return "n"
+    if re.match(r"^(?:capd|cornell assessment of pediatric delirium)(?:\b|:)", text):
+        return "y"
     if text in ("orders", "recurring orders", "labs/imaging"):
         return "r"
     for key, value in SECTION_NAMES.items():
@@ -39,7 +41,7 @@ class ParseResult:
 
 
 def parse_smartphrase(text: str) -> ParseResult:
-    """Accept matching a..x divider lines of any length >= 8.
+    """Accept matching a..y divider lines of any length >= 8.
 
     Ambiguous/missing/duplicate boundaries fail closed for that section.
     Issues in a later section do not invalidate a complete, unambiguous a block.
@@ -108,7 +110,7 @@ def parse_smartphrase(text: str) -> ParseResult:
         r_start = key == "r" and (not nonempty or _heading(nonempty[0]) == "r" or re.match(r"^no orders?\b", nonempty[0], re.I))
         s_start = key == "s" and (not nonempty or _heading(nonempty[0]) in ("h", "s") or re.match(r"^(?:Intake\s*/\s*Output\s+Summary|Fluid balance:?$|Intake\s|Output\s|Net\s|none$|no data$|not documented$|no results?\b)", nonempty[0], re.I))
         # T contains device-prefixed lines and may have no heading at all.
-        t_start = key in ("t", "u", "v", "w", "x")
+        t_start = key in ("t", "u", "v", "w", "x", "y")
         if not p_start and not r_start and not s_start and not t_start and (not nonempty or _heading(nonempty[0]) != key):
             result.invalid.add(key)
             result.issues.append(f"The {SECTION_NAMES[key]} divider pair must begin with its matching heading.")

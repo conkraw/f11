@@ -253,7 +253,7 @@ def test_hidden_new_observations_and_weight_not_printed():
     for rows in sheet['neuro_vitals'].values():
         for row in rows:row['include']=False
     fields=fields_with_medications(sheet)
-    assert fields['Neurologic']=='' and fields['Diagnoses']=='Dosing weight: none'
+    assert fields['Neurologic']=='CAPD: None' and fields['Diagnoses']=='Dosing weight: none'
     assert sheet['nutrition']['weight']=='15.3 kg'
 
 
@@ -308,7 +308,7 @@ def legacy_v6():
 def test_schema6_migration_preserves_every_old_field_and_does_not_mutate():
     old=legacy_v6();before=deepcopy(old)
     new=upgrade_vault(old)
-    assert old==before and new['schema']==27
+    assert old==before and new['schema']==28
     for key,value in old['rooms']['P4102'].items():assert new['rooms']['P4102'][key]==value
     assert new['settings']==dict(old['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
     assert new['rooms']['P4102']['neuro_vitals']==empty_neuro() and new['rooms']['P4102']['nutrition'] is None
@@ -318,7 +318,7 @@ def test_schema6_encrypted_archive_opens_with_same_key_and_preserves_notes():
     old=legacy_v6();key=Fernet.generate_key().decode()
     ciphertext=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     new=open_vault(ciphertext,key)
-    assert new['schema']==27 and new['rooms']['P4102']['fields']['Other']==old['rooms']['P4102']['fields']['Other']
+    assert new['schema']==28 and new['rooms']['P4102']['fields']['Other']==old['rooms']['P4102']['fields']['Other']
 
 
 def test_new_observations_encrypt_roundtrip():
@@ -364,7 +364,7 @@ def test_session_v6_migration_preserves_unsaved_drafts(app):
     ss['drafts']['P4102']['fields']['Neurologic']='Unsaved edit'
     ss['vent_old']='old index'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==27 and ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved edit'
+    assert ss['vault']['schema']==28 and ss['drafts']['P4102']['fields']['Neurologic']=='Unsaved edit'
     assert 'vent_old' not in ss
 
 

@@ -177,7 +177,7 @@ def test_schema21_migration_preserves_every_prior_field_and_generation():
     v=save_sheet_in(new_vault(),new_sheet('P4102'));v['schema']=21;v['rooms']['P4102'].pop('diet')
     v['reset_generation']='a'*32;v['rooms']['P4102']['fields']['FEN / GI']='Original note'
     before=deepcopy(v);new=upgrade_vault(v)
-    assert v==before and new['schema']==SCHEMA_VERSION==27
+    assert v==before and new['schema']==SCHEMA_VERSION==28
     assert new['rooms']['P4102']==dict(before['rooms']['P4102'],diet=None)
     assert new['settings']==before['settings'] and new['reset_generation']==before['reset_generation']
 

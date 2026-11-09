@@ -15,15 +15,22 @@ from feeds import feeds_text
 from diet import diet_text
 from medication_groups import group_for as special_group, GROUP_SECTIONS
 
-MODES = ("auto", "prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "other")
-MODE_LABELS = {"auto": "Automatic", "prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "antiemetic": "Antiemetics", "endocrine": "Endocrine Medications", "other": "No GI grouping"}
-GROUP_NAMES = {"prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "antiemetic": "Antiemetics", "endocrine": "Endocrine Medications"}
+MODES = ("auto", "prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "prokinetic", "other")
+MODE_LABELS = {"auto": "Automatic", "prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "antiemetic": "Antiemetics", "endocrine": "Endocrine Medications", "prokinetic": "Prokinetic Agents", "other": "No GI grouping"}
+GROUP_NAMES = {"prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "antiemetic": "Antiemetics", "endocrine": "Endocrine Medications", "prokinetic": "Prokinetic Agents"}
 
 
 def automatic_group(row: dict) -> str:
     name = match_name(row.get("name", ""))
     if re.match(r"^(?:levothyroxine|synthroid|levoxyl|insulin|lantus|metformin)(?=$|[\s(,])", name):
         return "endocrine"
+    if re.match(r"^(?:erythromycin|prucalopride)(?=$|[\s(,])", name):
+        # User-requested organizational default. No indication or dose is inferred.
+        # Explicit category assignments can place antimicrobial use elsewhere.
+        # Eye/skin products do not belong in the GI prokinetic group.
+        route = normalized(row.get("route", ""))
+        if not re.search(r"ophthalm|\beyes?\b|otic|topical|apply externally", route) and not re.search(r"\b(?:ophthalmic|ointment|cream|gel|otic)\b", name):
+            return "prokinetic"
     if re.match(r"^(?:ondansetron|zofran)\b", name):
         return "antiemetic"
     if re.match(r"^(?:bumetanide|chlorothiazide|furosemide)\b", name):
@@ -65,7 +72,7 @@ def validate_gi_rules(rules: list[dict]) -> None:
         for key in ("name", "route", "frequency"):
             if not isinstance(rule[key], str) or len(rule[key]) > 4000 or any(c in rule[key] for c in "\n\r\t"):
                 raise ValueError("A FEN/GI display rule contains invalid text.")
-        if not rule["name"] or rule["mode"] not in ("prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "other"):
+        if not rule["name"] or rule["mode"] not in ("prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "prokinetic", "other"):
             raise ValueError("A FEN/GI display rule has an invalid choice.")
         key = (rule["name"], rule["route"], rule["frequency"])
         if key in seen:

@@ -11,7 +11,7 @@ from medications import match_name, normalized
 CV_GROUPS = ("antiarrhythmic", "antihypertensive", "inotrope", "vasopressor", "adrenocortical", "vasodilator")
 RESP_GROUPS = ("airway_cerebral_steroid", "airway_tone", "antisialorrhea", "beta_agonist",
                "anticholinergic", "methylxanthine", "corticosteroid", "inhaled_corticosteroid",
-               "pulmonary_hypertension")
+               "pulmonary_hypertension", "allergy_immunology")
 # These groups follow the bedside sedation/PRN/paralytic blocks alphabetically.
 NEURO_OTHER_GROUPS = ("antiepileptic", "antispasmodic",
                       "fever", "insomnia", "neuromodulation")
@@ -30,6 +30,7 @@ MODE_LABELS = {
     "methylxanthine": "Methylxanthine", "corticosteroid": "Corticosteroid",
     "inhaled_corticosteroid": "Inhaled Corticosteroids", "airway_tone": "Airway Tone Modulator",
     "pulmonary_hypertension": "Pulmonary Hypertension",
+    "allergy_immunology": "Allergy/Immunology",
     "antisialorrhea": "Antisialorrhea Agents", "antiarrhythmic": "Antiarrhythmics",
     "antihypertensive": "Antihypertensives", "inotrope": "Inotrope Infusions",
     "vasopressor": "Vasopressors", "adrenocortical": "Adrenocortical Support",
@@ -94,6 +95,8 @@ def automatic_system_group(row: dict) -> str:
         # Systemic dexamethasone only. Eye/ear/topical preparations keep their
         # existing mapping. The category is a user-requested display label.
         return "" if _local_form(row, name) else "airway_cerebral_steroid"
+    if _starts(name, ("diphenhydramine", "benadryl")):
+        return "allergy_immunology"
     if _starts(name, ("albuterol",)):
         return "beta_agonist"
     if _starts(name, ("ipratropium", "ipratroppium")):
@@ -176,7 +179,7 @@ def group_for(row: dict) -> str:
     mode = row.get("group_mode", "auto")
     # An explicit GI override wins over automatic defaults, not over an explicit
     # special-group choice. UI callbacks clear the competing explicit choice.
-    if mode == "auto" and row.get("gi_mode", "auto") in ("prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine"):
+    if mode == "auto" and row.get("gi_mode", "auto") in ("prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "prokinetic"):
         return ""
     return automatic_group(row) if mode == "auto" else mode if mode in GROUP_NAMES else ""
 

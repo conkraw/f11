@@ -28,7 +28,7 @@ from fen_gi import apply_gi_rules
 from medication_groups import apply_group_rules
 from import_review import diagnostic, diagnostic_text
 
-SUPPORTED_SECTIONS = "abcdefgiklmnopqrstuvwx"
+SUPPORTED_SECTIONS = "abcdefgiklmnopqrstuvwxy"
 
 
 @dataclass
@@ -52,7 +52,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
     parsed = parse_smartphrase(text)
     relevant = set(SUPPORTED_SECTIONS) & (set(parsed.blocks) | parsed.invalid)
     if not relevant:
-        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O, P, Q, R, S, T, U, V, W or X dividers.")
+        out.errors.append("No supported block was found. Use paired A, B, C, D, E, F, G, I, K, L, M, N, O, P, Q, R, S, T, U, V, W, X or Y dividers.")
         return out
     # Repeated paired sections can mean two patients were pasted together.
     # That document-wide identity ambiguity cannot be repaired by partial import.
@@ -259,7 +259,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 recoveries = diet.diagnostics
                 out.notices.extend(diet.issues)
                 out.imported.append("diet" if diet.data["rows"] else "diet display cleared")
-            elif letter in "klm":
+            elif letter in "klmy":
                 observations = parse_neuro(parsed.blocks[letter], letter)
                 if observations.error:
                     out.errors.append(observations.error)

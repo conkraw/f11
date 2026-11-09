@@ -1,13 +1,14 @@
-COMPLETE VERSION 6.42 PACKAGE, BASED ON DELIVERED VERSION 6.41
+COMPLETE VERSION 6.43 PACKAGE, BASED ON DELIVERED VERSION 6.42
 
-Upload all files from PICU_Handoff_v6_42_Dynamic_Categories into the existing
-application code directory, replacing matching files. app.py stays at the root.
-New runtime modules: categories.py and category_ui.py.
+Upload all files inside PICU_Handoff_v6_43_CAPD_Categories into the existing
+application code directory, replacing matching files. Keep app.py at the root.
+New runtime module: capd.py.
 
-Keep existing private Secrets, both passwords, encryption key, shared archive,
-and BMI reference CSV unchanged. Do not rerun setup generators.
-No new Python dependencies. No re-paste needed for existing stored medications.
-The encrypted archive advances to schema 27. Do not downgrade after saving.
+Keep current private Secrets, both passwords, encryption key, stored mappings,
+BMI reference CSV and shared data archive unchanged. Do not rerun generators.
+No new Python dependencies. No re-paste for stored medication/vent presentation.
+Paste Y or the full SmartPhrase to add CAPD. A missing score displays None.
+Schema 27 upgrades to 28. Do not downgrade after saving the new version.
 
 Restart and refresh. Sidebar:
-Version 6.42 | Respiratory and editable medication categories
+Version 6.43 | CAPD, Vent Settings and medication categories

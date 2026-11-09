@@ -11,7 +11,7 @@ import re
 from vitals import validate_vitals
 from demographics import separate_dosing_weight
 
-NEURO_SECTIONS = {'k': 'Target Arousal Level', 'l': 'WAT Score', 'm': 'ICP Trends'}
+NEURO_SECTIONS = {'k': 'Target Arousal Level', 'y': 'CAPD', 'l': 'WAT Score', 'm': 'ICP Trends'}
 MISSING = {'', '-', '--', '---', 'n/a', 'na', 'none', 'not documented', 'not recorded',
            'not assessed', 'no data', 'no data recorded', 'no results found'}
 NUMBER = r'[+\-\u2212]?(?:\d+(?:\.\d*)?|\.\d+)'
@@ -25,22 +25,32 @@ def normalized(text: str) -> str:
 
 
 def empty_neuro() -> dict[str, list[dict]]:
-    return {key: [] for key in NEURO_SECTIONS}
+    # Y is optional in storage so pre-CAPD handoffs retain their exact fields.
+    return {key: [] for key in ("k", "l", "m")}
 
 
 def validate_neuro(data: dict) -> None:
-    if not isinstance(data, dict) or set(data) != set(NEURO_SECTIONS):
+    if not isinstance(data, dict) or not {"k", "l", "m"}.issubset(data) or set(data) - set(NEURO_SECTIONS):
         raise ValueError('The neurologic observations have an invalid structure.')
     for rows in data.values():
         validate_vitals(rows)
         if any(row['section'] != 'Neurologic' for row in rows):
-            raise ValueError('K/L/M observations must remain in the Neurologic section.')
+            raise ValueError('Neurologic observations must remain in the Neurologic section.')
+    from capd import validate_capd_rows
+    validate_capd_rows(data.get('y', []))
 
 
 def neuro_rows(data: dict) -> list[dict]:
-    """Target arousal, then WAT-1, then ICP/CPP, before manual notes."""
+    """Target arousal, CAPD (always), WAT-1, then ICP/CPP before medications."""
     validate_neuro(data)
-    return [row for key in NEURO_SECTIONS for row in data[key]]
+    from capd import capd_display_row
+    result = []
+    for key in NEURO_SECTIONS:
+        if key == "y":
+            result.append(capd_display_row(data.get("y", [])))
+        else:
+            result.extend(data[key])
+    return result
 
 
 @dataclass
@@ -52,6 +62,9 @@ class ObservationResult:
 
 def parse_neuro(block: str, source: str) -> ObservationResult:
     out = ObservationResult()
+    if source == "y":
+        from capd import parse_capd
+        return parse_capd(block)
     if source not in NEURO_SECTIONS:
         out.error = 'The neurologic source section is unsupported. Nothing was imported.'
         return out
