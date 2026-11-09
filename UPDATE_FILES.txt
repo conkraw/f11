@@ -1,9 +1,9 @@
-COMPLETE VERSION 6.39 PACKAGE, BASED ON DELIVERED VERSION 6.38
+COMPLETE VERSION 6.40 PACKAGE, BASED ON DELIVERED VERSION 6.39
 Replace matching files with this folder's contents. Keep app.py at the root.
-Do not add another enclosing folder around the application entry point.
-Keep current Secrets, both passwords, encryption key, mappings, BMI reference data
-and the existing private data repository. Do not rerun generators.
-No dependencies or new secret fields. No re-paste is needed for display groups.
-Read MEDICATION_CATEGORIES_UPDATE.md and TEST_REPORT.md.
-New group choices are not understood by older app releases. Do not downgrade
-after saving them without restoring a compatible backup.
+Keep current Secrets, both passwords, encryption key, mappings, BMI reference
+data and the existing private storage. Do not rerun generators.
+No dependencies, new secret fields or archive-schema changes are required.
+No re-paste is needed for these stored-data presentation changes.
+Read NEURO_GROUPS_UPDATE.md and TEST_REPORT.md.
+Do not downgrade after saving new subgroup choices without restoring a
+compatible backup. Older releases do not recognize the new category names.

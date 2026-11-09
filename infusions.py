@@ -14,7 +14,8 @@ from medications import normalized, match_name, visible, format_medication
 from output_text import medication_output
 from infusion_rates import administration_display, show_recorded_pump_rate
 from fen_gi import effective_section, group_for as gi_group
-from medication_groups import group_for as special_group, GROUP_NAMES, CV_GROUPS, RESP_GROUPS
+from medication_groups import (group_for as special_group, GROUP_NAMES, CV_GROUPS,
+                               RESP_GROUPS, NEURO_OTHER_GROUPS, NEURO_PRIORITY_GROUPS)
 
 MODES = ("auto", "infusion", "other")
 MODE_LABELS = {"auto": "Automatic", "infusion": "Infusion", "other": "Other medication"}
@@ -38,7 +39,7 @@ def supports_infusion_display(row: dict) -> bool:
     if section == "FEN / GI":
         return gi_group(row) == "endocrine"
     return section in INFUSION_HEADINGS and (not group or group == "dvt"
-                                            or group in CV_GROUPS + RESP_GROUPS)
+                                            or group in CV_GROUPS + RESP_GROUPS + ("paralytic_infusion",))
 
 
 def infusion_key(row: dict) -> tuple[str, str, str]:
@@ -155,6 +156,11 @@ def infusion_entry(row: dict, rich: bool = False, esc=escape, handoff_only: bool
 def system_body_blocks(section: str, notes: str, rows: list[dict]) -> list[tuple[str, object]]:
     """One shared block model for plain text, HTML and PDF. No duplicate orders."""
     meds = [r for r in rows if visible(r) and effective_section(r) == section]
+    if section == "Neurologic":
+        # Stable leading-name sort keeps the same medicine's taper steps in
+        # source order, even when Epic embeds different doses in the product name.
+        # Do not rewrite source fields or reorder the stored medication list.
+        meds = sorted(meds, key=lambda r: match_name(r.get("name", "")).split(" ", 1)[0])
     groups = []
     assigned = set()
     if section == "Hematology":
@@ -184,12 +190,13 @@ def system_body_blocks(section: str, notes: str, rows: list[dict]) -> list[tuple
             groups.append([("heading", INFUSION_HEADINGS[section])] +
                           [("infusion", r) for r in drips])
             assigned.update(r["id"] for r in drips)
-    modes = (("antiepileptic", "sedative_prn", "paralytic_prn", "fever") if section == "Neurologic"
+    modes = ((NEURO_PRIORITY_GROUPS + tuple(sorted(NEURO_OTHER_GROUPS,
+                      key=lambda key: GROUP_NAMES[key].casefold()))) if section == "Neurologic"
              else RESP_GROUPS if section == "Respiratory" else ())
     for mode in modes:
         group = [r for r in meds if r["id"] not in assigned and special_group(r) == mode]
         if group:
-            groups.append([("heading", GROUP_NAMES[mode])] + [("infusion" if (mode == "antiepileptic" or mode in RESP_GROUPS) and is_infusion(r) else "medication", r) for r in group])
+            groups.append([("heading", GROUP_NAMES[mode])] + [("infusion" if (mode in ("antiepileptic", "paralytic_infusion") + RESP_GROUPS) and is_infusion(r) else "medication", r) for r in group])
             assigned.update(r["id"] for r in group)
     other = [r for r in meds if r["id"] not in assigned]
     if not groups:
@@ -224,7 +231,7 @@ def render_body_blocks(blocks: list[tuple[str, object]], rich: bool = False, esc
 
 
 def neuro_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
-    """Infusions, sedative PRNs, paralytic PRNs, fever control, notes and other meds."""
+    """Infusions, PRNs, paralytics, alphabetical categories, notes and other meds."""
     return render_body_blocks(system_body_blocks("Neurologic", notes, rows), rich, esc)
 
 

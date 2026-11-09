@@ -28,6 +28,9 @@ def sample_sheet():
     result = import_sections(new_sheet('P4102'), source, new_vault()['settings'])
     assert not result.errors, result.errors
     result.sheet['medications'] = remap(result.sheet['medications'], upsert_rule([], 'dexamethasone', 'Respiratory'))
+    # This test isolates respiratory placement after an explicit override.
+    for row in result.sheet['medications']:
+        if row['section']=='Respiratory': row['group_mode']='other'
     return result.sheet
 
 

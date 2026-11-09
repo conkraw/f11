@@ -33,7 +33,7 @@ Timax:
 PC_EXPECTED = '''Mode: PC-IMV
 Set RR: 12
 Set PIP: 35 cm H2O
-Observed TVi: Avg: 70.5 Min: 69 Max: 72 mL
+Observed TV: Avg: 70.5 Min: 69 Max: 72 mL
 Set PEEP: 14 cm H2O
 Inspiratory Time: 1 sec
 Pressure Support: 21 cm H2O
@@ -178,8 +178,8 @@ def test_pc_pressure_above_peep_comment_not_dropped_or_added_again():
 
 
 @pytest.mark.parametrize('label,out',[
- ('Vt Insp ml','Observed TVi'),('Vt Exp ml','Observed TVe'),
- ('VTI','Observed TVi'),('VTE','Observed TVe'),
+ ('Vt Insp ml','Observed TV'),('Vt Exp ml','Observed TV'),
+ ('VTI','Observed TV'),('VTE','Observed TV'),
  ('Vt (observed, mL)','Observed TV'),
 ])
 def test_observed_volume_source_kind_is_not_interchanged(label,out):
@@ -190,15 +190,16 @@ def test_observed_volume_source_kind_is_not_interchanged(label,out):
 def test_expiratory_volume_preferred_when_both_exist_without_merging():
     c=PC+'\nVt Exp ml: Avg: 65 Min: 60 Max: 68'
     r=parse_ventilation(c)
-    assert 'Observed TVe: Avg: 65 Min: 60 Max: 68 mL' in format_ventilation(r.data)
-    assert 'Observed TVi:' not in format_ventilation(r.data)
+    assert 'Observed TV: Avg: 65 Min: 60 Max: 68 mL' in format_ventilation(r.data)
+    assert 'Avg: 70.5' not in format_ventilation(r.data)
     assert 'Vt Insp ml' in r.data['values']
+    assert 'Vt Exp ml' in r.data['values']
 
 
 def test_single_observed_value_does_not_invent_range():
     c=PC.replace('Vt Insp ml  Avg: 70.5  Min: 69  Max: 72','Vt Insp ml: 70')
     text=format_ventilation(parse_ventilation(c).data)
-    assert 'Observed TVi: 70 mL' in text and 'Avg:' not in text
+    assert 'Observed TV: 70 mL' in text and 'Avg:' not in text
 
 
 def test_last_observed_rate_and_target_volume_never_replace_set_values():
@@ -313,5 +314,5 @@ def test_exports_one_room_each_no_cross_patient_vent_values():
     assert 'Tmin: 0.9 sec' in doc.pages[1].extract_text()
     assert 'PC-IMV' not in doc.pages[1].extract_text()
     for text in (handoff_text(a),handoff_html(a)):
-        assert 'Observed TVi: Avg: 70.5 Min: 69 Max: 72 mL' in text
+        assert 'Observed TV: Avg: 70.5 Min: 69 Max: 72 mL' in text
         assert 'Vent Mode:' not in text

@@ -227,7 +227,7 @@ def test_every_lactate_alias_routes_to_cv_only(code):
     s=new_sheet('P4102');s['labs']=labs(code+'\t2.3 (H)\t01/02/2026')
     original=deepcopy(s)
     f=fields_with_medications(s)
-    assert 'Lactate (only result): 2.3 (H)' in f['Cardiovascular']
+    assert 'Lactate 2.3 (H)' in f['Cardiovascular']
     assert '; '+code+']' not in f['Cardiovascular'] and code+':' not in f['Lab Results / Trends']
     assert not any(code.upper() in c['rows'] for c in result_cards(s['labs']))
     assert s==original
@@ -287,8 +287,9 @@ def test_lactate_exports_do_not_duplicate_lower_lab_panel():
     s=imported();s['labs']=labs('LACWB\t1.2\t01/03/2026\nLACTATEVEN\t5.6 (H)\t01/02/2026')
     before=deepcopy(s)
     for text in [handoff_text(s),handoff_html(s),PdfReader(BytesIO(handoff_pdf(s))).pages[0].extract_text()]:
-        assert 'Lactate earliest:' in text and 'Lactate latest:' in text
-        assert text.count('Lactate earliest:')==1
+        normalized = ' '.join(text.split())
+        assert 'Lactate 5.6 (H)' in normalized and '1.2 [1/3/2026]' in normalized
+        assert text.count('Lactate ')==1
     assert s==before
 
 

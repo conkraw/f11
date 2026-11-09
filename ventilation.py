@@ -128,11 +128,12 @@ def format_ventilation(data: dict | None) -> str:
     add("Resp Rate (Set)", "Set RR")
     if family == "PC":
         add("PIP Set (cm H2O)", "Set PIP", "cm H2O")
-        # Prefer an explicitly expiratory measurement. Do not call Vt Insp TVe.
+        # Preserve source selection and phase in stored values. The compact handoff
+        # uses the generic TV label for either phase, never relabeling Insp as Exp.
         if is_present(values.get("Vt Exp ml", "")):
-            lines.append("Observed TVe: " + _observed(values["Vt Exp ml"]))
+            lines.append("Observed TV: " + _observed(values["Vt Exp ml"]))
         elif is_present(values.get("Vt Insp ml", "")):
-            lines.append("Observed TVi: " + _observed(values["Vt Insp ml"]))
+            lines.append("Observed TV: " + _observed(values["Vt Insp ml"]))
         elif is_present(values.get("Vt (observed, mL)", "")):
             lines.append("Observed TV: " + _observed(values["Vt (observed, mL)"]))
     elif family in {"PRVC", "VC", "AVAPS", "VSV"}:

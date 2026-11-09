@@ -72,7 +72,8 @@ def test_heparin_flush_carrier_and_strength_not_used_to_infer_group(name,dose,ro
 @pytest.mark.parametrize('frequency', ['Once','q6h','Continuous',''])
 def test_only_recorded_prn_frequency_enters_prn_group(name,frequency):
     r=med(name,frequency=frequency)
-    assert automatic_group(r)==''
+    expected = 'paralytic_infusion' if frequency=='Continuous' and name in ('rocuronium','cisatracurium','vecuronium') else ''
+    assert automatic_group(r)==expected
     assert not is_prn(r)
 
 

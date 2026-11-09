@@ -1,3 +1,5 @@
+Historical 6.38 release note. In 6.40, the handoff uses Observed TV for the stored inspiratory or expiratory value. See NEURO_GROUPS_UPDATE.md.
+
 # Version 6.38: mode-specific ventilator summaries
 
 Built directly on PICU637.zip, which retains the Version 6.35 printing approach.

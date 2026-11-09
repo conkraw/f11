@@ -1307,7 +1307,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.39 | Medication categories and simpler printing")
+        st.caption("Version 6.40 | Neurologic groups and compact trends")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Shared storage connected" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1419,7 +1419,7 @@ def invasive_editor(sheet: dict) -> None:
         return
     st.text(format_ventilation(data))
     with st.expander("Edit ventilator values"):
-        st.caption("The source mode stays editable. The handoff abbreviates it and prints mode-specific settings. Set and observed values are never substituted for one another. Pmin with a number uses your Home Vent display rule. Vt Insp prints as TVi, and Vt Exp as TVe.")
+        st.caption("The source mode stays editable. The handoff abbreviates it and prints mode-specific settings. Set and observed values are never substituted for one another. Pmin with a number uses your Home Vent display rule. Observed tidal volume prints as TV. Its original inspiratory/expiratory field stays available below.")
         for index, label in enumerate(LABELS):
             key = "vent_" + sheet["id"] + "_" + str(index)
             if key not in st.session_state:
@@ -2494,6 +2494,7 @@ def group_admin(store: GitHubVault | None) -> None:
         st.file_uploader("Or upload CDC bmi-age-2022.csv (public reference only)", type=["csv"], key="bmi_public_reference_upload", on_change=upload_bmi_reference)
     with st.expander("Medication subgroup choices", expanded=False):
         st.caption("DVT Prophylaxis: enoxaparin, cangrelor and heparin with an explicit Units/kg/hr Dose. Fever Control: acetaminophen and ibuprofen. PRN: the requested sedative PRNs. Paralytic PRN: rocuronium, cisatracurium and vecuronium PRNs.")
+        st.caption("Neurologic: systemic dexamethasone under Airway/Cerebral Steroids, melatonin/trazodone under Insomnia, baclofen under Antispasmodic, and gabapentin/pregabalin under Neuromodulation. Infusions, PRN and paralytic groups come first after observations; other category headings are alphabetical.")
         st.caption("Respiratory: Antisialorrhea Agents. Cardiovascular: Antiarrhythmics, Antihypertensives, Inotrope Infusions, Vasopressors, Adrenocortical Support, and Vasodilators. Lidocaine is automatic only for an IV infusion. Endocrine Medications is in FEN/GI display choices.")
         st.caption("These are user-defined display labels, not inferred indications or a determination that a dose is prophylactic. Original orders and hidden-medication choices are preserved. Overrides use the formulation, route and frequency.")
         rules = [r for r in st.session_state["vault"]["settings"]["medication_groups"] if r.get("match") != "prefix"]

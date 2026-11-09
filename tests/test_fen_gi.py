@@ -133,7 +133,7 @@ def test_requested_names_group_without_mapping(name,group):
     assert automatic_group(row)==group and effective_section(row)=='FEN / GI'
 
 
-@pytest.mark.parametrize('name',['esomeprazole','famotidinee','glycerin topical cream','sodium lactate infusion','Synthetic drug in glycerin','dexamethasone','omeprazolex','sodium chloride','senna extract'])
+@pytest.mark.parametrize('name',['esomeprazole','famotidinee','glycerin topical cream','sodium lactate infusion','Synthetic drug in glycerin','dexamethasonex','omeprazolex','sodium chloride','senna extract'])
 def test_no_unrequested_or_substring_classification(name):
     row=med(name,section='Other Medications')
     assert not automatic_group(row) and effective_section(row)=='Other Medications'

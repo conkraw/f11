@@ -10,10 +10,20 @@ from medications import match_name, normalized
 
 CV_GROUPS = ("antiarrhythmic", "antihypertensive", "inotrope", "vasopressor", "adrenocortical", "vasodilator")
 RESP_GROUPS = ("antisialorrhea",)
-MODES = ("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic") + RESP_GROUPS + CV_GROUPS + ("other",)
+# These groups follow the bedside sedation/PRN/paralytic blocks alphabetically.
+NEURO_OTHER_GROUPS = ("airway_cerebral_steroid", "antiepileptic", "antispasmodic",
+                      "fever", "insomnia", "neuromodulation")
+NEURO_PRIORITY_GROUPS = ("sedative_prn", "paralytic_infusion", "paralytic_prn")
+MODES = (("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic",
+          "airway_cerebral_steroid", "insomnia", "antispasmodic", "neuromodulation",
+          "paralytic_infusion") + RESP_GROUPS + CV_GROUPS + ("other",))
 MODE_LABELS = {
     "auto": "Automatic", "dvt": "DVT Prophylaxis", "fever": "Fever Control",
     "sedative_prn": "PRN", "paralytic_prn": "Paralytic PRN", "antiepileptic": "Antiepileptic",
+    "paralytic_infusion": "Paralytic Infusions",
+    "airway_cerebral_steroid": "Airway/Cerebral Steroids",
+    "insomnia": "Insomnia", "antispasmodic": "Antispasmodic",
+    "neuromodulation": "Neuromodulation",
     "antisialorrhea": "Antisialorrhea Agents", "antiarrhythmic": "Antiarrhythmics",
     "antihypertensive": "Antihypertensives", "inotrope": "Inotrope Infusions",
     "vasopressor": "Vasopressors", "adrenocortical": "Adrenocortical Support",
@@ -22,7 +32,7 @@ MODE_LABELS = {
 GROUP_NAMES = {key: value for key, value in MODE_LABELS.items() if key not in ("auto", "other")}
 GROUP_SECTIONS = {
     "dvt": "Hematology", "fever": "Neurologic", "sedative_prn": "Neurologic",
-    "paralytic_prn": "Neurologic", "antiepileptic": "Neurologic",
+    **{key: "Neurologic" for key in NEURO_PRIORITY_GROUPS + NEURO_OTHER_GROUPS},
     **{key: "Respiratory" for key in RESP_GROUPS},
     **{key: "Cardiovascular" for key in CV_GROUPS},
 }
@@ -74,6 +84,16 @@ def _local_form(row: dict, name: str) -> bool:
 def automatic_system_group(row: dict) -> str:
     """Requested defaults. Explicit per-order choices remain authoritative."""
     name = match_name(row.get("name", ""))
+    if _starts(name, ("dexamethasone",)):
+        # Systemic dexamethasone only. Eye/ear/topical preparations keep their
+        # existing mapping. The category is a user-requested display label.
+        return "" if _local_form(row, name) else "airway_cerebral_steroid"
+    if _starts(name, ("melatonin", "trazodone")):
+        return "insomnia"
+    if _starts(name, ("baclofen",)):
+        return "antispasmodic"
+    if _starts(name, ("gabapentin", "pregabalin")):
+        return "neuromodulation"
     if _starts(name, ("scopolamine", "glycopyrrolate", "glycopyrollate")):
         return "antisialorrhea"
     if _starts(name, ("lidocaine",)):
@@ -117,6 +137,8 @@ def automatic_group(row: dict) -> str:
         return "fever"
     if re.match(r"^(?:phenytoin|fosphenytoin|phenobarbital|clobazam|clobozam|levetiracetam|valproic acid|pentobarbital)\b", name):
         return "antiepileptic"
+    if _starts(name, ("rocuronium", "cisatracurium", "vecuronium")) and _continuous_iv(row):
+        return "paralytic_infusion"
     if is_prn(row):
         if re.match(r"^(?:fentanyl|midazolam|ketamine|morphine|hydromorphone)\b", name):
             return "sedative_prn"

@@ -126,12 +126,12 @@ def lactate_summary(sheet: dict, as_of: datetime | None = None) -> str:
     if not values:
         return ''
     latest, earliest = values[0], values[-1]
-    def line(label, row):
-        return label + ': ' + row['value'] + ' ' + stamp(row, now, True)
-    if len(values) == 1:
-        return line('Lactate (only result)', latest)
-    text = line('Lactate earliest', earliest) + '\n' + line('Lactate latest', latest)
-    return text
+    # Presentation only: retain the existing 24-hour selection and source order.
+    # Keep each supplied value/flag/unit intact. Never convert unlike assays.
+    day, _ = date_parts(latest['date'])
+    date_label = f"{day.month}/{day.day}/{day.year}"
+    trend = latest['value'] if len(values) == 1 else earliest['value'] + ' -> ' + latest['value']
+    return 'Lactate ' + trend + ' [' + date_label + ']'
 
 
 def theophylline_summary(sheet: dict, as_of: datetime | None = None) -> str:
