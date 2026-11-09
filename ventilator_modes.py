@@ -8,8 +8,17 @@ from __future__ import annotations
 import re
 
 
+def strip_setting_marker(value: str) -> str:
+    """Ignore only a leading Epic (S) marker, not parenthetical clinical text.
+
+    This is a matching/display normalization. Original C-block field values
+    remain stored. Unknown annotations are not silently discarded.
+    """
+    return re.sub(r"^(?:\(\s*S\s*\)\s*)+", "", value.strip(), flags=re.I).strip()
+
+
 def key(value: str) -> str:
-    return re.sub(r"\s+", " ", value.strip()).casefold().replace("–", "-").replace("—", "-")
+    return re.sub(r"\s+", " ", strip_setting_marker(value)).casefold().replace("–", "-").replace("—", "-")
 
 
 # Source label: (printed abbreviation, control family, non-invasive label)
@@ -87,4 +96,4 @@ def display_mode(mode: str, home: bool = False) -> str:
         return "VC"
     if key(mode) in {"volume targeted pressure control", "pressure regulated volume control"}:
         return "PRVC"
-    return mode.strip()
+    return strip_setting_marker(mode)

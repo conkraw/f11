@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.48: recent SBS first, mode-gated last-available fallback."""
+"""PICU SmartPhrase v6.49: annotated ventilator settings and a cleaner opening screen."""
 from __future__ import annotations
 from copy import deepcopy
 from empty_groups import refresh_empty_group_layout
@@ -1523,7 +1523,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.48 | Ventilator-gated SBS fallback")
+        st.caption("Version 6.49 | Ventilator markers and cleaner Handoff")
         # Retire the old instructions workspace without discarding room drafts.
         if st.session_state.get("page") == "Instructions / SmartPhrase":
             st.session_state["page"] = "Handoff"
@@ -1715,9 +1715,8 @@ def handoff_page(store: GitHubVault | None) -> None:
               on_click=refresh_user_guide, args=(store,))
     if st.session_state.get("guide_load_error"):
         st.warning(st.session_state["guide_load_error"])
-    if guide.get("smartphrase_text", "").strip():
-        with st.expander("SmartPhrase source", expanded=False):
-            render_smartphrase(guide, key="handoff_guide")
+    # Keep the opening workflow short. Source text remains editable in Admin,
+    # but the source/sample panel is not shown on the Handoff page.
     ss = st.session_state
     settings = ss["vault"]["settings"]
     choices = list(dict.fromkeys(settings["rooms"] + list(ss["vault"]["rooms"]) + list(ss.get("drafts", {}))))

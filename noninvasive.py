@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 from ventilation import normalize, parse_ventilation, unwrap_vent_line
-from ventilator_modes import spec
+from ventilator_modes import spec, strip_setting_marker
 
 DEVICE_FIELDS = {
     "BiPAP": ("IPAP", "EPAP", "FiO2"),
@@ -45,7 +45,7 @@ MISSING = {"", "--", "-", "n/a", "na", "none", "not documented"}
 
 def clean(value: str) -> str:
     # Epic's (S) annotation is not part of the numerical setting.
-    return re.sub(r"\s+", " ", re.sub(r"^\(S\)\s*", "", value.strip(), flags=re.I)).strip()
+    return re.sub(r"\s+", " ", strip_setting_marker(value)).strip()
 
 
 def read_fields(block: str | None, block_name: str) -> dict[str, str]:

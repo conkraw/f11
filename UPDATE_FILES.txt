@@ -1,13 +1,15 @@
-COMPLETE VERSION 6.48 PACKAGE, BASED ON SUPPLIED VERSION 6.47
+COMPLETE VERSION 6.49 PACKAGE, BASED ON SUPPLIED VERSION 6.48
 
 Replace matching code files with this folder's contents. Keep app.py at the root.
-Restart and refresh. No new Python dependencies are required.
+Restart and refresh. No new dependencies or archive-schema changes are required.
 
 Preserve Secrets, passwords, encryption key, medication/category mappings,
 BMI reference data and shared archive. Do not rerun setup generators.
 
-Re-paste full C/D/K sections or the full SmartPhrase to retain Last SBS Ever.
-Old versions discarded that field. The schema upgrades from 31 to 32.
-Do not downgrade after saving with this version.
+Re-paste complete C/D sections together or the full SmartPhrase. Create/update
+and save. Earlier omitted ventilator settings require re-pasting to recover.
 
-Version 6.48 | Ventilator-gated SBS fallback
+Changed application modules: app.py, ventilator_modes.py, ventilation.py,
+noninvasive.py and feeds.py. All remaining modules are unchanged from 6.48.
+
+Version 6.49 | Ventilator markers and cleaner Handoff

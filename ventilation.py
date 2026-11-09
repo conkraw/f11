@@ -8,7 +8,7 @@ fields are substituted for a C-block setting.
 from __future__ import annotations
 from dataclasses import dataclass, field
 import re
-from ventilator_modes import spec, display_mode, control_family
+from ventilator_modes import spec, display_mode, control_family, strip_setting_marker
 
 LABELS = (
     "Vent Mode",
@@ -39,7 +39,7 @@ def normalize(value: str) -> str:
 
 def mode_rule(mode: str) -> str:
     """Return included, excluded or unknown. No clinical inference is performed."""
-    text = normalize(mode).replace("–", "-").replace("—", "-")
+    text = normalize(strip_setting_marker(mode)).replace("–", "-").replace("—", "-")
     known = spec(mode)
     if known:
         return "excluded" if known[2] else "included"
@@ -78,7 +78,7 @@ def validate_ventilation(data: dict | None) -> None:
 
 def _clean_output(value: str) -> str:
     """Normalize unit typography only. Do not add pressures or derive settings."""
-    value = re.sub(r"^\(S\)\s*", "", value.strip(), flags=re.I)
+    value = strip_setting_marker(value)
     value = re.sub(r"cm\s*H\s*[2₂]\s*[O0]", "cm H2O", value, flags=re.I)
     return re.sub(r"\s+", " ", value).strip()
 
@@ -168,7 +168,7 @@ MISSING_VALUES = {"", "--", "-", "none", "n/a", "na", "no data recorded", "not d
 
 
 def is_present(value: str) -> bool:
-    return normalize(value.rstrip(".")) not in MISSING_VALUES
+    return normalize(strip_setting_marker(value).rstrip(".")) not in MISSING_VALUES
 
 
 WRAPPERS = {
@@ -188,7 +188,7 @@ def unwrap_vent_line(raw: str) -> str:
     Stats labels without a colon before Avg must be split before that Avg,
     rather than mistaking the colon after Avg for the parameter separator.
     """
-    line = raw.strip().replace("₂", "2")
+    line = strip_setting_marker(raw).replace("₂", "2")
     for _ in range(4):
         match = re.match(r"^([^:]+):\s*(.*)$", line)
         if not match:
@@ -197,14 +197,16 @@ def unwrap_vent_line(raw: str) -> str:
         target = WRAPPERS.get(outer)
         if not target:
             break
-        # Nested canonical labels and nested summary labels.
-        inner = re.match(r"^(.+?)\s+(?:Avg|Min|Max)\s*:", content, re.I)
-        inner_key = normalize(content.split(":", 1)[0]) if ":" in content else ""
+        # A marker can precede a nested source label as well as its value.
+        # Keep final scalar/mode values verbatim in the retained record.
+        nested_content = strip_setting_marker(content)
+        inner = re.match(r"^(.+?)\s+(?:Avg|Min|Max)\s*:", nested_content, re.I)
+        inner_key = normalize(nested_content.split(":", 1)[0]) if ":" in nested_content else ""
         known_labels = {normalize(x) for x in LABELS} | {"ti min", "ti max", "observed tve", "observed tvi", "vte", "vti"}
         if inner_key in known_labels or (inner and normalize(inner.group(1)) in known_labels):
-            if content == line:
+            if nested_content == line:
                 break
-            line = content
+            line = nested_content
             continue
         # A wrapper with a scalar or an explicitly empty value is also supported.
         line = target + ": " + content
@@ -255,7 +257,7 @@ def parse_ventilation(block: str) -> VentilationResult:
         if len(value) > 500:
             result.error = "A requested ventilation value is too long. Nothing was imported."
             return result
-        if label in entries and entries[label] != value:
+        if label in entries and normalize(strip_setting_marker(entries[label])) != normalize(strip_setting_marker(value)):
             result.error = "The C block contains conflicting repeated ventilation fields. Nothing was imported."
             return result
         entries[label] = value

@@ -181,9 +181,13 @@ def parse_feeds(block: str) -> FeedsResult:
             continue
         if REMOVED.search(line):
             continue
-        saw_line = True
         backup = ''
         bm = BACKUP_PREFIX.match(line)
+        # An unpopulated template label is an empty section, not a malformed
+        # feeding order. Do not treat intake volume as a rate or invent a feed.
+        if bm and not bm['value'].strip():
+            continue
+        saw_line = True
         if bm:
             backup, line = bm['kind'].lower(), bm['value'].strip()
         dm = DEVICE_FIELD.match(line)

@@ -1,9 +1,10 @@
-PICU Handoff 6.48
-Base package: PICU647.zip (original manifest verified)
-4054 passed in 93.68s (0:01:33)
-118 new mode-gated SBS regression cases included.
-Original 6.47 encrypted synthetic archive migration verified.
-Two synthetic landscape preview pages inspected, one page per room at 8 pt.
-Archive schema: 32. Existing data preserved. No new dependencies.
-No live deployment or shared patient archive was accessed or modified.
-SHA256SUMS.txt covers all other packaged files.
+PICU Handoff 6.49
+Base package: PICU648.zip, original ZIP and manifest verified.
+Clean-extraction full suite: 4200 passed in 85.34s (0:01:25).
+146 new regression cases included, no existing tests removed or changed.
+Supplied complete SmartPhrase imports without errors.
+Original 6.48 encrypted synthetic archive opens and round-trips unchanged.
+One synthetic landscape preview page inspected, 8-point body text.
+Archive schema: 32, unchanged. No new dependencies.
+No live deployment or shared patient archive accessed or modified.
+SHA256SUMS.txt covers every other packaged file.
