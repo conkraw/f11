@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.37: compact printing and optional difficult airway, based on 6.35."""
+"""PICU SmartPhrase v6.47: short workflow, recent troughs, and protected census reset."""
 from __future__ import annotations
 from copy import deepcopy
 from empty_groups import refresh_empty_group_layout
@@ -33,7 +33,7 @@ from save_status import (room_save_status, saved_time_text, latest_saved_time,
 from parser import MAX_PASTE, SECTION_NAMES
 from security import valid_password_hash, verify_password
 from admin_access import admin_valid, unlock_admin, lock_admin, config_error as admin_config_error
-from user_guide import (default_guide, publication, validate_guide, instructions_html,
+from user_guide import (default_guide, publication, validate_guide, instructions_html, handoff_instructions,
                         MAX_TEMPLATE, MAX_INSTRUCTIONS, MAX_NOTES)
 from guide_store import GuideStore
 from difficult_airway import (empty_airway, validate_airway, collect_airway, airway_summary,
@@ -1472,8 +1472,11 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.46 | SBS 24-hour field and G-CSF category")
-        page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
+        st.caption("Version 6.47 | Short workflow, recent troughs and delete all")
+        # Retire the old instructions workspace without discarding room drafts.
+        if st.session_state.get("page") == "Instructions / SmartPhrase":
+            st.session_state["page"] = "Handoff"
+        page = st.radio("Workspace", ["Handoff", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Shared storage connected" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
         st.button("Log out", on_click=clear_session)
@@ -1485,8 +1488,6 @@ def main() -> None:
         getattr(st, kind)(text)
     if page == "Admin":
         admin_page(store)
-    elif page == "Instructions / SmartPhrase":
-        instructions_page(store)
     elif page == "Import errors":
         import_errors_page(store)
     elif page == "Print all":
@@ -1654,16 +1655,16 @@ def handoff_page(store: GitHubVault | None) -> None:
     guide = load_user_guide(store, refresh=due)
     if due:
         st.session_state["handoff_guide_checked"] = time.monotonic()
+    st.markdown(handoff_instructions(guide), unsafe_allow_html=False)
     st.caption(smartphrase_publish_caption(guide, session_only=store is None,
                                           stale=bool(st.session_state.get("guide_load_error"))))
     st.button("Refresh SmartPhrase publication", key="refresh_handoff_guide",
               on_click=refresh_user_guide, args=(store,))
-    with st.expander("Instructions and Epic SmartPhrase", expanded=False):
-        st.caption("Select a room, run the team SmartPhrase in Epic, paste the generated text, create, review, and save. Full steps are in Instructions / SmartPhrase in the sidebar.")
-        guide = load_user_guide(store)
-        if st.session_state.get("guide_load_error"):
-            st.warning(st.session_state["guide_load_error"])
-        render_smartphrase(guide, key="handoff_guide")
+    if st.session_state.get("guide_load_error"):
+        st.warning(st.session_state["guide_load_error"])
+    if guide.get("smartphrase_text", "").strip():
+        with st.expander("SmartPhrase source", expanded=False):
+            render_smartphrase(guide, key="handoff_guide")
     ss = st.session_state
     settings = ss["vault"]["settings"]
     choices = list(dict.fromkeys(settings["rooms"] + list(ss["vault"]["rooms"]) + list(ss.get("drafts", {}))))
@@ -1674,6 +1675,7 @@ def handoff_page(store: GitHubVault | None) -> None:
         render_room_save_table(choices, store)
         st.caption("Times are Eastern (EST/EDT). Reload saved archive to see saves made in another session." if store else
                    "Session-only testing: these times do not indicate a save to shared storage.")
+    delete_handoffs_control(store)
     if ss.get("removed_room"):
         st.button("Undo last room removal", key="undo_room_handoff", on_click=undo_room_removal, args=(store,))
     if ss.get("room_choice") == "Other room":
@@ -1844,7 +1846,7 @@ def render_print_fit(sheets: list[dict], target: int) -> None:
 
 def print_all_page(store: GitHubVault | None) -> None:
     st.title("Print all handoffs")
-    st.caption("To reset the list, open Admin and use Clear all handoffs + delete custom rooms.")
+    st.caption("To reset the list, open Delete all handoff data on Handoff or in Admin.")
     ss = st.session_state
     ready = available_handoffs(ss["vault"], ss.get("drafts", {}))
     if not ready:
@@ -1974,7 +1976,7 @@ def discard_all_handoff_state() -> None:
 
 
 def clear_all_handoffs(store: GitHubVault | None) -> None:
-    """Single protected click. No local mutation before GitHub confirms the write."""
+    """Single protected click. Clear local drafts only after a confirmed write."""
     if not require_admin():
         return
     ss = st.session_state
@@ -1990,15 +1992,49 @@ def clear_all_handoffs(store: GitHubVault | None) -> None:
     discard_all_handoff_state()
     note(("All saved handoffs and this session's drafts were cleared. Custom rooms were deleted. " if store else
           "Session-only reset: all handoffs in this session were cleared and custom rooms deleted. ") +
-         "Preset rooms, medication rules, hidden rules, instructions and passwords were kept. Other team members should reload the saved archive. Earlier Git history and downloaded files are not erased.",
+         "Preset rooms, medication rules, hidden rules, instructions and passwords were kept. Other team members should reload the saved archive. Earlier archive versions and downloaded files are not erased.",
          "success" if store else "info")
 
 
+def delete_all_from_handoff(store: GitHubVault | None) -> None:
+    """Authenticate this destructive action without granting ongoing Admin access."""
+    ss = st.session_state
+    password = ss.pop("delete_all_password", "")
+    if not require_session():
+        return
+    config = admin_config()
+    already_unlocked = admin_valid(ss, config)
+    try:
+        if not already_unlocked and not unlock_admin(ss, config, password):
+            note(ss.get("admin_login_error", "Admin password not accepted. No handoffs were deleted."), "error")
+            return
+        clear_all_handoffs(store)
+    finally:
+        # Never retain the entered password or promote a Handoff session to Admin.
+        ss.pop("delete_all_password", None)
+        if not already_unlocked:
+            lock_admin(ss)
+
+
+def delete_handoffs_control(store: GitHubVault | None) -> None:
+    """Available even before choosing a room or when the census is empty."""
+    with st.expander("Delete all handoff data", expanded=False):
+        st.warning("Deletes every patient's saved handoff and this session's drafts, including notes and airway details. Custom rooms are removed. Preset rooms remain blank.")
+        st.caption("Categories, medication mappings, SmartPhrase settings and passwords stay unchanged. Earlier archive versions and downloaded copies are not erased. Other team members must reload the saved archive.")
+        problem = admin_config_error(admin_config())
+        if problem:
+            st.info(problem)
+            return
+        with st.form("delete_all_handoffs_form"):
+            st.text_input("Admin password", type="password", key="delete_all_password", max_chars=1024)
+            st.form_submit_button("Delete all handoff data", on_click=delete_all_from_handoff, args=(store,))
+
+
 def reset_handoffs_admin(store: GitHubVault | None) -> None:
-    with st.expander("Clear all handoffs and custom rooms", expanded=False):
+    with st.expander("Delete all handoff data", expanded=False):
         st.warning("One click clears every saved handoff and all open drafts in this session, and deletes custom rooms. This affects the shared handoff archive. Preset rooms remain blank. There is no second confirmation.")
-        st.caption("Medication mappings, hidden-medication rules, infusion groups, the user guide, SmartPhrase, passwords and technical error logs are kept. This does not erase earlier Git history or downloaded copies.")
-        st.button("Clear all handoffs + delete custom rooms", key="clear_all_handoffs_button",
+        st.caption("Medication mappings, hidden-medication rules, infusion groups, the user guide, SmartPhrase, passwords and technical error logs are kept. This does not erase earlier archive versions or downloaded copies.")
+        st.button("Delete all handoff data", key="clear_all_handoffs_button",
                   on_click=clear_all_handoffs, args=(store,))
 
 
@@ -2893,35 +2929,16 @@ def render_smartphrase(guide: dict, key: str) -> None:
         st.caption("The source definition is not published yet. Ask your administrator to add your team's actual Epic SmartLinks in Admin. Sample patient results are not a source template.")
 
 
-def instructions_page(store: GitHubVault | None) -> None:
-    if not require_session():
-        return
-    st.title("Instructions / SmartPhrase")
-    st.caption("Read these steps and use the current team SmartPhrase. Only an administrator can edit this page.")
-    st.button("Refresh published guide", key="refresh_guide_read", on_click=refresh_user_guide, args=(store,))
-    guide = load_user_guide(store)
-    if st.session_state.get("guide_load_error"):
-        st.warning(st.session_state["guide_load_error"])
-    if guide["updated_at"]:
-        st.caption(("Last published: " if store else "Last saved in this session only: ") + saved_time_text(guide["updated_at"]))
-    render_smartphrase(guide, "instructions_guide")
-    st.markdown(guide["instructions"], unsafe_allow_html=False)
-    st.download_button("Download user guide (HTML)", instructions_html(guide).encode("utf-8"),
-                       "PICU_User_Guide.html", "text/html", key="guide_html")
-    st.download_button("Download instructions (text)", guide["instructions"].encode("utf-8"),
-                       "PICU_User_Instructions.txt", "text/plain", key="guide_text")
-
-
 def prepare_guide_editor(guide: dict, reset: bool = False) -> None:
     ss = st.session_state
     fields = ("smartphrase_name", "smartphrase_text", "setup_notes", "instructions")
     if reset or "guide_editor_sha" not in ss or not any("guide_edit_" + field in ss for field in fields):
         ss["guide_editor_sha"] = ss.get("guide_sha")
         for field in fields:
-            ss["guide_edit_" + field] = guide[field]
+            ss["guide_edit_" + field] = handoff_instructions(guide) if field == "instructions" else guide[field]
     else:
         for field in fields:
-            ss.setdefault("guide_edit_" + field, guide[field])
+            ss.setdefault("guide_edit_" + field, handoff_instructions(guide) if field == "instructions" else guide[field])
 
 
 def load_published_guide_into_editor(store: GitHubVault | None) -> None:
@@ -2949,7 +2966,7 @@ def save_user_guide(store: GitHubVault | None) -> None:
         return
     ss.update(user_guide=guide, guide_sha=sha, guide_editor_sha=sha, guide_loaded=True)
     ss.pop("guide_load_error", None)
-    note("Guide and SmartPhrase published to shared storage. Other users can choose Refresh published guide." if store else
+    note("Guide and SmartPhrase published to shared storage. Other users can choose Refresh SmartPhrase publication." if store else
          "Guide saved in this session only. Enable the existing encrypted storage for shared persistence.", "success")
 
 
@@ -2968,13 +2985,13 @@ def guide_admin(store: GitHubVault | None) -> None:
         st.text_input("Epic SmartPhrase name / shortcut", key="guide_edit_smartphrase_name", max_chars=120)
         st.text_area("Reusable Epic SmartPhrase source text", key="guide_edit_smartphrase_text", height=230, max_chars=MAX_TEMPLATE)
         st.text_area("Local Epic setup notes (optional)", key="guide_edit_setup_notes", height=100, max_chars=MAX_NOTES)
-        st.text_area("User instructions", key="guide_edit_instructions", height=360, max_chars=MAX_INSTRUCTIONS)
+        st.text_area("Short instructions shown at the top of Handoff", key="guide_edit_instructions", height=160, max_chars=MAX_INSTRUCTIONS)
         st.form_submit_button("Save instructions and SmartPhrase", on_click=save_user_guide, args=(store,))
     st.caption("Save instructions before leaving Admin. Keep the paired section dividers intact. Test template changes in Epic with synthetic data before sharing. Saving here does not install or update a SmartPhrase inside Epic.")
     st.button("Reload published guide into editor", on_click=load_published_guide_into_editor, args=(store,))
     st.caption("Reload replaces the unsaved guide draft. Copy any changes you need before reloading.")
     with st.expander("Published instructions preview", expanded=False):
-        st.markdown(guide["instructions"], unsafe_allow_html=False)
+        st.markdown(handoff_instructions(guide), unsafe_allow_html=False)
     st.divider()
 
 

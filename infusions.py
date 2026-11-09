@@ -169,7 +169,7 @@ def render_body_blocks(blocks: list[tuple[str, object]], rich: bool = False, esc
         elif kind == "heading":
             lines.append("<b>" + encode(item) + "</b>" if rich else item)
         elif kind == "empty_group":
-            lines.append(encode(item + ": None"))
+            lines.append("<b>" + encode(item + ":") + "</b> None" if rich else item + ": None")
         elif kind == "subheading":
             lines.append("<b><i>" + encode(item) + "</i></b>" if rich else item)
         elif kind == "medication":

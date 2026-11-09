@@ -1,43 +1,36 @@
-# PICU Handoff 6.46
+# PICU Handoff 6.47
 
-Built from the supplied Version 6.45 package. Adds direct support for the user's
-SBS Last 24 Hours field and a Hematology / G-CSF Stimulator category for filgrastim.
-The compact handoff layout and all other clinical parsers are unchanged.
-
-Read SBS_WINDOW_GCSF_UPDATE.md for import behavior and installation.
-TEST_REPORT.md records verification and limitations.
+Built from Version 6.46. This release adds the rolling 24-hour VANCOTROUGH
+filter, brief instructions at the top of Handoff, an accessible password-protected
+Delete all handoff data action, and bold labels for empty medication groups.
+The separate instructions workspace is removed.
 
 ## Install
 
-Upload the contents of this complete folder into your existing application code
-folder, replacing matching files. Keep app.py at the root, restart the app, and
-refresh your browser. Keep Secrets, both passwords, the encryption key, medication
-mappings, category settings, BMI reference data, and your shared archive unchanged.
-Do not rerun setup generators. No new Python dependencies are required.
+Replace matching application files with this folder's contents. Keep app.py at
+the root, restart the app, and refresh the browser. Keep existing Secrets, both
+passwords, the encryption key, medication mappings, categories, BMI reference
+data and shared archive unchanged. Do not rerun setup generators. No new Python
+dependencies or archive-schema changes are required. No re-pasting is needed.
 
-Archive schema 30 upgrades to 31. Avoid downgrading after saving.
-Re-paste the K section or full SmartPhrase to replace old SBS data.
+## Daily use
 
-## Your SBS structure
+In Epic, find SmartPhrase author Streamlit and subscribe to PICUHANDOFFSMARTPHRASE.
+Select the correct room here, open the patient's Epic note, and enter
+.PICUHANDOFFSMARTPHRASE. Paste the populated text with its dividers into the app,
+click Create / update handoff, and review the preview. Move to the next room to
+save automatically or press Save handoff. Check the saved time before closing.
+Print all prepares the team's PDF.
 
-    Target Arousal Level:
-    SBS Last 24 Hours:
-    Last SBS Ever: Target Arousal Level (SBS): SBS -1
+## Delete the current census
 
-The empty recent field above produces SBS: None. Last SBS Ever is not a fallback.
-A populated prefiltered field uses only that value. An explicit target remains
-labelled as a target. Timestamped observed readings keep the rolling 24-hour
-filter. Missing recording times are never fabricated.
+Open Delete all handoff data on Handoff. Enter the separate Admin password and
+press Delete all handoff data. This clears all saved handoffs and current-session
+drafts, removes custom rooms, and leaves preset rooms blank. Categories, rules,
+SmartPhrase settings and passwords remain. Other users must reload the archive.
+Earlier archive versions, downloaded copies, backups and printouts are not erased.
 
-A source-filtered untimed value is a snapshot of Epic's 24-hour output. Its report
-or import time is stored separately from observation times and is never renewed
-by saving or room changes. See the release note for timing limitations.
-
-## Category
-
-Filgrastim defaults to G-CSF Stimulator in Hematology. The label uses G-CSF rather
-than GM-CSF because those are different factors. Existing explicit assignments
-remain authoritative. The heading can be renamed or nested in Admin.
-
-This package includes source, synthetic examples, and tests. It does not contain
-live deployment credentials or a private handoff archive.
+See WORKFLOW_RECENT_TROUGH_UPDATE.md for exact behavior and TEST_REPORT.md for
+local verification and limitations. Historical release notes describe prior
+versions and are superseded by this release note where behavior has changed.
+This package contains no live deployment credentials or patient archive.

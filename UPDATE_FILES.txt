@@ -1,15 +1,14 @@
-COMPLETE VERSION 6.46 PACKAGE, BASED ON DELIVERED VERSION 6.45
+COMPLETE VERSION 6.47 PACKAGE, BASED ON SUPPLIED VERSION 6.46
 
 Replace matching code files with this folder's contents. Keep app.py at the root.
-Restart and refresh. No new Python dependencies.
+Restart and refresh. No new Python dependencies or archive-schema changes.
 
 Preserve Secrets, both passwords, encryption key, medication/category mappings,
-BMI reference data, and the shared archive. Do not rerun generators.
-Archive schema: 30 -> 31. Avoid downgrading after saving.
+BMI reference data, and the shared archive. Do not rerun setup generators.
+No re-pasting is required for the display changes.
 
-Re-paste K or the full SmartPhrase. SBS Last 24 Hours is the only eligible
-named field in the new structure. A blank value displays SBS: None.
-Last SBS Ever is ignored. An explicit target remains labelled as a target.
-Filgrastim defaults to Hematology / G-CSF Stimulator.
+Updates: recent-only vancomycin trough, short top-of-Handoff instructions,
+removal of separate instructions workspace, protected Delete all handoff data
+on Handoff and in Admin, and bold empty-group labels.
 
-Version 6.46 | SBS 24-hour field and G-CSF category
+Version 6.47 | Short workflow, recent troughs and delete all

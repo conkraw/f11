@@ -1,8 +1,7 @@
-Version 6.46 validation
-Full suite: 3,890 passed in 136.17 seconds.
-New focused tests: 86 passed.
-Original 6.45 encrypted synthetic archive migration: passed.
-Preview: 2 synthetic rooms, 1 landscape page each, 8-point body text.
-Final ZIP and per-file SHA-256 verification: performed during packaging.
-Clean extraction focused rerun: 86 passed. All delivered Python files match the full-suite tested source files.
-No live deployment or private storage was accessed.
+PICU647.zip delivery verification
+
+Full suite: 3936 passed in 230.33s (0:03:50) from a clean extraction of the staged
+package. Every final Python source is checked against that verified extraction.
+The ZIP includes SHA256SUMS.txt and passes ZIP member integrity and hash checks.
+No patient archive, test encryption key, credentials, runtime cache or fonts
+are included. Requirements and schema are unchanged from 6.46.

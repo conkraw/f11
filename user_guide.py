@@ -11,74 +11,23 @@ import re
 MAX_TEMPLATE = 80000
 MAX_INSTRUCTIONS = 32000
 MAX_NOTES = 8000
-DEFAULT_INSTRUCTIONS = """# Create a handoff you can check and trust
+DEFAULT_INSTRUCTIONS = """First use: In Epic, find SmartPhrase author Streamlit and subscribe to PICUHANDOFFSMARTPHRASE.
 
-Use this guide to turn one patient's Epic SmartPhrase output into an editable, system-based handoff. Before sharing it, compare the information with Epic and confirm that your changes are saved.
+For each patient, select the correct room here. Open that patient's Epic note and enter .PICUHANDOFFSMARTPHRASE. Copy the populated text, including section dividers, into SmartPhrase text. Click Create / update handoff, then review the preview. Move to the next room to save automatically, or press Save handoff. Check the saved time before closing. Use Print all for the team's PDF."""
 
-## Before your first handoff
 
-Open Instructions / SmartPhrase in the sidebar to find the team's current SmartPhrase name and reusable source text. If the SmartPhrase is already available in Epic, use its name there. If you need to add it to your own Epic SmartPhrases, use the source text and your local Epic instructions. Ask your app administrator if the name or source has not been published. Do not use an example patient's results as a template.
+def handoff_instructions(value: dict) -> str:
+    """Show the short workflow without silently rewriting a published guide.
 
-You need only the app password for routine handoffs. The separate Admin password is for managing the shared guide, SmartPhrase, and Admin settings.
+    Legacy bundled instructions are replaced at display/edit time only. Actual
+    administrator-authored instructions, source text and publication times stay
+    intact until the administrator chooses to save a new publication.
+    """
+    text = value.get("instructions", "").strip()
+    if not text or text.startswith("# Create a handoff you can check and trust"):
+        return DEFAULT_INSTRUCTIONS
+    return text
 
-## 1. Open the app
-
-Sign in with the app password. Open Epic in a separate window so you can compare the source with your handoff. Use only your team's approved hosting and data-handling workflow.
-
-## 2. Go to Handoff
-
-Choose Handoff in the sidebar. The Instructions and Epic SmartPhrase panel is available above the room selector whenever you need it.
-
-## 3. Choose the patient's room
-
-Select the room and confirm that it matches the patient whose chart is open in Epic. Choose Other room if the room is not listed. If a new patient is occupying a previously used room, open Start over / reload and choose Start blank for new patient before importing. This clears the open draft, so use it only when starting a new occupant's handoff.
-
-## 4. Run the SmartPhrase in Epic
-
-Use the current team SmartPhrase in the correct patient's chart and encounter. Let it finish populating. Copy the generated text, including the repeated-letter section dividers, table headings, dates, times, and results. Copy one patient at a time. Copy directly from Epic to help preserve the table columns. Do not copy the reusable source definition into the handoff paste box.
-
-## 5. Paste the generated text
-
-In Handoff, open Paste / create and paste into SmartPhrase text. Check the room again before continuing. Do not add names, MRNs, or other identifiers that your approved workflow does not permit. A room number does not make clinical text anonymous.
-
-## 6. Click Create / update handoff
-
-The app organizes the supported sections into the draft. Read any warnings. A skipped section was not refreshed, and an excluded value may be missing from the output. Compare it with Epic and correct or re-paste the affected section. Do not assume that an incomplete import is ready to use. Technical error references are available in Import errors for later review.
-
-## 7. Review, edit, and preview
-
-Use Medications, Labs / Vitals, Cultures, Labs/Imaging, and Edit handoff to correct the draft. Recurring orders remain available in Labs/Imaging but do not print as a column. Import warnings stay in the app, not on the handoff sheet. Check doses and infusion rates, respiratory support, result dates, weight and dosing weight, and any retained information. Unmapped medications appear in Other Medications. You can assign their system or hide an entry without deleting it. Remembered mapping and hiding choices can affect later imports for the team. Open Preview / print and compare the finished sheet with Epic. Add your assessment, tasks, and follow-up notes where needed. The handoff supports communication and does not replace the chart or current orders.
-
-## Problems and result time windows
-
-Open Problems to edit or hide automatic items and inspect their supporting evidence. The printed handoff uses one compact comma-separated Problems line, without evidence paragraphs or a review-required heading. No confirmation step blocks importing or printing. Problem names print without an automatically added qualifier. These are app-generated suggestions, not independently verified diagnoses. Medication and device triggers alone do not establish a diagnosis. Source Diagnoses remain unchanged. Existing confirmations and hidden choices are retained for unchanged evidence. Optional patient-specific low-result limits require clinician verification and the source units. The configured defaults add Anemia for asterisk-flagged hemoglobin below 11.5 g/dL and Thrombocytopenia for asterisk-flagged platelets below 175 K/uL, using documented compatible units. Explicit patient-specific limits override those defaults. Other asterisk-only results need a verified low limit. These are workflow cutoffs, not universal age-specific reference ranges.
-
-Lactate, theophylline and CK use a rolling 24-hour display window. CRP and procalcitonin use the admission date onward. NT-proBNP uses the latest result from all supplied dates. Original dates are retained for displayed results. Raw rows stay available in Labs / Vitals. Downloaded files are snapshots and cannot refresh lab windows after download. Generate a new PDF for updated filters.
-
-## Age, sex and BMI
-
-Place explicit Age: and Sex: fields inside A / Diagnoses, I / NUTRITION, or N / admission. The combined line Age: 6 y.o. Sex: female is supported. Age: and 5 wk.o. on separate lines, and Sex: and male on separate lines, are also supported. Age and sex print directly below Room and are not part of the diagnosis list. Male, Female, M and F are accepted, including a value on the next line. A years-only age is not assumed to include an exact month. BMI and its percentile are omitted from the handoff for children under 24 months and when age is not established. Source measurements remain in the editor and archive. At age 2 or older, the recorded BMI can print. A percentile requires age at measurement in months, explicit growth-chart sex and the configured CDC reference. Missing-percentile explanations stay in the editor rather than taking space on the printed sheet.
-
-## Difficult airway (when applicable)
-
-Open Difficult airway immediately after Problems. Enable This patient has a difficult airway only when this is documented. Record bag-mask ventilation, tube passage, view, equipment, and the brief issue. You can also enter the agreed team plan and who to call. The app does not generate a rescue plan. Save handoff or change rooms to save the answers. The final sheet contains a highlighted summary only while the option is enabled. Start blank for new patient clears prior airway details.
-
-## 8. Save and confirm
-
-Click Save handoff. Confirm the saved status and the Last saved to shared storage date and time. Changing rooms also saves the current imported draft when storage is enabled, but text only pasted into the box is not imported or saved until you click Create / update handoff. Save before logging out or closing the tab. A failed save is not a saved handoff. Session-only testing does not persist handoffs.
-
-## Print the team's handoffs
-
-Open Print all, select the rooms you need, and click Save all open handoffs. Check each room's saved status and date/time above the download controls. Download all selected handoffs (PDF), open it, and print in landscape. Each room starts on a new page. Downloading or printing alone does not save drafts. The print-preparation time is separate from the last-save time. Handle downloaded and printed sheets according to your team's approved policy, then log out.
-
-## Updating only part of a handoff
-
-Paste a complete pair of dividers around each section you want to update. An omitted section keeps its previous content. An included empty section can clear its automatic content. Separate notes remain separate, so review older notes when updating a handoff. Never combine patients in one paste.
-
-## Working with others
-
-Use Reload saved archive to see another user's confirmed saves. If a conflict appears, compare your draft with the saved handoff before making changes. Ask the administrator to change the shared SmartPhrase or guide. Do not put passwords, tokens, or patient results into those shared teaching fields.
-"""
 
 
 def default_guide() -> dict:

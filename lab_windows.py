@@ -19,7 +19,7 @@ _WINDOW_TIME = ContextVar("lab_window_time", default=None)
 from labs import canonical, date_parts, ordered_components, lactate_endpoints, is_lactate
 
 EASTERN = ZoneInfo('America/New_York')
-RECENT = {'THEOPH', 'CK'}
+RECENT = {'THEOPH', 'CK', 'VANCOTROUGH'}
 ADMISSION = {'CRP', 'PROCAL'}
 
 
@@ -198,8 +198,9 @@ def laboratory_data(sheet: dict, as_of: datetime | None = None) -> dict:
 def window_help(sheet: dict, as_of: datetime | None = None) -> str:
     now = clock(as_of)
     return ('Display windows as of ' + now.strftime('%m/%d/%Y %H:%M %Z') +
-            '. Lactate, theophylline and CK: rolling 24 hours. CRP/procalcitonin: admission onward. '
-            'NT-proBNP and vancomycin trough: latest from all supplied dates. Original rows remain available below.')
+            '. Lactate, theophylline, CK and vancomycin trough: rolling 24 hours. '
+            'CRP/procalcitonin: admission onward. NT-proBNP: latest from all supplied dates. '
+            'Original rows remain available below.')
 
 
 @contextmanager

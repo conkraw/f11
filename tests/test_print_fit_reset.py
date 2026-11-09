@@ -264,14 +264,14 @@ def test_labs_and_medication_data_unchanged_by_layout():
     assert s==before
 
 
-def test_reset_ui_is_available_only_inside_admin_and_needs_no_confirmation(app,monkeypatch):
+def test_admin_reset_remains_protected_without_extra_confirmation(app,monkeypatch):
     populated(app);equip(app,monkeypatch);calls=[]
     app.st.button=lambda label,**kwargs:calls.append((label,kwargs))
     app.admin_page(None)
-    reset=[item for item in calls if item[0]=='Clear all handoffs + delete custom rooms']
+    reset=[item for item in calls if item[0]=='Delete all handoff data']
     assert len(reset)==1 and reset[0][1]['on_click']==app.clear_all_handoffs
     lock_admin(app.st.session_state);calls.clear();app.admin_page(None)
-    assert not any('Clear all' in label for label,_ in calls)
+    assert not any('Delete all handoff data' in label for label,_ in calls)
 
 
 def test_ui_shows_pdf_page_target_and_no_example_buttons(app,monkeypatch):

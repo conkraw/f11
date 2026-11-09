@@ -1,7 +1,7 @@
 PICU Handoff 6.22: add the separate Admin password
 
 This update adds a second password for Admin. Routine handoff creation, editing,
-saving, printing, and reading Instructions / SmartPhrase still use the existing
+saving, printing, and reading the instructions at the top of Handoff still use the existing
 app login. Keep your current app password, encryption key, GitHub token and all
 saved data. Do not run create_secrets.py or Generate_Secrets.ipynb for this update.
 
@@ -56,17 +56,21 @@ ONE-TIME SETUP
    separator scaffold with placeholders, not a working Epic SmartPhrase.
 
 6. Click Save instructions and SmartPhrase. Confirm the publish message and
-   Last published timestamp. Open Instructions / SmartPhrase to check what the
+   Last published timestamp. Open Handoff to check what the
    team will see. Publishing here does not change anything inside Epic.
 
 DAILY ACCESS
 
-All signed-in users can read Instructions / SmartPhrase, copy the source text,
-and download the guide or source. Handoff also has a collapsed Instructions and
-Epic SmartPhrase panel above the room selector. No second password is required
-for these read-only views. Users with an open session can select Refresh
-published guide to get a newer version. Returning to Admin restores the saved
-content if its editor widgets were cleared. Save before leaving Admin.
+All signed-in users can read the short instructions at the top of Handoff.
+The SmartPhrase source expander is available there when a reusable source has
+been published. Use Refresh SmartPhrase publication for the latest shared copy.
+The separate instructions workspace has been removed. Returning to Admin restores
+the saved editor content. Save before leaving Admin.
+
+Delete all handoff data is available on Handoff with the separate Admin password.
+It clears every current patient handoff and custom room, but preserves categories,
+mappings, settings, passwords and the SmartPhrase. The same action is available
+inside unlocked Admin. It does not erase earlier archive versions or downloads.
 
 The entire Admin workspace and its callbacks require the separate password.
 Admin locks when you leave its workspace, select Lock Admin, log out, reach

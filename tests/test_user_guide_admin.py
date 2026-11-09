@@ -150,8 +150,8 @@ def test_regular_handoff_and_instruction_access_do_not_require_admin(app,monkeyp
     app.save_room(None)
     assert ss['vault']['rooms']['P4102']['fields']['Diagnoses']=='Synthetic example'
     downloads=equip(app,monkeypatch)
-    app.instructions_page(None)
-    assert any(name=='Download user guide (HTML)' for name,_ in downloads)
+    app.handoff_page(None)
+    assert not any(name=='Download user guide (HTML)' for name,_ in downloads)
     assert not ss.get('admin_unlocked')
 
 
@@ -179,10 +179,11 @@ def test_default_is_patient_free_and_does_not_invent_smartlinks():
     assert 'Create / update handoff' in doc['instructions']
     assert 'Save handoff' in doc['instructions']
     assert 'Print all' in doc['instructions']
-    assert 'Start blank for new patient' in doc['instructions']
-    assert 'names, MRNs' in doc['instructions']
-    for number in range(1,9):
-        assert f'## {number}. ' in doc['instructions']
+    assert 'Streamlit' in doc['instructions']
+    assert 'PICUHANDOFFSMARTPHRASE' in doc['instructions']
+    assert 'next room to save automatically' in doc['instructions']
+    assert len(doc['instructions'].split()) < 120
+    assert 'Instructions / SmartPhrase' not in doc['instructions']
 
 
 @pytest.mark.parametrize('field,value', [
@@ -371,7 +372,7 @@ def test_smartphrase_view_never_reuses_room_paste(app,monkeypatch):
     open_room(app); ss=app.st.session_state; ss['paste']='NOT_A_TEMPLATE'
     equip(app,monkeypatch)
     outputs=[];app.st.code=lambda text,**kw:outputs.append(text)
-    app.instructions_page(None)
+    app.handoff_page(None)
     assert not any('NOT_A_TEMPLATE' in str(x) for x in outputs)
     assert ss['paste']=='NOT_A_TEMPLATE'
 

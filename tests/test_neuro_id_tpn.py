@@ -222,9 +222,10 @@ def test_vancomycin_latest_dated_level_only_in_id(component):
     assert s==before
 
 
-def test_old_vancomycin_date_is_visible_not_misrepresented_as_today():
+def test_old_vancomycin_date_is_stored_but_not_displayed_as_recent():
     s=new_sheet('P4102');s['labs']=parse_labs('Component\tValue\tDate\nVANCOTROUGH\t10.8\t10/14/2026').data
-    assert '10.8 [10/14/2026]' in id_drug_levels(s,NOW)
+    assert not id_drug_levels(s,NOW)
+    assert s['labs']['rows'][0]['value'] == '10.8'
 
 @pytest.mark.parametrize('body', ['No results found for: "VANCOTROUGH"','Component\tValue\tDate\nVANCOTROUGH\tCanceled\t11/09/2026',''])
 def test_missing_vancomycin_does_not_invent_drug_level(body):
