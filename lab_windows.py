@@ -1,8 +1,8 @@
 """Display-only laboratory time windows. Raw rows and flags are never changed.
 
 24-hour windows use the current Eastern clock, not the newest laboratory date.
-A previous-day date without a time can overlap the cutoff. It is retained only
-with an explicit timing-unverified label, never assigned an invented midnight.
+A previous-day date without a time may overlap the cutoff and is included.
+Its recorded date is retained without inventing a collection time.
 """
 from __future__ import annotations
 from copy import deepcopy
@@ -117,8 +117,7 @@ def ordered(rows: list[dict]) -> list[dict]:
 
 
 def stamp(row: dict, now: datetime, recent: bool = False) -> str:
-    extra = ', time not supplied / 24h unverified' if recent and uncertain_24h(row, now) else ''
-    return '[' + row['date'] + extra + ']'
+    return '[' + row['date'] + ']'
 
 
 def lactate_summary(sheet: dict, as_of: datetime | None = None) -> str:
@@ -132,11 +131,6 @@ def lactate_summary(sheet: dict, as_of: datetime | None = None) -> str:
     if len(values) == 1:
         return line('Lactate (only result)', latest)
     text = line('Lactate earliest', earliest) + '\n' + line('Lactate latest', latest)
-    # Preserve the visible qualifier for uncertain same-date ordering.
-    first_dt, first_t = date_parts(earliest['date'])
-    last_dt, last_t = date_parts(latest['date'])
-    if first_dt.date() == last_dt.date() and (not first_t or not last_t or first_dt == last_dt):
-        text += '\nSame-date order follows source, timing unverified.'
     return text
 
 
@@ -183,8 +177,6 @@ def laboratory_data(sheet: dict, as_of: datetime | None = None) -> dict:
                 continue
             row['component'] = 'CK'
             row['panel'] = 'CK (last 24h)'
-            if uncertain_24h(row, now):
-                row['value'] += ' (24h timing unverified)'
         out.append(row)
     data['rows'] = out
     return data
@@ -194,8 +186,7 @@ def window_help(sheet: dict, as_of: datetime | None = None) -> str:
     now = clock(as_of)
     return ('Display windows as of ' + now.strftime('%m/%d/%Y %H:%M %Z') +
             '. Lactate, theophylline and CK: rolling 24 hours. CRP/procalcitonin: admission onward. '
-            'NT-proBNP: latest from all supplied dates. Date-only results overlapping the 24-hour cutoff '
-            'are labelled timing unverified. No source row is deleted.')
+            'NT-proBNP: latest from all supplied dates. Original rows remain available below.')
 
 
 @contextmanager

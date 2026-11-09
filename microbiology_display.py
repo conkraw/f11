@@ -6,7 +6,7 @@ results, or interpret organism significance. All source strings are escaped.
 from __future__ import annotations
 from html import escape
 import re
-from cultures import compact_groups
+from cultures import compact_groups, culture_display
 from labs import short_date
 from viral import positive_names
 
@@ -34,9 +34,9 @@ def culture_markup(data: dict, esc=escape) -> str:
         return ""
     lines = ["Cultures"]
     for group in groups:
-        values = ["<b>" + esc(value) + "</b>" if is_organism_result(value) else esc(value)
+        values = ["<b>" + esc(value) + "</b>" if is_organism_result(value) else esc(culture_display(value))
                   for value in group["organisms"]]
-        lines.append(esc(short_date(group["date"])) + " | " + esc(group["specimen"]) + " | " + " / ".join(values))
+        lines.append(esc(short_date(group["date"])) + " | " + esc(group["specimen"]) + " | " + " / ".join(dict.fromkeys(values)))
     return "\n".join(lines)
 
 

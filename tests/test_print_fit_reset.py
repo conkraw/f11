@@ -181,7 +181,7 @@ def test_v17_encrypted_migration_preserves_every_prior_setting_and_sheet():
     before=deepcopy(v);key=generate_key();data=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     out=open_vault(data,key)
     assert out['rooms']=={room: dict(sheet, feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None) for room, sheet in v['rooms'].items()} and out['settings']==v['settings'] and v==before
-    assert out['schema']==25 and out['reset_generation']==''
+    assert out['schema']==26 and out['reset_generation']==''
     assert open_vault(seal_vault(out,key),key)==out
 
 
@@ -225,7 +225,7 @@ def test_actual_preflight_count_matches_export_and_keeps_all_notes(target,n):
 
 def test_two_page_target_keeps_larger_type_when_possible():
     s=long_column(40);report=print_fit_report(s,2)
-    assert report['page_count']==2 and report['font_size']==7.2 and report['target_met']
+    assert report['page_count']==2 and report['font_size']==8.0 and report['target_met']
 
 
 def test_very_long_sheet_uses_more_pages_not_truncation():

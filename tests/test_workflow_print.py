@@ -366,7 +366,7 @@ def test_positive_fonts_and_no_growth_font_in_pdf():
     for name in ('Candida','Staphylococcus','Rhinovirus'):
         found=[x for x in spans if name in x['text']]
         assert found and all('Bold' in x['font'] for x in found)
-    found=[x for x in spans if 'No growth' in x['text']]
+    found=[x for x in spans if 'NGTD' in x['text']]
     assert found and all('Bold' not in x['font'] for x in found)
 
 

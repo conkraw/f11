@@ -1,39 +1,48 @@
-# Version 6.35 validation report
+# Version 6.37 validation report
 
-The full suite passed: 2,924 tests in the updated working directory, including
-40 new synthetic regression cases. The 40 new cases were also rerun from the
-extracted delivery ZIP. Existing test assertions were not changed.
+## Baseline and changes
 
-Coverage includes:
-- Metric height followed by feet/inches, with straight, typographic and prime quotes.
-- Repeated Height headings, Length aliases, explicit units and normalization.
-- Malformed annotations, contradictory equivalents and invalid values still fail.
-- Measured and dosing weights remain distinct, including their Z-score and BMI/BSA.
-- A successful I import replaces retained values and clears only the I warning.
-- Failed imports keep the previous I data and suppress mL/kg calculations.
-- Normalized values in text, HTML, single-page PDF and encrypted round trips.
+The package was built by extracting the original PICU635.zip. The unmodified
+baseline suite was run first: 2,924 tests passed. No Version 6.36 font-size
+control or print_options.py module was used.
 
-The complete I-section wording retrieved from the current supplied attachment
-was transcribed outside the delivery package and exercised against the original
-v6.34 and updated v6.35 import functions. The original reproduces the height error
-and retains previous weights. The update imports the weight, dosing weight,
-Z-score, height, BMI and BSA and clears the I warning. The entire patient file
-was not exercised end to end in this update. No patient fixture is bundled.
+Current full suite: 3,004 tests passed, including 80 new synthetic cases in
+test_compact_airway.py. Existing assertions for explicitly removed output
+(headings, printed warnings, timing annotations, order column), the new default
+font, and the new current schema were updated to the requested behavior.
+Legacy input fixtures, clinical result-selection expectations and parser tests
+remain in the suite. The legacy schema fixtures were not changed into new data.
 
-A synthetic encrypted archive created with the unmodified original v6.34 code
-was opened by v6.35 using the same key. All previous fields, settings, custom
-room entries and timestamps compared equal. No schema migration is required.
+The new coverage includes optional/disabled airway output, all ventilation and
+passage responses, field limits, escaping, no invented normal answers, per-room
+callbacks, new-patient clearing, clear-all clearing, room-switch capture,
+encryption round trips, no cross-room print leakage, failed saves retaining
+pending edits, displayed publication times and rejected publications, source
+note suppression, NGTD display-only abbreviation and deduplication, unchanged
+lab window eligibility, retained lab values/dates/labels, seven-column printing,
+and medication fallback when an old mapping used the removed Labs column.
 
-The synthetic one-page landscape preview was generated with the app's own PDF
-exporter and rendered to an image for visual inspection. Normalized height,
-weight and dosing weight appear in the demographic column. The mL/kg totals
-appear in FEN/GI. There is no import warning for the supported height format.
+## Migration
 
-Runtime changes are limited to anthropometrics.py, import_review.py and the
-version label in app.py. Other clinical parsers, the CBC and blood-gas trees,
-exports, storage and autosave modules are byte-identical to v6.34.
+A synthetic encrypted archive was created with the unmodified original 6.35
+code and opened using this release with the same key. Schema 25 became 26.
+Every previous room field, mapping, setting, custom room, reset generation and
+saved timestamp compared equal. An added difficult-airway record was then
+saved, encrypted, reopened and compared equal.
 
-Tests run under Python 3.13. UI and GitHub tests use existing simulated interfaces
-and mock responses. No live Streamlit deployment, Epic connection or private
-repository was tested or changed. This is a formatting/import fix, not clinical
-validation of the application.
+## Printed output
+
+The app generated a two-room synthetic preview. Both rooms occupy one landscape
+page at the default 8-point body font. One has an enabled airway alert and one
+does not. The final PDF was rendered to PNGs and visually checked. Lab labels,
+values, dates, organism formatting, seven columns, and the final airway band
+were inspected. No patient input is bundled with this release.
+
+## Limits
+
+Callback/interface tests use widget stubs and storage tests use simulations.
+They are not live-browser or production deployment tests. No live GitHub
+repository, Epic session, institution network or deployed app was accessed or
+modified. The airway form is clinician-entered documentation, not a validated
+clinical decision algorithm. Auto-fitting cannot guarantee one page for every
+possible volume of content and never crops text to force that target.

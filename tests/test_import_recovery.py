@@ -167,24 +167,25 @@ def test_schema15_migration_preserves_every_old_field():
     old['rooms']['P4102']['fields']['FEN / GI'] = 'Keep all notes'
     before = deepcopy(old)
     new = upgrade_vault(old)
-    assert old == before and new['schema'] ==25
+    assert old == before and new['schema'] ==26
     assert new['settings'] == dict(old['settings'], medication_groups=[])
     assert new['rooms']['P4102'] == dict(old['rooms']['P4102'], import_warnings={}, feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None)
 
 
-def test_warnings_on_html_text_pdf_and_multiple_pages():
+def test_warnings_stay_in_app_not_html_text_pdf_or_continuation_pages():
     sheet = run(wrap('q', CBC) + '\n' + wrap('r', ORDERS.replace('Occurrences:\t7', 'Occurrences:\tBAD'))).sheet
     sheet['fields']['Diagnoses'] = 'Synthetic recovery preview'
     for source in (handoff_text(sheet), handoff_html(sheet)):
-        assert 'IMPORT REVIEW' in source and 'Orders: orders skipped' in source
+        assert 'IMPORT REVIEW' not in source and 'Orders: orders skipped' not in source
+        assert sheet['import_warnings']  # Diagnostics remain available in the app.
         assert '29.4* | 32*' not in source
     pdf = PdfReader(BytesIO(handoff_pdf(sheet)))
-    assert 'IMPORT REVIEW' in pdf.pages[0].extract_text()
+    assert 'IMPORT REVIEW' not in pdf.pages[0].extract_text()
     assert '29.4' not in ''.join(p.extract_text() for p in pdf.pages)
     sheet['fields']['Other Medications'] = '\n'.join('Extra example medication ' + str(i) for i in range(150))
     pdf = PdfReader(BytesIO(handoff_pdf(sheet)))
     assert len(pdf.pages) > 1
-    assert all('IMPORT REVIEW' in p.extract_text() for p in pdf.pages)
+    assert all('IMPORT REVIEW' not in p.extract_text() for p in pdf.pages)
 
 
 @pytest.mark.parametrize('change', [lambda x:x.update(room='P4102'), lambda x:x.update(code='PRIVATE'),

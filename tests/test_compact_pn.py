@@ -147,9 +147,9 @@ def test_new_export_formats_keep_linked_pn_details():
 def test_synthetic_18_order_case_is_one_landscape_page_with_all_labs():
     s=sheet();doc=fitz.open(stream=handoff_pdf(s),filetype='pdf')
     assert len(doc)==1 and doc[0].rect==fitz.Rect(0,0,792,612)
-    assert print_layout_info(s)=={'font_size':7.2,'fits_one_page':True}
+    assert print_layout_info(s)=={'font_size':8.0,'fits_one_page':True}
     text=doc[0].get_text()
-    for term in ('Hepatic','Coagulation','Gas ART | latest','Inflammatory','01/03/26','01/02/26','preceding per component'):
+    for term in ('Hepatic','Coagulation','Gas ART','Inflammatory','01/03/26','01/02/26'):
         assert term in text
     for block in doc[0].get_text('blocks'):
         assert 0<=block[0]<block[2]<=792 and 0<=block[1]<block[3]<=612
@@ -163,10 +163,10 @@ def test_new_lab_summaries_are_horizontal_and_only_latest_gas():
     assert 'Coagulation' not in fields['Infectious Disease']
     assert 'Coagulation' in fields['Lab Results / Trends']
     assert 'Inflammatory markers' in fields['Infectious Disease']
-    assert 'Gas ART | latest' in html and 'Gas VEN' not in html
-    assert 'Hepatic | latest [01/03/26]' in html
+    assert 'Gas ART' in html and 'Gas VEN' not in html
+    assert 'Hepatic [01/03/26]' in html
     assert 'AST: 31 | ALT: 22 | ALKPHOS: 210' in html
-    assert 'font-size:7.2pt' in html
+    assert 'font-size:8pt' in html
     page=fitz.open(stream=handoff_pdf(s),filetype='pdf')[0]
     rects=[page.search_for(word)[0] for word in ('AST:','ALT:','ALKPHOS:')]
     assert max(r.y0 for r in rects)-min(r.y0 for r in rects)<1
@@ -232,14 +232,14 @@ def test_same_schema_roundtrip_preserves_mapping_hiding_and_all_order_fields():
     v['settings']['medication_mappings']=upsert_rule([],'fat emulsion','FEN / GI')
     v['settings']['medication_visibility']=set_visibility_rule([],name,True)
     key=generate_key();restored=open_vault(seal_vault(v,key),key)
-    assert restored==v and restored['schema']==25 and upgrade_vault(v)==v
+    assert restored==v and restored['schema']==26 and upgrade_vault(v)==v
 
 
 def test_bounded_small_font_fits_crowded_column_without_deleting_lines():
     s=new_sheet('P4102')
     s['fields']['Neurologic']='\n'.join(f'ROW_{i:03d}' for i in range(57))
     info=print_layout_info(s)
-    assert info['fits_one_page'] and 6.5 <= info['font_size'] < 7.2
+    assert info['fits_one_page'] and 6.5 <= info['font_size'] < 8.0
     doc=fitz.open(stream=handoff_pdf(s),filetype='pdf')
     assert len(doc)==1
     text=doc[0].get_text()

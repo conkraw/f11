@@ -1,9 +1,8 @@
-COMPLETE VERSION 6.35 PACKAGE
-Replace matching files and keep app.py at the root.
-Changed runtime modules: anthropometrics.py, import_review.py, app.py.
-No new modules, dependencies, or archive schema changes.
-Keep both passwords, encryption key, GitHub token, mappings, private storage,
-and existing public CDC BMI reference data. Do not rerun generators.
-Re-paste the complete I section or full SmartPhrase to repair the weight warning.
-Then Create / update handoff, check the measurements, and Save handoff.
-Read WEIGHT_IMPORT_FIX.md and TEST_REPORT.md.
+COMPLETE VERSION 6.37 PACKAGE, BASED ON 6.35
+Replace matching files. Keep app.py at the root. Include difficult_airway.py.
+No Version 6.36 font picker or print_options dependency is included.
+Keep existing Secrets, both passwords, encryption key, token, private storage,
+medication rules and CDC BMI reference data. Do not rerun generators.
+Schema 25 upgrades to 26. Do not downgrade after saving with this release.
+No new Python dependencies. No re-pasting needed for these layout changes.
+Read README.md, COMPACT_AIRWAY_UPDATE.md and TEST_REPORT.md.

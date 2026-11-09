@@ -227,7 +227,7 @@ def test_new_schema_preserves_every_old_field_and_mapping():
     original['rooms']['P4102']=s
     before=deepcopy(original)
     upgraded=upgrade_vault(original)
-    assert original==before and upgraded['schema']==SCHEMA_VERSION==25
+    assert original==before and upgraded['schema']==SCHEMA_VERSION==26
     assert upgraded['rooms']['P4102']==dict(s,recurring_orders=None,intake_output=None,import_warnings={},feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None)
     assert upgraded['settings']==dict(before['settings'], medication_gi_groups=[], medication_groups=[])
 
@@ -252,17 +252,18 @@ def test_new_order_field_validates_strictly():
     with pytest.raises(ValueError):validate_orders(data)
 
 
-def test_all_export_types_heading_and_separate_notes():
+def test_orders_preserved_in_editor_but_removed_from_handoff_exports():
     s=sheet(block(order('Magnesium','Every 12 hours',17)))
     s['fields']['Labs']='MANUAL NOTE'
     f=fields_with_medications(s)
     assert f['Labs'].startswith('Magnesium | Q12H | 17 occurrences\n-----\nMANUAL NOTE')
     assert section_label('Labs')=='Labs/Imaging'
     html=handoff_html(s);txt=handoff_text(s)
-    assert '<th>LABS/IMAGING</th>' in html and '\nLABS/IMAGING\n' in txt
-    assert 'Q12H' in html and '17 occurrences' in txt
+    assert '<th>LABS/IMAGING</th>' not in html and '\nLABS/IMAGING\n' not in txt
+    assert 'Q12H' not in html and '17 occurrences' not in txt
     pdf=PdfReader(BytesIO(handoff_pdf(s)));text=re.sub(r'\s+', ' ', ''.join(p.extract_text() for p in pdf.pages))
-    assert 'LABS/IMAGING' in text and 'Magnesium' in text and '17 occurrences' in text and 'MANUAL NOTE' in text
+    assert 'LABS/IMAGING' not in text and '17 occurrences' not in text and 'MANUAL NOTE' not in text
+    assert s['fields']['Labs'] == 'MANUAL NOTE' and s['recurring_orders']
 
 
 def test_orders_only_room_prints_and_blank_import_stays_blank():
@@ -275,8 +276,8 @@ def test_print_all_includes_order_snapshots_separately():
     a=sheet(block(order('CBC',count=31)));b=sheet(block(order('Magnesium',count=19)));b['room']='P4104'
     pdf=PdfReader(BytesIO(handoffs_pdf([a,b])))
     assert len(pdf.pages)==2
-    assert '31 occurrences' in re.sub(r'\s+', ' ', pdf.pages[0].extract_text())
-    assert '19 occurrences' in re.sub(r'\s+', ' ', pdf.pages[1].extract_text())
+    assert '31 occurrences' not in re.sub(r'\s+', ' ', pdf.pages[0].extract_text())
+    assert '19 occurrences' not in re.sub(r'\s+', ' ', pdf.pages[1].extract_text())
     assert '31 occurrences' not in re.sub(r'\s+', ' ', pdf.pages[1].extract_text())
 
 

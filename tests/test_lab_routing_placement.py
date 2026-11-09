@@ -60,7 +60,7 @@ def test_coagulation_is_visible_without_a_hepatic_result(source):
     s = new_sheet('P4102')
     s['labs'] = parse_labs(f'{source}\t0.5 (H)\t01/06/2026').data
     f = fields_with_medications(s)
-    assert 'Coagulation | latest' in f['Lab Results / Trends']
+    assert 'Coagulation' in f['Lab Results / Trends']
     assert f'{display_component(source)}: 0.5 (H) [01/06/2026]' in f['Lab Results / Trends']
     assert not f['Infectious Disease']
 
@@ -113,7 +113,7 @@ def test_no_data_mutation_during_any_export():
     for fn in [handoff_html, handoff_pdf, handoff_text]:
         fn(s)
         assert s == before
-    assert SCHEMA_VERSION ==25
+    assert SCHEMA_VERSION ==26
 
 
 @pytest.mark.parametrize('exporter', [handoff_html, handoff_text])
@@ -130,13 +130,13 @@ def test_pdf_has_horizontal_coag_line_below_hepatic_and_markers_in_id():
     assert len(doc) == 1
     page = doc[0]
     assert page.rect == fitz.Rect(0, 0, 792, 612)
-    positions = {t: page.search_for(t)[0] for t in ['Hepatic', 'Coagulation', 'PT:', 'INR:', 'PTT:', 'Anti-Xa', 'CRP:', 'PROCAL:', 'Lab Results / Trends']}
-    assert positions['Lab Results / Trends'].y0 < positions['Hepatic'].y0 < positions['Coagulation'].y0
+    positions = {t: page.search_for(t)[0] for t in ['Hepatic', 'Coagulation', 'PT:', 'INR:', 'PTT:', 'Anti-Xa', 'CRP:', 'PROCAL:']}
+    assert positions['Hepatic'].y0 < positions['Coagulation'].y0
     assert positions['Coagulation'].y0 - positions['Hepatic'].y0 < 16
     assert max(positions[t].y0 for t in ['PT:', 'INR:', 'PTT:', 'Anti-Xa']) - min(positions[t].y0 for t in ['PT:', 'INR:', 'PTT:', 'Anti-Xa']) < 1
     assert positions['PT:'].x0 < positions['INR:'].x0 < positions['PTT:'].x0 < positions['Anti-Xa'].x0
     for marker in ['CRP:', 'PROCAL:']:
-        assert positions[marker].y0 < positions['Lab Results / Trends'].y0
+        assert positions[marker].y0 < positions['Hepatic'].y0
     for block in page.get_text('blocks'):
         assert 0 <= block[0] < block[2] <= 792 and 0 <= block[1] < block[3] <= 612
     doc.close()

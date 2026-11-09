@@ -126,7 +126,7 @@ def test_respiratory_order_and_single_occurrence():
 def test_no_device_needed_for_result_to_show():
     s = new_sheet('P4102')
     s['labs'] = parsed('THEOPH\t12.4\t01/04/2027')
-    assert fields_with_medications(s)['Respiratory'] == 'Theophylline level: 12.4 [01/04/2027, time not supplied / 24h unverified]'
+    assert fields_with_medications(s)['Respiratory'] == 'Theophylline level: 12.4 [01/04/2027]'
 
 
 def test_older_saved_other_labs_panel_routes_without_reimport():
@@ -187,7 +187,7 @@ def test_pdf_has_the_level_in_resp_above_meds_and_below_support():
     resp = p.search_for('RESP')[0]
     meds = p.search_for('albuterol')[0]
     mode = p.search_for('Vent Mode:')[0]
-    lab_area = p.search_for('Lab Results / Trends')[0]
+    lab_area = p.search_for('Other Medications')[0]
     from exports import PRINT_MARGIN, WIDTHS
     width = p.rect.width - 2 * PRINT_MARGIN
     left = PRINT_MARGIN + width * sum(WIDTHS[:2])
@@ -215,7 +215,7 @@ def test_original_fields_encrypted_without_schema_or_key_change():
     before = deepcopy(vault)
     key = generate_key()
     reopened = open_vault(seal_vault(vault, key), key)
-    assert SCHEMA_VERSION ==25
+    assert SCHEMA_VERSION ==26
     assert reopened == before
     assert 'Theophylline level:' in fields_with_medications(reopened['rooms']['P4102'])['Respiratory']
 

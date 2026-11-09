@@ -37,8 +37,9 @@ from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 from problem_review import validate_review, empty_review
+from difficult_airway import validate_airway
 from lab_windows import cardiac_labs_summary, theophylline_summary, id_summary, laboratory_data
 from anthropometrics import empty_anthropometrics, validate_anthropometrics, measurements_text
 
@@ -82,7 +83,7 @@ def new_vault() -> dict:
 
 
 def validate_sheet(sheet: dict) -> None:
-    if not isinstance(sheet, dict) or set(sheet) - {"anthropometrics", "problem_review"} != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "devices", "neuro_devices", "pacemaker", "diet", "import_warnings"}:
+    if not isinstance(sheet, dict) or set(sheet) - {"anthropometrics", "problem_review", "difficult_airway"} != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "devices", "neuro_devices", "pacemaker", "diet", "import_warnings"}:
         raise ValidationError("The handoff structure is invalid.")
     if not isinstance(sheet["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", sheet["id"]):
         raise ValidationError("The handoff identifier is invalid.")
@@ -121,6 +122,7 @@ def validate_sheet(sheet: dict) -> None:
         validate_anthropometrics(sheet.get("anthropometrics", empty_anthropometrics()))
         validate_import_warnings(sheet["import_warnings"])
         validate_review(sheet.get("problem_review", empty_review()))
+        validate_airway(sheet.get("difficult_airway"))
     except ValueError as exc:
         raise ValidationError(str(exc)) from None
     ids = set()
@@ -188,13 +190,18 @@ def apply_diagnoses(sheet: dict, diagnosis_text: str, destination: str, append: 
 
 
 def upgrade_vault(vault: dict) -> dict:
-    """Migrate schemas 1-24 without replacing keys, notes or saved mappings."""
+    """Migrate schemas 1-25 without replacing keys, notes or saved mappings."""
     if not isinstance(vault, dict):
         raise ValidationError("The encrypted archive has an invalid structure.")
     version = vault.get("schema")
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
+    if version == 25:
+        candidate = deepcopy(vault)
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     if version == 24:
         candidate = deepcopy(vault)
         candidate["schema"] = SCHEMA_VERSION

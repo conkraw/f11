@@ -316,7 +316,7 @@ def test_v6_encrypted_roundtrip_and_v5_migration():
     baseline=deepcopy(old)
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     upgraded=open_vault(oldtoken,key)
-    assert upgraded['schema']==25 and old==baseline
+    assert upgraded['schema']==26 and old==baseline
     after=upgraded['rooms']['P4102'];before=old['rooms']['P4102']
     for k in ('fields','noninvasive','ventilation','id','updated_at'):
         assert after[k]==before[k]
@@ -339,8 +339,8 @@ def test_lab_exports_are_dated_and_do_not_leak_hidden_order():
     pdf=fitz.open(stream=handoff_pdf(s),filetype='pdf')
     text='\n'.join(p.get_text() for p in pdf)
     assert all(p.rect.width==792 and p.rect.height==612 for p in pdf)
-    assert '01/03/26' in text and '01/02/26' in text and 'preceding per component' in text
-    assert 'Gas ART | latest' in text and 'Gas VEN' not in text
+    assert '01/03/26' in text and '01/02/26' in text and 'preceding per component' not in text
+    assert 'Gas ART' in text and 'Gas VEN' not in text
     assert 'Override Pull' not in text
     for page in pdf:
         for b in page.get_text('blocks'):

@@ -332,16 +332,21 @@ def display_component(component: str) -> str:
     return 'Anti-Xa (HEPLMW)' if canonical(component) == 'HEPLMW' else component
 
 
+def printable_source_notes(notes: list[str]) -> list[str]:
+    return [text for text in notes if not re.match(
+        r"^\s*(?:Source:\s*)?(?:No results? found|No lab exists|No data recorded)\b", text, re.I)]
+
+
 def labs_text(data: dict, include_id_panels: bool = True, blood_gas: dict | None = None, cbc: dict | None = None) -> str:
     lines = []
     for card in result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas, cbc=cbc):
-        lines.append(card['title'])
+        if card['kind'] not in ('cbc', 'bmp'):
+            lines.append(card['title'].split(' | ', 1)[0])
         for row in card['rows'].values():
             lines.append(display_component(row['component']) + ': ' + row['value'] + (' [' + row['date'] + ']' if row['date'] else ''))
-    if lines:
-        lines.append('Per-component results, not confirmed same-draw panels. Same-date ties follow source order when collection times are absent.')
-    if data['notes']:
-        lines.extend(['Source notes:'] + data['notes'])
+    notes = printable_source_notes(data['notes'])
+    if notes:
+        lines.extend(['Source notes:'] + notes)
     return '\n'.join(lines)
 
 

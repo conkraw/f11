@@ -63,11 +63,11 @@ def test_24_hour_inclusive_boundary_and_future(key,date,included):
     assert bool(rows_for(sheet(f'{key}\t1.2\t{date}'),key,NOW)) == included
 
 
-def test_previous_day_date_only_is_explicitly_uncertain():
+def test_previous_day_overlap_keeps_date_without_extra_printed_annotation():
     s = sheet('LACTATE\t1.2\t11/07/2026\nTHEOPH\t10.7\t11/07/2026\nCK\t135\t11/07/2026')
-    assert '24h unverified' in lactate_summary(s,NOW)
-    assert '24h unverified' in theophylline_summary(s,NOW)
-    assert '24h timing unverified' in laboratory_data(s,NOW)['rows'][-1]['value']
+    assert '24h unverified' not in lactate_summary(s,NOW)
+    assert '24h unverified' not in theophylline_summary(s,NOW)
+    assert '24h timing unverified' not in laboratory_data(s,NOW)['rows'][-1]['value']
     assert 'unverified' not in str(s['labs'])
 
 
@@ -289,7 +289,7 @@ def test_review_settings_round_trip_and_schema23_migration_keep_all_old_data():
     old=deepcopy(v);old['schema']=23;old['rooms']['P4102'].pop('problem_review')
     before=deepcopy(old);updated=upgrade_vault(old)
     assert old==before and updated['rooms']==old['rooms'] and updated['settings']==old['settings']
-    assert updated['schema']==25
+    assert updated['schema']==26
 
 
 def test_all_formats_keep_review_separate_and_do_not_mutate():

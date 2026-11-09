@@ -247,7 +247,7 @@ def test_schema19_migration_keeps_every_previous_field_generation_and_times():
     before=deepcopy(v);key=generate_key()
     old=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     migrated=open_vault(old,key)
-    assert v==before and migrated['schema']==SCHEMA_VERSION==25
+    assert v==before and migrated['schema']==SCHEMA_VERSION==26
     assert migrated['settings']==before['settings'] and migrated['reset_generation']==before['reset_generation']
     for room,s in before['rooms'].items():assert migrated['rooms'][room]==dict(s, devices=None,neuro_devices=None,pacemaker=None,diet=None)
     assert open_vault(seal_vault(migrated,key),key)==migrated
@@ -281,7 +281,7 @@ def test_footer_at_bottom_of_one_page_pdf_and_manual_notes_kept():
     s['fields']['Access']='MANUAL ACCESS'
     s['fields']['Other']='MANUAL OTHER'
     text=PdfReader(BytesIO(handoff_pdf(s))).pages[0].extract_text()
-    assert text.index('Lab Results / Trends')<text.index('Devices:')<text.index('MANUAL ACCESS')
+    assert text.index('Goals / Follow-up')<text.index('Devices:')<text.index('MANUAL ACCESS')
     assert 'MANUAL OTHER' in text
     assert print_layout_info(s)['fits_one_page']
 
@@ -342,7 +342,7 @@ def test_schema19_session_upgrade_preserves_unsaved_draft(app):
     ss['drafts']['P4102']['fields']['Neurologic']='UNSAVED MANUAL NOTE'
     app.upgrade_existing_session()
     assert ss['drafts']['P4102']['fields']['Neurologic']=='UNSAVED MANUAL NOTE'
-    assert ss['drafts']['P4102']['devices'] is None and ss['vault']['schema']==25
+    assert ss['drafts']['P4102']['devices'] is None and ss['vault']['schema']==26
 
 @pytest.mark.parametrize('text', ['Endotracheal Tube: None','Urinary Catheter: --','Intracranial Pressure Monitor: No data recorded','No EVD','No ETT present','Tracheostomy Tube: N/A'])
 def test_empty_headers_and_absence_statements_do_not_invent_devices(text):

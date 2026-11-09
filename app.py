@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.35: Epic height formats and nutrition import fix."""
+"""PICU SmartPhrase v6.37: compact printing and optional difficult airway, based on 6.35."""
 from __future__ import annotations
 from copy import deepcopy
 from html import escape
@@ -33,6 +33,9 @@ from admin_access import admin_valid, unlock_admin, lock_admin, config_error as 
 from user_guide import (default_guide, publication, validate_guide, instructions_html,
                         MAX_TEMPLATE, MAX_INSTRUCTIONS, MAX_NOTES)
 from guide_store import GuideStore
+from difficult_airway import (empty_airway, validate_airway, collect_airway, airway_summary,
+                              FIELDS as AIRWAY_FIELDS, TEXT_LIMITS as AIRWAY_LIMITS,
+                              MASK_OPTIONS, PASSAGE_OPTIONS)
 from labs import validate_labs
 from lab_windows import (cardiac_labs_summary, theophylline_summary, id_summary, laboratory_data, window_help)
 from problem_review import (suggestions, empty_review, validate_review, set_decision, limitation_notes,
@@ -113,7 +116,7 @@ def edit_key(sheet: dict, section: str) -> str:
 
 def discard_editor_widget_values() -> None:
     for key in list(st.session_state):
-        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_", "diet_", "anthro_", "problem_")):
+        if key.startswith(("field_", "med_draft_", "med_pending_", "vent_", "niv_", "lab_", "vital_", "neuro_", "weight_", "culture_", "demo_", "viral_", "gas_", "cbc_", "rorder_", "io_", "feed_", "device_", "pacer_", "diet_", "anthro_", "problem_", "dairway_")):
             st.session_state.pop(key, None)
 
 
@@ -134,6 +137,8 @@ def editor_snapshot(room: str) -> dict:
     """
     ss = st.session_state
     sheet = deepcopy(ss["drafts"][room])
+    if any("dairway_" + sheet["id"] + "_" + field in ss for field in AIRWAY_FIELDS):
+        sheet["difficult_airway"] = collect_airway(sheet, ss)
     for section in SYSTEMS:
         key = edit_key(sheet, section)
         if key in ss:
@@ -916,7 +921,7 @@ def labs_vitals_editor(sheet: dict) -> None:
         st.text("Respiratory: " + theophylline_summary(sheet))
     if cardiac_labs_summary(sheet):
         st.text("Cardiovascular: " + cardiac_labs_summary(sheet))
-        st.caption("Lactate shows the earliest and latest usable results in the rolling 24-hour display window. The printed result omits the source code. All original codes, dates, flags and units remain in the editor. NT-proBNP shows the latest from all supplied dates. Date-only cutoff entries are marked timing unverified.")
+        st.caption("Lactate shows the earliest and latest usable results in the rolling 24-hour display window. The printed result omits the source code. All original codes, dates, flags and units remain in the editor. NT-proBNP shows the latest from all supplied dates. The original dates remain visible.")
     if id_summary(sheet):
         st.text("Infectious Disease:\n" + id_summary(sheet))
     st.caption("Glucose is in the BMP tree. Mg and phosphorus are below it. Albumin stays in Hepatic. Coagulation, including Anti-Xa (HEPLMW), is immediately below Hepatic in the lab results. CRP and procalcitonin (PROCAL) remain in ID below temperature. The latest THEOPH result prints as Theophylline level in Respiratory, below support settings and above medications.")
@@ -1300,7 +1305,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.35 | Weight and height import fix")
+        st.caption("Version 6.37 | Compact handoff and Difficult airway")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1497,6 +1502,14 @@ def render_room_save_table(rooms: list[str], store: GitHubVault | None) -> None:
 
 def handoff_page(store: GitHubVault | None) -> None:
     st.title("Room handoff")
+    due = bool(store) and time.monotonic() - st.session_state.get("handoff_guide_checked", 0) >= 30
+    guide = load_user_guide(store, refresh=due)
+    if due:
+        st.session_state["handoff_guide_checked"] = time.monotonic()
+    st.caption(smartphrase_publish_caption(guide, session_only=store is None,
+                                          stale=bool(st.session_state.get("guide_load_error"))))
+    st.button("Refresh SmartPhrase publication", key="refresh_handoff_guide",
+              on_click=refresh_user_guide, args=(store,))
     with st.expander("Instructions and Epic SmartPhrase", expanded=False):
         st.caption("Select a room, run the team SmartPhrase in Epic, paste the generated text, create, review, and save. Full steps are in Instructions / SmartPhrase in the sidebar.")
         guide = load_user_guide(store)
@@ -1549,7 +1562,7 @@ def handoff_page(store: GitHubVault | None) -> None:
         st.button("Start blank for new patient", on_click=start_new_patient)
         st.button("Load saved handoff", on_click=load_saved_into_editor)
         st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
-    paste_tab, meds_tab, labs_tab, cultures_tab, orders_tab, problems_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Labs/Imaging", "Problems", "Edit handoff", "Preview / print"])
+    paste_tab, meds_tab, labs_tab, cultures_tab, orders_tab, problems_tab, airway_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Labs/Imaging", "Problems", "Difficult airway", "Edit handoff", "Preview / print"])
     with paste_tab:
         st.caption("Paste your SmartPhrase and click Create / update handoff. Imported results and edits save automatically before you change rooms.")
         st.button("Clear pasted text", on_click=clear_paste)
@@ -1589,9 +1602,12 @@ def handoff_page(store: GitHubVault | None) -> None:
     with cultures_tab:
         cultures_editor(sheet)
     with orders_tab:
+        st.caption("Recurring orders and Labs notes remain available here but are not printed as a handoff column.")
         recurring_orders_editor(sheet)
     with problems_tab:
         problem_review_editor(sheet)
+    with airway_tab:
+        difficult_airway_editor(sheet)
     with edit_tab:
         devices_editor(sheet)
         st.caption("These are your separate notes. Re-pasting medications or ventilation does not erase them.")
@@ -2515,7 +2531,7 @@ def import_review_editor(sheet: dict) -> None:
         return
     st.warning(summary)
     with st.expander("Review skipped or incomplete imports", expanded=False):
-        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed orders, diet, feeds, device and pacemaker imports are retained for review but hidden from print. Do not treat skipped values as refreshed.")
+        st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed orders, diet, feeds, device and pacemaker imports are retained for review but hidden from print. Import warnings appear only here, not on downloaded handoffs. Do not treat skipped values as refreshed.")
         for section, items in sheet["import_warnings"].items():
             for item in items:
                 st.text(diagnostic_text(item))
@@ -2915,6 +2931,68 @@ def problem_review_editor(sheet: dict) -> None:
                 right.text_input(PROBLEM_LAB_LABELS[component] + ' source units', key=unit_key, max_chars=50)
             st.form_submit_button('Apply patient-specific limits', on_click=save_problem_limits, args=(sheet['room'], prefix))
     st.caption('Prompts skip failed imports, excluded/hidden medication orders, held or future orders, and preadmission lab results when admission is known. Kidney review uses a >50% rise between the latest two comparable creatinine results with an established order within 7 days. A fall or a same-date pair without times does not establish that rise.')
+
+
+
+def smartphrase_publish_caption(guide: dict, session_only: bool = False, stale: bool = False) -> str:
+    """Actual successful shared-guide publication, never the app build/room save."""
+    if not guide.get("smartphrase_text", "").strip():
+        return "SmartPhrase: not published yet."
+    stamp = guide.get("updated_at")
+    if not stamp:
+        return "SmartPhrase: publication date not available."
+    label = "SmartPhrase saved in this session only: " if session_only else "SmartPhrase published: "
+    result = label + saved_time_text(stamp)
+    return result + (" (last loaded copy, refresh failed)" if stale else "")
+
+
+def difficult_airway_change(room: str, sheet_id: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    sheet = deepcopy(ss["drafts"][room])
+    if sheet["id"] != sheet_id:
+        return
+    try:
+        sheet["difficult_airway"] = collect_airway(sheet, ss)
+        validate_sheet(sheet)
+    except ValueError as exc:
+        note(str(exc), "error")
+        return
+    ss["drafts"][room] = sheet
+
+
+def difficult_airway_editor(sheet: dict) -> None:
+    st.subheader("Difficult airway")
+    st.caption("Record the team's documented airway findings and plan. This section does not infer airway difficulty or generate a rescue plan.")
+    data = sheet.get("difficult_airway") or empty_airway()
+    prefix = "dairway_" + sheet["id"] + "_"
+    for field in AIRWAY_FIELDS:
+        st.session_state.setdefault(prefix + field, data[field])
+    args = (sheet["room"], sheet["id"])
+    st.checkbox("This patient has a difficult airway", key=prefix + "enabled",
+                on_change=difficult_airway_change, args=args)
+    if not st.session_state[prefix + "enabled"]:
+        st.caption("Nothing is added to the handoff while this is off. Previously entered details are kept for this patient only.")
+        return
+    st.selectbox("Can the patient be ventilated with a bag-mask?", MASK_OPTIONS,
+                 key=prefix + "mask_ventilation", on_change=difficult_airway_change, args=args)
+    st.selectbox("Was the tracheal tube difficult to pass?", PASSAGE_OPTIONS,
+                 key=prefix + "tube_passage", on_change=difficult_airway_change, args=args)
+    labels = {"view": "View obtained (documented grade or description)",
+              "equipment": "Technique / equipment used",
+              "tube_details": "Successful route / tube details (optional)",
+              "issue": "Key difficulty / brief description",
+              "plan": "Agreed airway plan / who to call (optional)",
+              "source": "Assessment date/time or source (optional)"}
+    for field, label in labels.items():
+        st.text_input(label, key=prefix + field, max_chars=AIRWAY_LIMITS[field],
+                      on_change=difficult_airway_change, args=args)
+    preview = dict(sheet, difficult_airway=collect_airway(sheet, st.session_state))
+    st.markdown('<div style="border:2px solid #8b1e16;background:#fff0ed;padding:10px">'
+                '<strong>DIFFICULT AIRWAY:</strong> ' + airway_summary(preview, True) + '</div>',
+                unsafe_allow_html=True)
+    st.caption("Save handoff or change rooms to save these details. New-patient reset clears this section.")
 
 
 if __name__ == "__main__":

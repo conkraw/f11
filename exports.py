@@ -28,14 +28,28 @@ from cultures import cultures_text
 from viral import viral_text
 from microbiology_display import culture_markup, viral_markup
 from print_time import eastern_print_time, PRINT_TIME_SCRIPT
+from difficult_airway import airway_summary, TITLE as AIRWAY_TITLE
 
 COLUMNS = (("PATIENT", None), ("NEURO", "Neurologic"), ("RESP", "Respiratory"),
            ("CARDIAC", "Cardiovascular"), ("FEN / GI", "FEN / GI"),
-           ("HEME", "Hematology"), ("ID", "Infectious Disease"), ("LABS/IMAGING", "Labs"))
-WIDTHS = (0.12, 0.14, 0.17, 0.12, 0.15, 0.10, 0.10, 0.10)
+           ("HEME", "Hematology"), ("ID", "Infectious Disease"))
+WIDTHS = (0.13, 0.16, 0.19, 0.14, 0.16, 0.11, 0.11)
 BOTTOM = ("Other Medications", "Lab Results / Trends", "Goals / Follow-up")
 ACCESS_FIELDS = ("Airway", "Last Intubation", "Access", "Drains / Tubes")
 
+
+
+def display_fields(sheet: dict, include_lab_text: bool = True) -> dict:
+    fields = fields_with_medications(sheet, include_lab_text=include_lab_text)
+    # Do not lose a medication just because its old mapping used the removed column.
+    extra_meds = [medication_output(format_medication(row)) for row in sheet["medications"]
+                  if visible(row) and effective_section(row) == "Labs"]
+    if extra_meds:
+        fields["Other Medications"] = "\n".join([v for v in [fields["Other Medications"]] + extra_meds if v])
+    fields["FEN / GI"] = fen_gi_body(sheet["fields"]["FEN / GI"], sheet["medications"], sheet["intake_output"],
+        feeds=feeds_for_output(sheet), feeds_failed=False, diet=diet_for_output(sheet), diet_failed=False,
+        dosing_weight=sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else "")
+    return fields
 
 def patient_header(sheet: dict) -> str:
     attributes = sheet.get("anthropometrics", {})
@@ -46,20 +60,22 @@ def patient_header(sheet: dict) -> str:
 
 @stable_window_clock
 def handoff_text(sheet: dict, printed_at: datetime | None = None) -> str:
-    fields = fields_with_medications(sheet)
+    fields = display_fields(sheet)
     parts = ["Print prepared: " + eastern_print_time(printed_at), "PICU HANDOFF", patient_header(sheet), "Handoff reference: " + sheet["id"][:8],
              "Saved (UTC): " + (sheet["updated_at"] or "Unsaved draft"),
              "Confirm patient identity in Epic. A room is not a patient identifier."]
-    if review_summary(sheet):
-        parts.extend(["", review_summary(sheet)])
     if problem_text(sheet):
         parts.extend(["", PROBLEM_TITLE + ": " + problem_text(sheet)])
     for section in SYSTEMS:
+        if section == "Labs":
+            continue
         content = fields[section].strip()
         if content:
             parts.extend(["", section_label(section).upper(), content])
     if devices_text(sheet):
         parts.extend(["", "DEVICES", devices_text(sheet)])
+    if airway_summary(sheet):
+        parts.extend(["", AIRWAY_TITLE + ": " + airway_summary(sheet)])
     return "\n".join(parts) + "\n"
 
 
@@ -94,7 +110,7 @@ def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
     """Escape source text while emphasizing generated headings, names and doses."""
     text = fields[section]
     if section == "FEN / GI":
-        return fen_gi_body(sheet["fields"][section], sheet["medications"], sheet["intake_output"], True, esc, feeds=feeds_for_output(sheet), feeds_failed=any(i["action"] == "feeds_hidden" for i in sheet["import_warnings"].get("t", [])), diet=diet_for_output(sheet), diet_failed=diet_failed(sheet), dosing_weight=sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else "")
+        return fen_gi_body(sheet["fields"][section], sheet["medications"], sheet["intake_output"], True, esc, feeds=feeds_for_output(sheet), feeds_failed=False, diet=diet_for_output(sheet), diet_failed=False, dosing_weight=sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else "")
     if section in INFUSION_SECTIONS:
         body = render_body_blocks(system_body_blocks(section, sheet["fields"][section], sheet["medications"]), True, esc)
         prefix = esc(infusion_section_prefix(sheet, section, bool(body.strip())))
@@ -127,7 +143,7 @@ def patient_markup(sheet: dict, fields: dict, esc=escape) -> str:
 
 @stable_window_clock
 def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
-    fields = fields_with_medications(sheet, include_lab_text=False)
+    fields = display_fields(sheet, include_lab_text=False)
     headers = ''.join('<th>' + escape(label) + '</th>' for label, _ in COLUMNS)
     cells = ''.join('<td><div class="content">' + (patient_markup(sheet, fields) if section is None else field_markup(sheet, fields, section)) + '</div></td>' for _, section in COLUMNS)
     cols = ''.join(f'<col style="width:{w*100:.1f}%">' for w in WIDTHS)
@@ -137,7 +153,11 @@ def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
         bands.append('<div class="band problem-review"><strong>' + escape(PROBLEM_TITLE) +
                      ':</strong> <span class="content">' + problems + '</span></div>')
     for key in BOTTOM:
-        bands.append('<div class="band"><strong>' + escape(key) + ':</strong>' + (laboratory_html(laboratory_data(sheet), blood_gas=sheet['blood_gas'], cbc=sheet['cbc']) if key == 'Lab Results / Trends' else '') + '<span class="content">' + escape(fields[key]) + '</span></div>')
+        lab_block = laboratory_html(laboratory_data(sheet), blood_gas=sheet['blood_gas'], cbc=sheet['cbc']) if key == 'Lab Results / Trends' else ''
+        if key == 'Lab Results / Trends' and not lab_block and not fields[key].strip():
+            continue
+        heading = '' if key == 'Lab Results / Trends' else '<strong>' + escape(key) + ':</strong>'
+        bands.append('<div class="band">' + heading + lab_block + '<span class="content">' + escape(fields[key]) + '</span></div>')
     extra = '\n'.join(k + ': ' + fields[k] for k in ('Skin / Wounds', 'Tasks', 'Other') if fields[k].strip())
     if extra:
         bands.insert(2, '<div class="band"><strong>Additional notes:</strong> <span class="content">' + escape(extra) + '</span></div>')
@@ -146,6 +166,7 @@ def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
         bands.append('<div class="band"><strong>Devices:</strong><div class="content">' + device_summary + '</div></div>')
     access = ''.join('<td><strong>' + escape(key) + ':</strong> <span class="content">' + escape(fields[key]) + '</span></td>' for key in ACCESS_FIELDS)
     access_table = ('<table class="access"><tbody><tr>' + access + '</tr></tbody></table>') if (not device_summary or any(fields[k].strip() for k in ACCESS_FIELDS)) else ''
+    airway_band = ('<div class="band difficult-airway"><strong>' + AIRWAY_TITLE + ':</strong> ' + airway_summary(sheet, True) + '</div>') if airway_summary(sheet) else ''
     return '''<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>PICU handoff</title>
 <style>
@@ -153,15 +174,15 @@ def handoff_html(sheet: dict, printed_at: datetime | None = None) -> str:
 main{width:11in;min-height:8.5in;margin:0 auto;background:white;padding:.25in}
 .meta{font:10px Arial,sans-serif;margin-bottom:5px;display:flex;justify-content:space-between}
 table{border-collapse:collapse;width:100%;table-layout:fixed}th{font-size:8pt;text-align:center;padding:2px;border-bottom:1px solid black}
-.systems td{border:1px solid black;vertical-align:top;height:auto;min-height:0;padding:3px;font-size:7.2pt;line-height:1.14}
-.import-review{font:bold 7pt/1.15 Arial,sans-serif;border:1px solid #222;padding:3px;margin-bottom:3px;overflow-wrap:anywhere}.content{white-space:pre-wrap;overflow-wrap:anywhere}.band{border:1px solid black;border-top:0;font-size:7.2pt;line-height:1.14;padding:3px;min-height:15px}
-.problem-review{background:#fff4cf;border:1px solid #80611a}.access{font-size:7.2pt}.access td{vertical-align:top;border:1px solid black;border-top:0;padding:3px;overflow-wrap:anywhere}
-.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;align-items:start}.labcard{width:100%;height:auto;border:1px solid #888;break-inside:avoid}.labnote{font:6.1pt/1.15 "Times New Roman",serif;margin:1px 0}.lab-summary{font:7.2pt/1.14 "Times New Roman",serif;overflow-wrap:anywhere;margin:1px 0}.lab-full{grid-column:1/-1}
+.systems td{border:1px solid black;vertical-align:top;height:auto;min-height:0;padding:3px;font-size:8pt;line-height:1.14}
+.import-review{font:bold 7pt/1.15 Arial,sans-serif;border:1px solid #222;padding:3px;margin-bottom:3px;overflow-wrap:anywhere}.content{white-space:pre-wrap;overflow-wrap:anywhere}.band{border:1px solid black;border-top:0;font-size:8pt;line-height:1.14;padding:3px;min-height:15px}
+.difficult-airway{background:#fff0ed;border:2px solid #8b1e16;padding:4px 6px;font-size:8pt;break-inside:avoid}.difficult-airway>strong{font-family:Arial,sans-serif;color:#8b1e16}.problem-review{background:#fff4cf;border:1px solid #80611a}.access{font-size:8pt}.access td{vertical-align:top;border:1px solid black;border-top:0;padding:3px;overflow-wrap:anywhere}
+.labcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;align-items:start}.labcard{width:100%;height:auto;border:1px solid #888;break-inside:avoid}.labnote{font:6.1pt/1.15 "Times New Roman",serif;margin:1px 0}.lab-summary{font:8pt/1.14 "Times New Roman",serif;overflow-wrap:anywhere;margin:1px 0}.lab-full{grid-column:1/-1}
 footer{font:6.1pt/1.2 Arial,sans-serif;margin-top:4px}
 @page{size:letter landscape;margin:.25in}
 @media print{body{margin:0;padding:0;background:white}main{width:100%;min-height:0;padding:0;margin:0}.systems td{height:auto}thead{display:table-header-group}footer{font-size:6.1pt}.band{break-inside:auto}}
-</style></head><body><main><div class="meta"><span><span data-print-label>Print prepared: </span><span data-print-time>''' + escape(eastern_print_time(printed_at)) + '''</span> | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | PICU HANDOFF' + '</span></div>' + ('<div class="import-review">' + escape(review_summary(sheet)) + '</div>' if review_summary(sheet) else '') + '''
-<table class="systems"><colgroup>''' + cols + '</colgroup><thead><tr>' + headers + '</tr></thead><tbody><tr>' + cells + '</tr></tbody></table>' + ''.join(bands) + access_table + '''
+</style></head><body><main><div class="meta"><span><span data-print-label>Print prepared: </span><span data-print-time>''' + escape(eastern_print_time(printed_at)) + '''</span> | Room ''' + escape(sheet['room']) + '''</span><span>Reference ''' + escape(sheet['id'][:8]) + ' | PICU HANDOFF' + '</span></div>' + '''
+<table class="systems"><colgroup>''' + cols + '</colgroup><thead><tr>' + headers + '</tr></thead><tbody><tr>' + cells + '</tr></tbody></table>' + ''.join(bands) + access_table + airway_band + '''
 <footer>Confirm the current patient in Epic. Blank sections are not confirmed normal. Downloaded copies are not encrypted. Infusion rates reflect the source Last Rate, not a live feed. Lab windows evaluated: ''' + escape(eastern_print_time(window_clock())) + '''. Download again to refresh filtered results.</footer>
 </main>''' + PRINT_TIME_SCRIPT + '</body></html>'
 
@@ -204,7 +225,7 @@ def handoff_pdf(sheet: dict, printed_at: datetime | None = None, *, target_pages
 # Print layout is independent of persisted handoff content or encryption schema.
 # Clinical text may shrink only within this explicit, bounded range. Beyond it,
 # pagination is used. Nothing is cropped or silently left out to force one page.
-PRINT_FONT_SIZES = (7.2, 7.0, 6.8, 6.5)
+PRINT_FONT_SIZES = (8.0, 7.5, 7.2, 7.0, 6.8, 6.5)
 PRINT_MARGIN = 18.0
 BAND_LABEL_HEIGHT = 10.0
 BAND_PADDING = 5.0
@@ -226,7 +247,7 @@ def _clinical_markup(text: str) -> str:
 def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: bool = False) -> dict:
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph, Spacer
-    fields = fields_with_medications(sheet, include_lab_text=False)
+    fields = display_fields(sheet, include_lab_text=False)
     total_width = page_width - 2 * PRINT_MARGIN
     widths = [total_width * value for value in WIDTHS]
     style = ParagraphStyle('compact-clinical', fontName='Times-Roman', fontSize=font_size,
@@ -288,6 +309,7 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: b
     bands = [(name, (laboratory_flowables(laboratory_data(sheet), total_width-6, font_size, blood_gas=sheet['blood_gas'], cbc=sheet['cbc'])
                     if name == 'Lab Results / Trends' else []) + paragraphs(text))
              for name, text in band_items]
+    bands = [(name, items) for name, items in bands if name != 'Lab Results / Trends' or items]
     problems = problem_text(sheet, rich=True, esc=_clinical_markup)
     if problems:
         bands.insert(0, (PROBLEM_TITLE, paragraphs('<b>' + PROBLEM_TITLE + ':</b> ' + problems, rich=True)))
@@ -297,9 +319,20 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: b
     access = [(name, paragraphs(fields[name])) for name in ACCESS_FIELDS]
     if device_summary and not any(fields[k].strip() for k in ACCESS_FIELDS):
         access = []
-    review = review_summary(sheet)
-    banner = Paragraph(escape(review), ParagraphStyle('review', fontName='Helvetica-Bold', fontSize=7, leading=8)) if review else None
-    review_height = banner.wrap(total_width, 10000)[1] + 4 if banner else 0
+    # On-sheet import diagnostics are omitted. The app still displays and logs them.
+    banner = None
+    review_height = 0
+    airway = airway_summary(sheet, True, _clinical_markup)
+    if airway:
+        # Put manual access notes before the final airway alert, without deleting them.
+        if access:
+            manual = " | ".join(name + ": " + fields[name] for name in ACCESS_FIELDS if fields[name].strip())
+            if manual:
+                bands.append(("Access / airway notes", paragraphs(manual)))
+            access = []
+        airway_style = ParagraphStyle('difficult-airway', parent=style, fontSize=max(font_size, 8),
+                                      leading=max(font_size, 8) + 1)
+        bands.append((AIRWAY_TITLE, [Paragraph('<b>' + AIRWAY_TITLE + ':</b> ' + airway, airway_style)]))
     return {'review_banner': banner, 'review_height': review_height,
             'font_size': font_size, 'leading': style.leading, 'width': total_width,
             'tight': tight, 'balanced': False, 'cell_padding': 2.0 if tight else 3.0,
@@ -314,7 +347,7 @@ def _plan_heights(plan: dict) -> tuple[float, list[float], float]:
     width = plan['width']
     pad = plan['cell_padding']
     main = max(20, max((_queue_height(q, w-2*pad) for q, w in zip(plan['columns'], plan['widths'])), default=0)+2*pad)
-    bands = [max(plan['empty_band'], _queue_height(q, width-6) + (0 if label == PROBLEM_TITLE else plan['band_label']) + plan['band_padding'])
+    bands = [max(plan['empty_band'], _queue_height(q, width-6) + (0 if label in (PROBLEM_TITLE, AIRWAY_TITLE, "Lab Results / Trends") else plan['band_label']) + plan['band_padding'])
              for label, q in plan['bands']]
     access = max(plan['access_min'], max((_queue_height(q, width/4-6) for _, q in plan['access']), default=0)+14) if plan['access'] else 0
     return main, bands, access
@@ -502,8 +535,10 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
     def minimum_band(label, queue):
         if not queue:
             return plan['empty_band']
-        local_label_height = 0 if label == PROBLEM_TITLE else label_height
+        local_label_height = 0 if label in (PROBLEM_TITLE, AIRWAY_TITLE, "Lab Results / Trends") else label_height
         minimum = local_label_height+band_padding+2*leading
+        if label == AIRWAY_TITLE:
+            return max(minimum, _queue_height(queue, total_width-6) + band_padding)
         # A fishbone row must fit intact. Reserve its preceding short note too,
         # so a large Other Medications band cannot starve the lab row forever.
         before = 0.0
@@ -571,19 +606,22 @@ def _draw_sheet(c, sheet: dict, width: float, height: float, position: int = 1, 
         y -= main_height
         updated_bands = []
         for (label, queue), bh in zip(bands, band_heights):
-            if label == PROBLEM_TITLE:
+            if label in (PROBLEM_TITLE, AIRWAY_TITLE):
                 c.saveState()
-                c.setFillColorRGB(1, .965, .86)
+                if label == AIRWAY_TITLE:
+                    c.setFillColorRGB(1, .94, .92)
+                else:
+                    c.setFillColorRGB(1, .965, .86)
                 c.rect(margin, y-bh, total_width, bh, fill=1, stroke=0)
                 c.restoreState()
             c.rect(margin, y-bh, total_width, bh)
-            local_label_height = 0 if label == PROBLEM_TITLE else label_height
-            if label != PROBLEM_TITLE:
+            local_label_height = 0 if label in (PROBLEM_TITLE, AIRWAY_TITLE, "Lab Results / Trends") else label_height
+            if label not in (PROBLEM_TITLE, AIRWAY_TITLE, "Lab Results / Trends"):
                 c.setFont('Times-Bold', 7.5)
                 c.drawString(margin+3, y-8, label + (':' if page == 1 else ' (continued):'))
             rest = draw_queue(queue, margin+3, y-local_label_height-2,
                               total_width-6, bh-local_label_height-band_padding)
-            if label != PROBLEM_TITLE or rest:
+            if label not in (PROBLEM_TITLE, AIRWAY_TITLE, "Lab Results / Trends") or rest:
                 updated_bands.append((label, rest))
             y -= bh
         bands = updated_bands

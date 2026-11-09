@@ -9,7 +9,7 @@ from textwrap import wrap
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Flowable, Paragraph
 from reportlab.lib.styles import ParagraphStyle
-from labs import result_cards, short_date, display_component
+from labs import result_cards, short_date, display_component, printable_source_notes
 
 NOTE = ('Latest/preceding PER COMPONENT, not confirmed same-draw panels. Dates are shown beside each result. '
         'Same-date ties without collection times follow source order. -- = unavailable or omitted.')
@@ -59,7 +59,7 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
                 break
     if kind == 'cbc':
         extras = [rows[k] for k in ('MCV','ANC','ALC','NEUTROABS','LYMPHSABS') if k in rows]
-        height = 100 + len(extras)*8
+        height = 84 + len(extras)*8
         offset = len(extras)*8
         node('WBC',25,48+offset); node('HGB',90,66+offset,65)
         node('HCT',90,28+offset,65); node('PLT',155,48+offset)
@@ -72,7 +72,7 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
             text(6,6+8*(len(extras)-i-1),value,6.5)
     elif kind == 'bmp':
         extras = [rows[key] for key in ('CALCIUM', 'MG', 'PHOS') if key in rows]
-        height = 100 + len(extras)*8
+        height = 84 + len(extras)*8
         offset = len(extras)*8
         for key,x,y in (('NA',22,66),('K',22,28),('CL',65,66),('CO2',65,28),('BUN',108,66),('CREATININE',108,28),('GLUCOSE',158,48)):
             node(key,x,y+offset)
@@ -100,8 +100,9 @@ def card_plan(card: dict, width: float) -> tuple[float, list]:
                 text(13,y,chunk,7.7); y-=9
             text(13,y,date,6.5); y-=11
     title, _, subtitle = card['title'].partition(' | ')
-    text(6,height-10,title,8,'Times-Bold')
-    text(6,height-19,subtitle,6.1)
+    if card['kind'] not in ('cbc', 'bmp'):
+        text(6,height-10,title,8,'Times-Bold')
+        text(6,height-19,subtitle,6.1)
     return height, plan
 
 
@@ -164,17 +165,17 @@ def horizontal_card_markup(card: dict) -> str:
     """
     rows = list(card['rows'].values())
     dates = {short_date(row['date']) for row in rows if row['date']}
-    title = escape(card['title'])
+    title = escape(card['title'].split(' | ', 1)[0]) if card['kind'] not in ('cbc', 'bmp') else ''
     same_date = len(dates) == 1 and all(row['date'] for row in rows)
     if same_date:
-        title += ' [' + escape(next(iter(dates))) + ']'
+        title += (' ' if title else '') + '[' + escape(next(iter(dates))) + ']'
     values = []
     for row in rows:
         value = escape(display_component(row['component'])) + ': ' + escape(row['value'])
         if not same_date and row['date']:
             value += ' [' + escape(short_date(row['date'])) + ']'
         values.append(value)
-    return '<b>' + title + ':</b> ' + ' | '.join(values)
+    return ('<b>' + title + ':</b> ' if title else '') + ' | '.join(values)
 
 
 def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, include_id_panels: bool = False, blood_gas: dict | None = None, cbc: dict | None = None) -> list:
@@ -183,7 +184,7 @@ def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, inclu
                            allowWidows=1, allowOrphans=1)
     note_style = ParagraphStyle('labnote', parent=style, fontSize=6.1, leading=7)
     cards = result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas, cbc=cbc)
-    out = [Paragraph(escape(note_for(cbc)), note_style)] if cards else []
+    out = []
     trees = [card for card in cards if card['kind'] in ('cbc', 'bmp')]
     for i in range(0, len(trees), 4):
         row = LabRow(trees[i:i+4], width)
@@ -196,14 +197,16 @@ def laboratory_flowables(data: dict, width: float, font_size: float = 7.2, inclu
     for card in cards:
         if card['kind'] not in ('cbc', 'bmp'):
             out.append(Paragraph(horizontal_card_markup(card), style))
-    for text in data['notes']:
+    for text in printable_source_notes(data['notes']):
         out.append(Paragraph(escape('Source: ' + text), note_style))
     return out
 
 
 def laboratory_html(data: dict, include_id_panels: bool = False, blood_gas: dict | None = None, cbc: dict | None = None) -> str:
     cards = result_cards(data, include_id_panels=include_id_panels, blood_gas=blood_gas, cbc=cbc)
-    pieces = ['<div class="labnote">' + escape(note_for(cbc)) + '</div>'] if cards else []
+    if not cards and not printable_source_notes(data['notes']):
+        return ''
+    pieces = []
     pieces.append('<div class="labcards">')
     for card in cards:
         if card['kind'] not in ('cbc', 'bmp'):
@@ -222,11 +225,11 @@ def laboratory_html(data: dict, include_id_panels: bool = False, blood_gas: dict
                 weight = 'bold' if font == 'Times-Bold' else 'normal'
                 anchor = 'middle' if align == 'center' else 'start'
                 body.append(f'<text x="{x}" y="{height-y}" font-family="Times New Roman,serif" font-size="{size}" font-weight="{weight}" text-anchor="{anchor}">{escape(value)}</text>')
-        pieces.append(f'<svg class="labcard" role="img" aria-label="{escape(card["title"], quote=True)}" viewBox="0 0 180 {height}" xmlns="http://www.w3.org/2000/svg">' + ''.join(body) + '</svg>')
+        pieces.append(f'<svg class="labcard" role="img" aria-label="{escape("Dated laboratory values" if card["kind"] in ("cbc", "bmp") else card["title"], quote=True)}" viewBox="0 0 180 {height}" xmlns="http://www.w3.org/2000/svg">' + ''.join(body) + '</svg>')
     pieces.append('</div>')
     for card in cards:
         if card['kind'] not in ('cbc', 'bmp'):
             pieces.append('<div class="lab-summary">' + horizontal_card_markup(card) + '</div>')
-    for text in data['notes']:
+    for text in printable_source_notes(data['notes']):
         pieces.append('<div class="labnote">Source: ' + escape(text) + '</div>')
     return ''.join(pieces)

@@ -24,6 +24,8 @@ def equip(app,monkeypatch):
     st.session_state.setdefault('user_guide', default_guide())
     st.session_state.setdefault('guide_sha', None)
     st.session_state.setdefault('guide_loaded', True)
+    import time
+    st.session_state.setdefault('handoff_guide_checked', time.monotonic())
     def control(label,*args,**kwargs):
         key=kwargs.get('key')
         options=args[0] if args and isinstance(args[0],(list,tuple)) else None
@@ -110,7 +112,7 @@ def test_session_upgrade_preserves_unsaved_notes(app):
     ss.update(vault=old,drafts={'P4102':deepcopy(old['rooms']['P4102'])},base_sheets={'P4102':deepcopy(old['rooms']['P4102'])})
     ss['drafts']['P4102']['fields']['Respiratory']='Unsaved old draft'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==25
+    assert ss['vault']['schema']==26
     assert ss['drafts']['P4102']['fields']['Respiratory']=='Unsaved old draft'
     assert ss['base_sheets']['P4102']['fields']['Respiratory']==''
     assert ss['drafts']['P4102']['medications']==[]

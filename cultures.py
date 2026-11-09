@@ -191,11 +191,18 @@ def compact_groups(data: dict, limit: int = 2) -> list[dict]:
         '' if g['category'] in order else g['category']))
 
 
+def culture_display(value: str) -> str:
+    """Shorten an unambiguously negative growth result, not a mixed result."""
+    if re.fullmatch(r"\s*no growth(?: to date)?(?: after \d+ days?)?(?:\s*\([^)]*\))?\.?\s*", value, re.I):
+        return "NGTD"
+    return value
+
+
 def cultures_text(data: dict) -> str:
     groups = compact_groups(data)
     if not groups:
         return ''
     lines = ['Cultures']
     for group in groups:
-        lines.append(short_date(group['date']) + ' | ' + group['specimen'] + ' | ' + ' / '.join(group['organisms']))
+        lines.append(short_date(group['date']) + ' | ' + group['specimen'] + ' | ' + ' / '.join(dict.fromkeys(culture_display(v) for v in group['organisms'])))
     return '\n'.join(lines)

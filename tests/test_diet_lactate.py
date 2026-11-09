@@ -112,7 +112,8 @@ def test_bad_boundary_skips_only_x_hides_old_diet_and_keeps_it_editable():
     assert r.sheet['fields']['Diagnoses']=='Synthetic diagnosis'
     assert r.sheet['diet']==before['diet'] and diet_for_output(r.sheet) is None
     assert 'Adult Regular' not in handoff_text(r.sheet)
-    assert 'Not updated. Review needed.' in handoff_text(r.sheet)
+    assert 'Not updated. Review needed.' not in handoff_text(r.sheet)
+    assert r.sheet['import_warnings']['x']
     assert 'Adult Regular' not in json.dumps(new_error_event(r.diagnostics))
     fixed=imported('Diet:\nNPO',r.sheet)
     assert 'x' not in fixed['import_warnings'] and 'Diet: NPO' in handoff_text(fixed)
@@ -176,7 +177,7 @@ def test_schema21_migration_preserves_every_prior_field_and_generation():
     v=save_sheet_in(new_vault(),new_sheet('P4102'));v['schema']=21;v['rooms']['P4102'].pop('diet')
     v['reset_generation']='a'*32;v['rooms']['P4102']['fields']['FEN / GI']='Original note'
     before=deepcopy(v);new=upgrade_vault(v)
-    assert v==before and new['schema']==SCHEMA_VERSION==25
+    assert v==before and new['schema']==SCHEMA_VERSION==26
     assert new['rooms']['P4102']==dict(before['rooms']['P4102'],diet=None)
     assert new['settings']==before['settings'] and new['reset_generation']==before['reset_generation']
 
