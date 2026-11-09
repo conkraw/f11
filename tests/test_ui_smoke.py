@@ -40,7 +40,7 @@ def equip(app,monkeypatch):
         return default
     for name in ['text','caption','info','warning','error','success','title','header','subheader','divider','markdown','code']:
         setattr(st,name,lambda *args,**kwargs:None)
-    for name in ['text_input','text_area','selectbox','radio','checkbox','file_uploader']:
+    for name in ['text_input','text_area','selectbox','radio','checkbox','file_uploader','number_input']:
         setattr(st,name,control)
     st.expander=lambda *a,**k:Panel(st)
     st.form=lambda *a,**k:Panel(st)
@@ -112,7 +112,7 @@ def test_session_upgrade_preserves_unsaved_notes(app):
     ss.update(vault=old,drafts={'P4102':deepcopy(old['rooms']['P4102'])},base_sheets={'P4102':deepcopy(old['rooms']['P4102'])})
     ss['drafts']['P4102']['fields']['Respiratory']='Unsaved old draft'
     app.upgrade_existing_session()
-    assert ss['vault']['schema']==26
+    assert ss['vault']['schema']==27
     assert ss['drafts']['P4102']['fields']['Respiratory']=='Unsaved old draft'
     assert ss['base_sheets']['P4102']['fields']['Respiratory']==''
     assert ss['drafts']['P4102']['medications']==[]

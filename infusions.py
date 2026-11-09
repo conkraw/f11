@@ -35,6 +35,8 @@ def supports_infusion_display(row: dict) -> bool:
     PRN/fever and GI groups retain their existing priority over infusion display.
     """
     section = effective_section(row)
+    if row.get("category_path") is not None:
+        return section in INFUSION_HEADINGS or section == "FEN / GI"
     group = special_group(row)
     if section == "FEN / GI":
         return gi_group(row) == "endocrine"
@@ -153,64 +155,9 @@ def infusion_entry(row: dict, rich: bool = False, esc=escape, handoff_only: bool
     return '\n'.join(lines)
 
 
-def system_body_blocks(section: str, notes: str, rows: list[dict]) -> list[tuple[str, object]]:
-    """One shared block model for plain text, HTML and PDF. No duplicate orders."""
-    meds = [r for r in rows if visible(r) and effective_section(r) == section]
-    if section == "Neurologic":
-        # Stable leading-name sort keeps the same medicine's taper steps in
-        # source order, even when Epic embeds different doses in the product name.
-        # Do not rewrite source fields or reorder the stored medication list.
-        meds = sorted(meds, key=lambda r: match_name(r.get("name", "")).split(" ", 1)[0])
-    groups = []
-    assigned = set()
-    if section == "Hematology":
-        # The requested category takes priority over the route of delivery.
-        # Keep all DVT orders together, using infusion emphasis within the group
-        # rather than moving its continuous orders into a separate group.
-        dvt = [r for r in meds if special_group(r) == "dvt"]
-        if dvt:
-            groups.append([("heading", GROUP_NAMES["dvt"])] + [
-                ("infusion" if supports_infusion_display(r) and is_infusion(r)
-                 else "medication", r) for r in dvt
-            ])
-            assigned.update(r["id"] for r in dvt)
-    # Category headings take priority over the generic CV infusion bucket.
-    # An infusion remains emphasized inside its category and appears only once.
-    if section == "Cardiovascular":
-        for mode in CV_GROUPS:
-            group = [r for r in meds if r["id"] not in assigned and special_group(r) == mode]
-            if group:
-                groups.append([("heading", GROUP_NAMES[mode])] + [
-                    ("infusion" if is_infusion(r) else "medication", r) for r in group])
-                assigned.update(r["id"] for r in group)
-    if section in INFUSION_SECTIONS:
-        drips = [r for r in meds if r["id"] not in assigned
-                 and supports_infusion_display(r) and is_infusion(r) and not special_group(r)]
-        if drips:
-            groups.append([("heading", INFUSION_HEADINGS[section])] +
-                          [("infusion", r) for r in drips])
-            assigned.update(r["id"] for r in drips)
-    modes = ((NEURO_PRIORITY_GROUPS + tuple(sorted(NEURO_OTHER_GROUPS,
-                      key=lambda key: GROUP_NAMES[key].casefold()))) if section == "Neurologic"
-             else RESP_GROUPS if section == "Respiratory" else ())
-    for mode in modes:
-        group = [r for r in meds if r["id"] not in assigned and special_group(r) == mode]
-        if group:
-            groups.append([("heading", GROUP_NAMES[mode])] + [("infusion" if (mode in ("antiepileptic", "paralytic_infusion") + RESP_GROUPS) and is_infusion(r) else "medication", r) for r in group])
-            assigned.update(r["id"] for r in group)
-    other = [r for r in meds if r["id"] not in assigned]
-    if not groups:
-        return ([("notes", notes.rstrip())] if notes.strip() else []) + [("medication", r) for r in other]
-    if notes.strip():
-        groups.append([("notes", notes.rstrip())])
-    if other:
-        groups.append([("heading", "Other Medications")] + [("medication", r) for r in other])
-    blocks = []
-    for group in groups:
-        if blocks:
-            blocks.append(("separator", "-----"))
-        blocks.extend(group)
-    return blocks
+def system_body_blocks(section: str, notes: str, rows: list[dict], sheet: dict | None = None) -> list[tuple[str, object]]:
+    from categories import medication_blocks
+    return medication_blocks(section, notes, rows, sheet)
 
 
 def render_body_blocks(blocks: list[tuple[str, object]], rich: bool = False, esc=escape) -> str:
@@ -230,18 +177,18 @@ def render_body_blocks(blocks: list[tuple[str, object]], rich: bool = False, esc
     return "\n".join(lines)
 
 
-def neuro_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
+def neuro_body(notes: str, rows: list[dict], rich: bool = False, esc=escape, sheet: dict | None = None) -> str:
     """Infusions, PRNs, paralytics, alphabetical categories, notes and other meds."""
-    return render_body_blocks(system_body_blocks("Neurologic", notes, rows), rich, esc)
+    return render_body_blocks(system_body_blocks("Neurologic", notes, rows, sheet), rich, esc)
 
 
-def cardiovascular_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
-    return render_body_blocks(system_body_blocks("Cardiovascular", notes, rows), rich, esc)
+def cardiovascular_body(notes: str, rows: list[dict], rich: bool = False, esc=escape, sheet: dict | None = None) -> str:
+    return render_body_blocks(system_body_blocks("Cardiovascular", notes, rows, sheet), rich, esc)
 
 
-def hematology_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
-    return render_body_blocks(system_body_blocks("Hematology", notes, rows), rich, esc)
+def hematology_body(notes: str, rows: list[dict], rich: bool = False, esc=escape, sheet: dict | None = None) -> str:
+    return render_body_blocks(system_body_blocks("Hematology", notes, rows, sheet), rich, esc)
 
 
-def respiratory_body(notes: str, rows: list[dict], rich: bool = False, esc=escape) -> str:
-    return render_body_blocks(system_body_blocks("Respiratory", notes, rows), rich, esc)
+def respiratory_body(notes: str, rows: list[dict], rich: bool = False, esc=escape, sheet: dict | None = None) -> str:
+    return render_body_blocks(system_body_blocks("Respiratory", notes, rows, sheet), rich, esc)

@@ -190,7 +190,7 @@ def test_vitals_always_before_support_lactate_notes_and_meds():
     s['fields']['Infectious Disease']='ID MANUAL'
     s['medications']=remap(s['medications'],upsert_rule([],'albuterol','Respiratory'))
     f=fields_with_medications(s)
-    assert f['Respiratory'].index('Resp:')<f['Respiratory'].index('Mode:')<f['Respiratory'].index('Respiratory Infusions')<f['Respiratory'].index('albuterol')<f['Respiratory'].index('RESP MANUAL')
+    assert f['Respiratory'].index('Resp:')<f['Respiratory'].index('Mode:')<f['Respiratory'].index('Beta-Agonist')<f['Respiratory'].index('albuterol')<f['Respiratory'].index('RESP MANUAL')
     assert f['Cardiovascular'].index('Heart Rate:')<f['Cardiovascular'].index('Lactate ')<f['Cardiovascular'].index('CARDIAC MANUAL')
     assert f['Infectious Disease'].startswith('Temp:')
 
@@ -316,7 +316,7 @@ def test_v6_encrypted_roundtrip_and_v5_migration():
     baseline=deepcopy(old)
     oldtoken=Fernet(key.encode()).encrypt(json.dumps(old).encode())
     upgraded=open_vault(oldtoken,key)
-    assert upgraded['schema']==26 and old==baseline
+    assert upgraded['schema']==27 and old==baseline
     after=upgraded['rooms']['P4102'];before=old['rooms']['P4102']
     for k in ('fields','noninvasive','ventilation','id','updated_at'):
         assert after[k]==before[k]

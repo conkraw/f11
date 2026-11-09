@@ -113,8 +113,8 @@ def test_respiratory_order_and_single_occurrence():
     fields = fields_with_medications(s)
     text = fields['Respiratory']
     for left, right in [('Resp:', 'Mode:'), ('Mode:', 'Theophylline level:'),
-                        ('Theophylline level:', 'Respiratory note sentinel'),
-                        ('Respiratory note sentinel', 'albuterol')]:
+                        ('Theophylline level:', 'Beta-Agonist'),
+                        ('albuterol', 'Respiratory note sentinel')]:
         assert text.index(left) < text.index(right)
     assert text.count('Theophylline level:') == 1
     assert 'Theophylline' not in fields['Lab Results / Trends']
@@ -215,7 +215,7 @@ def test_original_fields_encrypted_without_schema_or_key_change():
     before = deepcopy(vault)
     key = generate_key()
     reopened = open_vault(seal_vault(vault, key), key)
-    assert SCHEMA_VERSION ==26
+    assert SCHEMA_VERSION ==27
     assert reopened == before
     assert 'Theophylline level:' in fields_with_medications(reopened['rooms']['P4102'])['Respiratory']
 

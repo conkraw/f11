@@ -16,6 +16,7 @@ from infusions import (neuro_body, cardiovascular_body, hematology_body, is_infu
                        system_body_blocks, render_body_blocks, INFUSION_SECTIONS)
 from lab_windows import cardiac_labs_summary, theophylline_summary, laboratory_data, stable_window_clock, clock as window_clock
 from problem_review import review_text as problem_text, TITLE as PROBLEM_TITLE
+from categories import theophylline_anchor, medication_blocks
 from medications import visible, format_medication
 from output_text import medication_output
 from fen_gi import effective_section, fen_gi_body
@@ -48,7 +49,7 @@ def display_fields(sheet: dict, include_lab_text: bool = True) -> dict:
         fields["Other Medications"] = "\n".join([v for v in [fields["Other Medications"]] + extra_meds if v])
     fields["FEN / GI"] = fen_gi_body(sheet["fields"]["FEN / GI"], sheet["medications"], sheet["intake_output"],
         feeds=feeds_for_output(sheet), feeds_failed=False, diet=diet_for_output(sheet), diet_failed=False,
-        dosing_weight=sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else "")
+        dosing_weight=sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else "", sheet=sheet)
     return fields
 
 def patient_header(sheet: dict) -> str:
@@ -97,7 +98,7 @@ def infusion_section_prefix(sheet: dict, section: str, has_body: bool) -> str:
         parts.append(cardiac_labs_summary(sheet))
     elif section == "Respiratory":
         support = respiratory_text(sheet)
-        level = theophylline_summary(sheet)
+        level = "" if theophylline_anchor(sheet) else theophylline_summary(sheet)
         parts.extend((support, level))
         trailing_support_separator = bool(support and not level)
     prefix = "\n-----\n".join(v for v in parts if v.strip())
@@ -110,9 +111,9 @@ def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
     """Escape source text while emphasizing generated headings, names and doses."""
     text = fields[section]
     if section == "FEN / GI":
-        return fen_gi_body(sheet["fields"][section], sheet["medications"], sheet["intake_output"], True, esc, feeds=feeds_for_output(sheet), feeds_failed=False, diet=diet_for_output(sheet), diet_failed=False, dosing_weight=sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else "")
+        return fen_gi_body(sheet["fields"][section], sheet["medications"], sheet["intake_output"], True, esc, feeds=feeds_for_output(sheet), feeds_failed=False, diet=diet_for_output(sheet), diet_failed=False, dosing_weight=sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else "", sheet=sheet)
     if section in INFUSION_SECTIONS:
-        body = render_body_blocks(system_body_blocks(section, sheet["fields"][section], sheet["medications"]), True, esc)
+        body = render_body_blocks(system_body_blocks(section, sheet["fields"][section], sheet["medications"], sheet), True, esc)
         prefix = esc(infusion_section_prefix(sheet, section, bool(body.strip())))
         pacing = pacemaker_text(sheet) if section == "Cardiovascular" else ""
         if pacing:
@@ -123,11 +124,15 @@ def field_markup(sheet: dict, fields: dict, section: str, esc=escape) -> str:
         if plain and text.endswith(plain):
             return esc(text[:-len(plain)]) + viral_markup(sheet["viral_panel"], esc)
     if section == "Infectious Disease":
+        markup = esc(text)
         plain = cultures_text(sheet["cultures"])
         if plain:
-            index = text.find(plain)
-            if index >= 0:
-                return esc(text[:index]) + culture_markup(sheet["cultures"], esc) + esc(text[index+len(plain):])
+            markup = markup.replace(esc(plain), culture_markup(sheet["cultures"], esc), 1)
+        blocks = medication_blocks(section, sheet["fields"][section], sheet["medications"], sheet)
+        body = render_body_blocks(blocks)
+        if body:
+            markup = markup.replace(esc(body), render_body_blocks(blocks, True, esc), 1)
+        return markup
     return esc(text)
 
 
@@ -272,7 +277,7 @@ def _make_pdf_plan(sheet: dict, page_width: float, font_size: float, *, tight: b
     for column_index, (_, section) in enumerate(COLUMNS):
         if section not in INFUSION_SECTIONS:
             continue
-        blocks = system_body_blocks(section, sheet["fields"][section], sheet["medications"])
+        blocks = system_body_blocks(section, sheet["fields"][section], sheet["medications"], sheet)
         q = []
         prefix_text = infusion_section_prefix(sheet, section, bool(blocks)).rstrip("\n")
         if prefix_text:

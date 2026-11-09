@@ -43,6 +43,8 @@ def group_for(row: dict) -> str:
 
 
 def effective_section(row: dict) -> str:
+    if row.get("category_path") is not None:
+        return row["category_path"]["section"]
     special = special_group(row)
     if special:
         return GROUP_SECTIONS[special]
@@ -98,7 +100,7 @@ def apply_gi_rules(rows: list[dict], rules: list[dict]) -> list[dict]:
     return result
 
 
-def fen_gi_body(notes: str, rows: list[dict], intake_output: dict | None, rich: bool = False, esc=escape, feeds: dict | None = None, feeds_failed: bool = False, diet: dict | None = None, diet_failed: bool = False, dosing_weight: str = "") -> str:
+def fen_gi_body(notes: str, rows: list[dict], intake_output: dict | None, rich: bool = False, esc=escape, feeds: dict | None = None, feeds_failed: bool = False, diet: dict | None = None, diet_failed: bool = False, dosing_weight: str = "", sheet: dict | None = None) -> str:
     """Totals, then feeds.  Each visible order appears exactly once, without changing doses."""
     encode = esc if rich else lambda s: s
     meds = [r for r in rows if visible(r) and effective_section(r) == "FEN / GI"]
@@ -116,22 +118,9 @@ def fen_gi_body(notes: str, rows: list[dict], intake_output: dict | None, rich: 
         feeding = ("<b>Feeds:</b>" if rich else "Feeds:") + "\nNot updated. Review needed."
     if feeding:
         sections.append(feeding)
-    for mode, label in GROUP_NAMES.items():
-        grouped = [r for r in meds if group_for(r) == mode]
-        if grouped:
-            heading = "<b>" + encode(label) + "</b>" if rich else label
-            # Local import avoids the presentation-module import cycle. It is
-            # evaluated only when rendering, after all modules are initialized.
-            from infusions import infusion_entry, is_infusion
-            entries = [(infusion_entry(r, rich, esc, handoff_only=True).replace("\n", "<br/>") if rich
-                        else infusion_entry(r, False, esc, handoff_only=True))
-                       if mode == "endocrine" and is_infusion(r)
-                       else encode(medication_output(format_medication(r))) for r in grouped]
-            sections.append("\n".join([heading] + entries))
-    if notes.strip():
-        sections.append(encode(notes.rstrip()))
-    others = [r for r in meds if not group_for(r)]
-    if others:
-        heading = ("<b>Other FEN/GI medications</b>" if rich else "Other FEN/GI medications") if any(group_for(r) for r in meds) else ""
-        sections.append("\n".join(([heading] if heading else []) + [encode(medication_output(format_medication(r))) for r in others]))
+    from categories import medication_blocks
+    from infusions import render_body_blocks
+    body = render_body_blocks(medication_blocks("FEN / GI", notes, rows, sheet), rich, esc)
+    if body:
+        sections.append(body)
     return "\n-----\n".join(sections)

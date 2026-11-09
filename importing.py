@@ -1,5 +1,6 @@
 """One-click A/B/C/D/E/F/G/I/K/L/M/N/O/P/Q/R/S/T import with independent section recovery and explicit retained-data warnings."""
 from __future__ import annotations
+from categories import apply_category_rules
 from copy import deepcopy
 import re
 from dataclasses import dataclass, field
@@ -105,6 +106,7 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                     out.errors.extend([meds.error] + meds.issues)
                     continue
                 candidate = apply_medications(candidate, apply_group_rules(apply_gi_rules(apply_infusion_rules(meds.rows, settings.get("medication_infusions", [])), settings.get("medication_gi_groups", [])), settings.get("medication_groups", [])))
+                candidate["medications"] = apply_category_rules(candidate["medications"], settings)
                 out.imported.append(str(len(meds.rows)) + " medication orders")
             elif letter in "cd":
                 if letter == "d" and ("c" in parsed.blocks or "c" in parsed.invalid):

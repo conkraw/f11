@@ -98,7 +98,7 @@ def test_c_only_import_and_resp_separator_before_meds():
     result=import_sections(s,'cccccccc\n'+BLOCK+'\ncccccccc',new_vault()['settings'])
     assert not result.errors
     resp=fields_with_medications(result.sheet)['Respiratory']
-    assert resp.startswith(EXPECTED+'\n-----\nRespiratory Infusions\nalbuterol')
+    assert resp.startswith(EXPECTED+'\n-----\nBeta-Agonist\nalbuterol')
     assert resp.endswith('-----\nManual respiratory note')
     assert 'Vent Mode' not in result.sheet['fields']['Respiratory']
 
@@ -134,7 +134,7 @@ def test_existing_schema_two_preserved_with_new_field():
     old['rooms']['P4102']['fields']['Respiratory']='Old manual note'
     old['settings']['medication_mappings']=upsert_rule([],'acetaminophen','Neurologic')
     migrated=upgrade_vault(old)
-    assert migrated['schema']==26 and old['schema']==2
+    assert migrated['schema']==27 and old['schema']==2
     assert migrated['rooms']['P4102']['fields']['Respiratory']=='Old manual note'
     assert migrated['settings']['medication_mappings']==old['settings']['medication_mappings']
     assert migrated['rooms']['P4102']['ventilation'] is None

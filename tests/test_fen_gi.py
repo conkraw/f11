@@ -200,7 +200,7 @@ def test_latest_archive_migration_preserves_original_fields_and_settings():
     s=new_sheet('P4102');s.pop("feeds", None);s.pop("devices", None);s.pop("neuro_devices", None);s.pop("pacemaker", None);s.pop("diet", None);s.pop("import_warnings", None);s.pop('intake_output');s['fields']['FEN / GI']='Preserve this note'
     old['rooms'][s['room']]=s;original=deepcopy(old)
     new=upgrade_vault(old)
-    assert old==original and new['schema']==SCHEMA_VERSION==26
+    assert old==original and new['schema']==SCHEMA_VERSION==27
     assert new['rooms'][s['room']]==dict(s,intake_output=None,import_warnings={},feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None)
     assert new['settings']==dict(old['settings'],medication_gi_groups=[], medication_groups=[])
     key=Fernet.generate_key().decode()
@@ -274,7 +274,8 @@ def test_system_override_disables_automatic_group_and_stays_saved(app):
 
 def test_ui_effective_destination_does_not_create_unsolicited_mapping(app,monkeypatch):
     ss,s=setup(app);equip(app,monkeypatch);app.handoff_page(None)
-    assert ss['med_draft_'+s['medications'][0]['id']+'_section']=='FEN / GI'
+    assert ss['med_draft_'+s['medications'][0]['id']+'_category_target']=='auto'
+    assert effective_section(s['medications'][0])=='FEN / GI'
     snap=app.editor_snapshot('P4102')
     assert snap['medications'][0]['section']==s['medications'][0]['section']=='Other Medications'
     change_room(app)

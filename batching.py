@@ -25,7 +25,9 @@ def available_handoffs(vault: dict, drafts: dict) -> dict:
     rooms = deepcopy(vault["rooms"])
     rooms.update(deepcopy(drafts))  # An open draft is the latest displayed version.
     ready = {}
+    from categories import apply_category_rules
     for room, sheet in rooms.items():
+        sheet["medications"] = apply_category_rules(sheet["medications"], vault["settings"])
         validate_sheet(sheet)
         if airway_summary(sheet) or any(sheet.get("anthropometrics", {}).values()) or sheet.get("import_warnings") or any(v.strip() for v in sheet["fields"].values()) or any(visible(r) for r in sheet["medications"]) or sheet["ventilation"] or sheet["noninvasive"] or any(r["include"] for r in sheet["vitals"]) or any(r["include"] for r in sheet["labs"]["rows"]) or sheet["labs"]["notes"] or cbc_cards(sheet["labs"], sheet["cbc"]) or latest_sample(sheet["blood_gas"])[0] or any(r["include"] for r in neuro_rows(sheet["neuro_vitals"])) or format_nutrition(sheet["nutrition"]) or sheet["dosing_weight"] or sheet["admission_date"] or viral_text(sheet["viral_panel"]) or any(r["include"] for r in sheet["cultures"]["rows"]) or selected_orders(sheet["recurring_orders"]) or balance_text(sheet["intake_output"]) or feeds_text(feeds_for_output(sheet)) or devices_text(sheet) or evd_text(sheet) or pacemaker_text(sheet) or diet_text(diet_for_output(sheet)):
             ready[room] = sheet

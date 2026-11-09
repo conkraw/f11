@@ -36,8 +36,9 @@ def test_requested_defaults_case_labels_source_preserved(name,group,prefix,route
             frequency='q12h',rate='',section='Other Medications')
     before=deepcopy(row)
     assert automatic_group(row)==group
-    assert effective_section(row)=='Neurologic'
-    text=neuro_body('',[row],True)
+    section='Respiratory' if group=='airway_cerebral_steroid' else 'Neurologic'
+    assert effective_section(row)==section
+    text=render_body_blocks(system_body_blocks(section,'',[row]),True)
     assert '<b>'+GROUP_NAMES[group]+'</b>' in text
     assert row==before
 
@@ -119,14 +120,14 @@ def test_neuro_category_order_and_alphabetical_medicines():
     with display_clock(NOW):
         text=fields_with_medications(s)['Neurologic']
     ordered=['SBS -1','WAT-1 total score (0-12): 0','\nInfusions\n','\nPRN\n',
-        'Paralytic Infusions','Paralytic PRN','Airway/Cerebral Steroids','Antiepileptic',
+        'Paralytic Infusions','Paralytic PRN','Antiepileptic',
         'Antispasmodic','Fever Control','Insomnia','Neuromodulation','Synthetic neurologic note']
     assert [text.index(x) for x in ordered]==sorted(text.index(x) for x in ordered)
     assert text.index('SED_PRN_A')<text.index('SED_PRN_B')
     assert text.index('NM_A')<text.index('NM_Z')
     assert text.index('INS_A')<text.index('INS_B')
     for row in s['medications']:
-        assert text.count(row['name'])==1
+        assert fields_with_medications(s)[effective_section(row)].count(row['name'])==1
     assert s==before
 
 
@@ -149,7 +150,7 @@ def test_all_outputs_and_pdf_preserve_order_rates_and_observations():
 def test_neuro_taper_same_name_order_not_reversed_by_alphabetical_sort():
     rows=[med('[START ON 11/9/2026] dexamethasone syrup',dose='2 mg',frequency='q12h'),
           med('[START ON 11/10/2026] dexamethasone syrup',dose='1 mg',frequency='q24h')]
-    blocks=system_body_blocks('Neurologic','',list(reversed(rows)))
+    blocks=system_body_blocks('Respiratory','',list(reversed(rows)))
     assert [v['id'] for k,v in blocks if isinstance(v,dict)]==[r['id'] for r in reversed(rows)]
 
 
@@ -233,6 +234,6 @@ def test_neuro_taper_embedded_product_doses_do_not_reorder_steps():
           med('[START ON 11/9/2026] dexamethasone (Decadron) 1 mg/mL syringe 1 mg',dose='1 mg',frequency='q12h'),
           med('[START ON 11/10/2026] dexamethasone (Decadron) 1 mg/mL syringe 0.5 mg',dose='0.5 mg',frequency='q24h')]
     before=deepcopy(rows)
-    blocks=system_body_blocks('Neurologic','',rows)
+    blocks=system_body_blocks('Respiratory','',rows)
     assert [v['id'] for k,v in blocks if isinstance(v,dict)]==[r['id'] for r in rows]
     assert rows==before

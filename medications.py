@@ -120,8 +120,11 @@ def upsert_rule(rules: list[dict], name: str, destination: str, match: str = "pr
 
 
 def validate_medication(row: dict) -> None:
-    if not isinstance(row, dict) or not FIELDS.issubset(row) or set(row) - FIELDS - {"infusion_mode", "gi_mode", "group_mode"} - set(ADMIN_FIELDS):
+    if not isinstance(row, dict) or not FIELDS.issubset(row) or set(row) - FIELDS - {"infusion_mode", "gi_mode", "group_mode", "category_path"} - set(ADMIN_FIELDS):
         raise ValueError("A medication entry has an invalid structure.")
+    if "category_path" in row:
+        from categories import validate_snapshot
+        validate_snapshot(row["category_path"])
     validate_admin_fields(row)
     if row.get("infusion_mode", "auto") not in ("auto", "infusion", "other"):
         raise ValueError("Choose a valid infusion display setting.")

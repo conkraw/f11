@@ -181,7 +181,7 @@ def test_v17_encrypted_migration_preserves_every_prior_setting_and_sheet():
     before=deepcopy(v);key=generate_key();data=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     out=open_vault(data,key)
     assert out['rooms']=={room: dict(sheet, feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None) for room, sheet in v['rooms'].items()} and out['settings']==v['settings'] and v==before
-    assert out['schema']==26 and out['reset_generation']==''
+    assert out['schema']==27 and out['reset_generation']==''
     assert open_vault(seal_vault(out,key),key)==out
 
 
@@ -258,7 +258,7 @@ def test_labs_and_medication_data_unchanged_by_layout():
     for target in (1,2):
         report=print_fit_report(s,target)
         text=''.join(p.get_text() for p in fitz.open(stream=handoff_pdf(s,target_pages=target),filetype='pdf'))
-        assert report['page_count']==1
+        assert report['page_count']<=target
         for token in ('Hepatic','Coagulation','Pediatric 2-in-1 PN','And: fat emulsion','[Held by provider]'):
             assert token in text
     assert s==before

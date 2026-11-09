@@ -1,6 +1,8 @@
 """PICU SmartPhrase v6.37: compact printing and optional difficult airway, based on 6.35."""
 from __future__ import annotations
 from copy import deepcopy
+from categories import apply_category_rules, set_category_rule, theophylline_anchor
+from category_ui import placement_picker, category_admin, local_target
 from html import escape
 from pathlib import Path
 import time
@@ -124,6 +126,7 @@ def set_editor(room: str, sheet: dict) -> None:
     validate_sheet(sheet)
     discard_editor_widget_values()
     st.session_state.setdefault("drafts", {})[room] = deepcopy(sheet)
+    st.session_state["drafts"][room]["medications"] = apply_category_rules(sheet["medications"], st.session_state.get("vault", {}).get("settings", {}))
     st.session_state["paste"] = ""
     st.session_state.pop("import_result", None)
 
@@ -172,6 +175,7 @@ def editor_snapshot(room: str) -> dict:
             group = special_group(row)
             if group and row["section"] != GROUP_SECTIONS[group]:
                 row["group_mode"] = "other"
+    sheet["medications"] = apply_category_rules(sheet["medications"], ss["vault"]["settings"])
     if sheet["intake_output"] is not None:
         for field in IO_FIELDS + IO_META_FIELDS + ("include",):
             key = "io_" + sheet["id"] + "_" + field
@@ -926,7 +930,7 @@ def labs_vitals_editor(sheet: dict) -> None:
         st.caption("Lactate shows the earliest and latest usable results in the rolling 24-hour display window. The printed result omits the source code. All original codes, dates, flags and units remain in the editor. NT-proBNP shows the latest from all supplied dates. The original dates remain visible.")
     if id_summary(sheet):
         st.text("Infectious Disease:\n" + id_summary(sheet))
-    st.caption("Glucose is in the BMP tree. Mg and phosphorus are below it. Albumin stays in Hepatic. Coagulation, including Anti-Xa (HEPLMW), is immediately below Hepatic in the lab results. CRP and procalcitonin (PROCAL) remain in ID below temperature. The latest THEOPH result prints as Theophylline level in Respiratory, below support settings and above medications.")
+    st.caption("Glucose is in the BMP tree. Mg and phosphorus are below it. Albumin stays in Hepatic. Coagulation, including Anti-Xa (HEPLMW), is immediately below Hepatic in the lab results. CRP and procalcitonin (PROCAL) remain in ID below temperature. The latest eligible THEOPH result prints directly below a visible aminophylline order, once. Without a visible aminophylline order it remains in Respiratory.")
     with st.expander("Edit retained laboratory rows (" + str(len(sheet["labs"]["rows"])) + ")"):
         for row in sheet["labs"]["rows"]:
             st.text(row["component"] + " | " + row["value"] + " | " + row["date"])
@@ -1073,10 +1077,30 @@ def reapply_open_mappings() -> None:
     rules = ss["vault"]["settings"]["medication_mappings"]
     for sheet in ss.get("drafts", {}).values():
         sheet["medications"] = apply_group_rules(apply_gi_rules(apply_infusion_rules(remap(sheet["medications"], rules, ss["vault"]["settings"]["medication_visibility"]), ss["vault"]["settings"]["medication_infusions"]), ss["vault"]["settings"]["medication_gi_groups"]), ss["vault"]["settings"]["medication_groups"])
+        sheet["medications"] = apply_category_rules(sheet["medications"], ss["vault"]["settings"])
     # These callbacks run before the widgets are instantiated on the next run.
     for key in list(ss):
-        if (key.startswith("med_") and key.endswith(("_section", "_infusion_mode", "_gi_mode", "_group_mode"))) or key.startswith(("infusion_rule_mode_", "gi_rule_mode_", "group_rule_mode_")):
+        if (key.startswith("med_") and key.endswith(("_section", "_infusion_mode", "_gi_mode", "_group_mode", "_category_target"))) or key.startswith(("infusion_rule_mode_", "gi_rule_mode_", "group_rule_mode_")):
             ss.pop(key, None)
+
+
+def medication_category_change(room: str, row_id: str, key: str, store: GitHubVault | None = None) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    row = next((r for r in ss["drafts"][room]["medications"] if r["id"] == row_id), None)
+    if row is None:
+        return
+    old = local_target(row, ss["vault"]["settings"])
+    try:
+        candidate = deepcopy(ss["vault"])
+        candidate["settings"] = set_category_rule(candidate["settings"], row["name"], ss[key], "exact", row["route"], row["frequency"])
+        commit(candidate, store)
+        reapply_open_mappings()
+        note("Medication category remembered." + (" Saved to shared storage." if store else " Session-only test mode."), "success")
+    except (ValueError, StorageError) as exc:
+        ss[key] = old
+        note(str(exc) + " The assignment was not saved.", "error")
 
 
 def medication_row_change(room: str, row_id: str, field: str, widget_key: str, store: GitHubVault | None = None) -> None:
@@ -1153,7 +1177,9 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
             # Dose edits can change heparin grouping without changing its signature.
             if field == "dose":
                 ss.pop("med_draft_" + row_id + "_section", None)
-            original.update(edited)
+            resolved = apply_category_rules([edited], ss["vault"]["settings"])[0]
+            original.clear()
+            original.update(resolved)
             if field in ADMIN_FIELDS:
                 for peer in ADMIN_FIELDS:
                     if peer != field:
@@ -1307,7 +1333,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.41 | Measurement notes and observed PIP")
+        st.caption("Version 6.42 | Respiratory and editable medication categories")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Shared storage connected" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
@@ -1343,32 +1369,14 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
             else:
                 st.text(f"{number}. " + format_medication(row) + suffix)
         with destination:
-            key = prefix + "section"
-            if key not in st.session_state:
-                st.session_state[key] = effective_section(row)
-            st.selectbox("System for order " + str(number), DESTINATIONS, key=key, format_func=section_label,
-                         on_change=medication_row_change, args=(room, row["id"], "section", key, store))
-        if effective_section(row) == "FEN / GI" or automatic_group(row):
-            key = prefix + "gi_mode"
-            if key not in st.session_state:
-                st.session_state[key] = row.get("gi_mode", "auto")
-            st.selectbox("FEN/GI display for order " + str(number), GI_MODES, key=key,
-                         format_func=lambda value: GI_MODE_LABELS[value], on_change=medication_row_change,
-                         args=(room, row["id"], "gi_mode", key, store))
+            placement_picker(row, number, room, store, medication_category_change)
         if supports_infusion_display(row):
             key = prefix + "infusion_mode"
             if key not in st.session_state:
                 st.session_state[key] = row.get("infusion_mode", "auto")
-            st.selectbox(DISPLAY_LABELS[effective_section(row)] + " display for order " + str(number), MODES, key=key,
+            st.selectbox("Infusion emphasis for order " + str(number), MODES, key=key,
                          format_func=lambda value: MODE_LABELS[value], on_change=medication_row_change,
                          args=(room, row["id"], "infusion_mode", key, store))
-        if effective_section(row) in ("Neurologic", "Hematology", "Respiratory", "Cardiovascular") or automatic_special_group(row) or row.get("group_mode", "auto") != "auto":
-            key = prefix + "group_mode"
-            if key not in st.session_state:
-                st.session_state[key] = row.get("group_mode", "auto")
-            st.selectbox("Medication group for order " + str(number), GROUP_MODES, key=key,
-                         format_func=lambda value: GROUP_MODE_LABELS[value], on_change=medication_row_change,
-                         args=(room, row["id"], "group_mode", key, store))
         st.button("Restore to handoff" if row["hidden"] else "Hide from handoff", key="hide_med_" + row["id"], on_click=hide_medication, args=(room, row["id"], not row["hidden"], store))
         with st.expander("Edit details for order " + str(number), expanded=False):
             def widget(field: str, label: str, kind: str = "text"):
@@ -1637,7 +1645,7 @@ def handoff_page(store: GitHubVault | None) -> None:
                 if section == "Respiratory" and respiratory_text(sheet):
                     st.text(respiratory_text(sheet) + "\n-----")
                     st.caption("Vital signs print first, then support settings. Edit support under Paste / create.")
-                if section == "Respiratory" and theophylline_summary(sheet):
+                if section == "Respiratory" and theophylline_summary(sheet) and not theophylline_anchor(sheet):
                     st.text(theophylline_summary(sheet) + "\n-----")
                     st.caption("Latest included THEOPH result. Edit or exclude its original row in Labs / Vitals.")
                 if section == "Diagnoses" and viral_text(sheet["viral_panel"]):
@@ -1649,11 +1657,11 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.markdown('<div style="white-space:pre-wrap">------\n' + culture_markup(sheet["cultures"]) + '</div>', unsafe_allow_html=True)
                     st.caption("Edit imported specimens and results in Cultures. Temperature stays first in the printed ID column.")
                 if section == "FEN / GI":
-                    st.markdown('<div style="white-space:pre-wrap">' + fen_gi_body("", sheet["medications"], None, True) + "</div>", unsafe_allow_html=True)
+                    st.markdown('<div style="white-space:pre-wrap">' + fen_gi_body("", sheet["medications"], None, True, sheet=sheet) + "</div>", unsafe_allow_html=True)
                     st.caption("Printed order: Intake/Output/Net, Diet, Feeds, GI prophylaxis, Bowel Regimen, Diuretics, Antiemetics, Endocrine Medications, then separate notes and remaining FEN/GI medications.")
                 elif section in INFUSION_SECTIONS:
                     render_body = {"Neurologic": neuro_body, "Cardiovascular": cardiovascular_body, "Hematology": hematology_body, "Respiratory": respiratory_body}[section]
-                    st.markdown('<div style="white-space:pre-wrap">' + render_body("", sheet["medications"], True) + '</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="white-space:pre-wrap">' + render_body("", sheet["medications"], True, sheet=sheet) + '</div>', unsafe_allow_html=True)
                 else:
                     for row in sheet["medications"]:
                         if visible(row) and effective_section(row) == section:
@@ -2017,35 +2025,38 @@ def admin_page(store: GitHubVault | None) -> None:
     st.caption("Admin locks when you leave this workspace, after 15 minutes without Admin activity, or after one hour. Routine handoffs remain available.")
     reset_handoffs_admin(store)
     guide_admin(store)
-    ss = st.session_state
-    settings = ss["vault"]["settings"]
-    rules = settings["medication_mappings"]
-    st.caption("Medication destinations chosen in a handoff appear here automatically. Edit these rules at any time, even with no handoff open.")
-    st.subheader("Medication mappings")
-    choices = [-1] + list(range(len(rules)))
-    if ss.get("admin_rule_index", -1) not in choices:
-        ss["admin_rule_index"] = -1
-    st.selectbox("Edit a rule or add one", choices, key="admin_rule_index", on_change=select_admin_rule,
-                 format_func=lambda i: "Add a new rule" if i == -1 else rules[i]["name"] + " -> " + rules[i]["destination"])
-    if "mapping_name" not in ss:
-        select_admin_rule()
-    with st.form("medication_mapping"):
-        st.text_input("Medication name / prefix", key="mapping_name", max_chars=250)
-        st.selectbox("System", DESTINATIONS, key="mapping_destination", format_func=section_label)
-        st.selectbox("Match", ["prefix", "exact"], key="mapping_match", format_func=lambda value: "Name starts with this text" if value == "prefix" else "Exact complete name")
-        st.form_submit_button("Save mapping", on_click=save_admin_rule, args=(store,))
-    if ss.get("admin_rule_index", -1) != -1:
-        st.button("Delete selected mapping", on_click=remove_admin_rule, args=(store,))
-    if rules:
-        with st.expander("All saved mappings", expanded=True):
-            for rule in rules:
-                st.text(rule["name"] + " [" + rule["match"] + "] -> " + rule["destination"])
-    else:
-        st.info("No saved mappings yet. Unmapped medications go to Other Medications.")
-    visibility_admin(store)
-    infusion_admin(store)
-    gi_admin(store)
-    group_admin(store)
+    category_admin(store, require_admin, commit, reapply_open_mappings, note)
+    with st.expander("Existing mapping and display settings", expanded=False):
+        st.caption("A category assignment above takes priority over these earlier routing controls. Hidden-medication choices still apply.")
+        ss = st.session_state
+        settings = ss["vault"]["settings"]
+        rules = settings["medication_mappings"]
+        st.caption("Medication destinations chosen in a handoff appear here automatically. Edit these rules at any time, even with no handoff open.")
+        st.subheader("Medication mappings")
+        choices = [-1] + list(range(len(rules)))
+        if ss.get("admin_rule_index", -1) not in choices:
+            ss["admin_rule_index"] = -1
+        st.selectbox("Edit a rule or add one", choices, key="admin_rule_index", on_change=select_admin_rule,
+                     format_func=lambda i: "Add a new rule" if i == -1 else rules[i]["name"] + " -> " + rules[i]["destination"])
+        if "mapping_name" not in ss:
+            select_admin_rule()
+        with st.form("medication_mapping"):
+            st.text_input("Medication name / prefix", key="mapping_name", max_chars=250)
+            st.selectbox("System", DESTINATIONS, key="mapping_destination", format_func=section_label)
+            st.selectbox("Match", ["prefix", "exact"], key="mapping_match", format_func=lambda value: "Name starts with this text" if value == "prefix" else "Exact complete name")
+            st.form_submit_button("Save mapping", on_click=save_admin_rule, args=(store,))
+        if ss.get("admin_rule_index", -1) != -1:
+            st.button("Delete selected mapping", on_click=remove_admin_rule, args=(store,))
+        if rules:
+            with st.expander("All saved mappings", expanded=True):
+                for rule in rules:
+                    st.text(rule["name"] + " [" + rule["match"] + "] -> " + rule["destination"])
+        else:
+            st.info("No saved mappings yet. Unmapped medications go to Other Medications.")
+        visibility_admin(store)
+        infusion_admin(store)
+        gi_admin(store)
+        group_admin(store)
     custom_room_admin(store)
     st.subheader("Room and diagnosis settings")
     if "admin_rooms" not in ss:
@@ -2494,8 +2505,8 @@ def group_admin(store: GitHubVault | None) -> None:
         st.file_uploader("Or upload CDC bmi-age-2022.csv (public reference only)", type=["csv"], key="bmi_public_reference_upload", on_change=upload_bmi_reference)
     with st.expander("Medication subgroup choices", expanded=False):
         st.caption("DVT Prophylaxis: enoxaparin, cangrelor and heparin with an explicit Units/kg/hr Dose. Fever Control: acetaminophen and ibuprofen. PRN: the requested sedative PRNs. Paralytic PRN: rocuronium, cisatracurium and vecuronium PRNs.")
-        st.caption("Neurologic: systemic dexamethasone under Airway/Cerebral Steroids, melatonin/trazodone under Insomnia, baclofen under Antispasmodic, and gabapentin/pregabalin under Neuromodulation. Infusions, PRN and paralytic groups come first after observations; other category headings are alphabetical.")
-        st.caption("Respiratory: Antisialorrhea Agents. Cardiovascular: Antiarrhythmics, Antihypertensives, Inotrope Infusions, Vasopressors, Adrenocortical Support, and Vasodilators. Lidocaine is automatic only for an IV infusion. Endocrine Medications is in FEN/GI display choices.")
+        st.caption("Neurologic: melatonin/trazodone under Insomnia, baclofen under Antispasmodic, and gabapentin/pregabalin under Neuromodulation. Infusions, PRN and paralytic groups come first after observations; other category headings are alphabetical.")
+        st.caption("Respiratory: Airway/Cerebral Steroids, Beta-Agonist, Anticholinergic, Methylxanthine, Corticosteroid, Airway Tone Modulator, Inhaled Corticosteroids, Pulmonary Hypertension, and Antisialorrhea Agents. Cardiovascular: Antiarrhythmics, Antihypertensives, Inotrope Infusions, Vasopressors, Adrenocortical Support, and Vasodilators. Lidocaine is automatic only for an IV infusion. Endocrine Medications is in FEN/GI display choices.")
         st.caption("These are user-defined display labels, not inferred indications or a determination that a dose is prophylactic. Original orders and hidden-medication choices are preserved. Overrides use the formulation, route and frequency.")
         rules = [r for r in st.session_state["vault"]["settings"]["medication_groups"] if r.get("match") != "prefix"]
         for index, rule in enumerate(rules):

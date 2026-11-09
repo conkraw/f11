@@ -84,19 +84,19 @@ def test_existing_continuous_parenteral_recognition_in_new_sections(section, rou
     assert system_body_blocks(section, '', [r])[0] == ('heading', INFUSION_HEADINGS[section])
 
 
-def test_unmapped_respiratory_name_not_silently_mapped():
+def test_aminophylline_has_requested_automatic_methylxanthine_default():
     r = med('aminophylline synthetic', section='Other Medications')
-    assert is_infusion(r) and not supports_infusion_display(r)
-    assert respiratory_body('', [r]) == ''
+    assert is_infusion(r) and supports_infusion_display(r)
+    assert 'Methylxanthine' in respiratory_body('', [r])
     mapped = remap([r], upsert_rule([], 'aminophylline', 'Respiratory'))
-    assert 'Respiratory Infusions' in respiratory_body('', mapped)
+    assert 'Methylxanthine' in respiratory_body('', mapped)
     assert r['section'] == 'Other Medications'
 
 
 def test_respiratory_order_vitals_support_theophylline_infusions_notes_other():
     s = example(); before = deepcopy(s)
     text = fields_with_medications(s)['Respiratory']
-    tokens = ['Resp:', 'Mode:', 'Theophylline level:', 'Respiratory Infusions', 'RESP_IV', 'RESP_CONT', 'Respiratory note', 'Other Medications', 'RESP_PRN']
+    tokens = ['Resp:', 'Mode:', 'Beta-Agonist', 'RESP_CONT', 'RESP_PRN', 'Methylxanthine', 'RESP_IV', 'Theophylline level:', 'Respiratory note']
     assert [text.index(t) for t in tokens] == sorted(text.index(t) for t in tokens)
     assert text.count('Theophylline level:') == 1
     assert s == before
@@ -188,7 +188,7 @@ def test_plain_html_pdf_have_all_entries_once_and_rich_emphasis():
     t=handoff_text(s,STAMP);h=handoff_html(s,STAMP);data=handoff_pdf(s,STAMP)
     p='\n'.join(page.extract_text() for page in PdfReader(BytesIO(data)).pages)
     for text in (t,h,p):
-        for heading in ['Respiratory Infusions','Heme Infusions','DVT Prophylaxis']:
+        for heading in ['Beta-Agonist','Methylxanthine','Heme Infusions','DVT Prophylaxis']:
             assert heading in text
         for marker in ['RESP_IV','RESP_CONT','RESP_PRN','HEP_DRIP','CANG_DRIP','ENOX_INJ','HEME_OTHER_DRIP','HEME_TABLET']:
             assert re.sub(r'\s+', '', text).count(marker)==1
@@ -264,9 +264,9 @@ def test_new_controls_render_for_resp_and_heme_including_dvt(app,monkeypatch):
         labels.append(label);return orig(label,*args,**kwargs)
     monkeypatch.setattr(app.st,'selectbox',select)
     app.handoff_page(None)
-    assert any(x.startswith('Respiratory display for order') for x in labels)
-    assert any(x.startswith('Heme display for order') for x in labels)
-    for index in (4,5,6):assert f'Heme display for order {index}' in labels
+    assert any(x.startswith('Category for order') for x in labels)
+    assert any(x.startswith('Infusion emphasis for order') for x in labels)
+    for index in (4,5,6):assert f'Category for order {index}' in labels
 
 
 def test_admin_can_change_choice_without_handoff(app,monkeypatch):
@@ -283,7 +283,7 @@ def test_rendering_saved_data_preserves_archive_every_field_and_timestamp():
     v['settings']['medication_infusions']=set_infusion_rule([],s['medications'][1],'other')
     key=generate_key();encrypted=seal_vault(v,key);before=deepcopy(v)
     restored=open_vault(encrypted,key)
-    assert restored==before and restored['schema']==26==SCHEMA_VERSION
+    assert restored==before and restored['schema']==27==SCHEMA_VERSION
     for sheet in restored['rooms'].values():
         fields_with_medications(sheet);handoff_html(sheet);handoff_pdf(sheet,STAMP)
     assert restored==before and upgrade_vault(restored)==before

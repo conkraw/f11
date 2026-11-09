@@ -1,9 +1,13 @@
-COMPLETE VERSION 6.41 PACKAGE, BASED ON DELIVERED VERSION 6.40
-Replace matching files with this folder's contents. Keep app.py at the root.
-Restart the app and refresh the browser.
-Keep current Secrets, both passwords, encryption key, mappings, BMI reference
-file and shared storage. Do not rerun any setup generators.
-No dependencies, new secret fields or archive-schema changes are required.
-Re-paste the complete I section to recover previously rejected measurements.
-Already stored observed PIP values display without re-pasting.
-Read MEASUREMENT_NOTES_PIP_UPDATE.md and TEST_REPORT.md.
+COMPLETE VERSION 6.42 PACKAGE, BASED ON DELIVERED VERSION 6.41
+
+Upload all files from PICU_Handoff_v6_42_Dynamic_Categories into the existing
+application code directory, replacing matching files. app.py stays at the root.
+New runtime modules: categories.py and category_ui.py.
+
+Keep existing private Secrets, both passwords, encryption key, shared archive,
+and BMI reference CSV unchanged. Do not rerun setup generators.
+No new Python dependencies. No re-paste needed for existing stored medications.
+The encrypted archive advances to schema 27. Do not downgrade after saving.
+
+Restart and refresh. Sidebar:
+Version 6.42 | Respiratory and editable medication categories

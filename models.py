@@ -37,7 +37,7 @@ from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 26
+SCHEMA_VERSION = 27
 from problem_review import validate_review, empty_review
 from difficult_airway import validate_airway
 from lab_windows import cardiac_labs_summary, theophylline_summary, id_summary, laboratory_data
@@ -142,9 +142,11 @@ def validate_vault(vault: dict) -> None:
     if not isinstance(vault["reset_generation"], str) or not re.fullmatch(r"(?:[0-9a-f]{32})?", vault["reset_generation"]):
         raise ValidationError("The archive reset generation is invalid.")
     settings = vault["settings"]
-    if not isinstance(settings, dict) or set(settings) != {"diagnoses_destination", "rooms", "medication_mappings", "medication_visibility", "medication_infusions", "medication_gi_groups", "medication_groups"}:
+    if not isinstance(settings, dict) or set(settings) - {"medication_categories", "medication_category_rules"} != {"diagnoses_destination", "rooms", "medication_mappings", "medication_visibility", "medication_infusions", "medication_gi_groups", "medication_groups"}:
         raise ValidationError("The saved Admin settings are invalid.")
     try:
+        from categories import validate_settings
+        validate_settings(settings)
         validate_rules(settings["medication_mappings"])
         validate_visibility(settings["medication_visibility"])
         validate_infusion_rules(settings["medication_infusions"])
@@ -197,6 +199,11 @@ def upgrade_vault(vault: dict) -> dict:
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
+    if version == 26:
+        candidate = deepcopy(vault)
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     if version == 25:
         candidate = deepcopy(vault)
         candidate["schema"] = SCHEMA_VERSION
@@ -431,17 +438,21 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
         section = effective_section(row)
         content = medication_output(format_medication(row))
         result[section] = (result[section].rstrip() + "\n" if result[section].strip() else "") + content
-    result["FEN / GI"] = fen_gi_body(sheet["fields"]["FEN / GI"], sheet["medications"], sheet["intake_output"], feeds=feeds_for_output(sheet), feeds_failed=any(i["action"] == "feeds_hidden" for i in sheet["import_warnings"].get("t", [])), diet=diet_for_output(sheet), diet_failed=diet_failed(sheet), dosing_weight=sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else "")
+    result["FEN / GI"] = fen_gi_body(sheet["fields"]["FEN / GI"], sheet["medications"], sheet["intake_output"], feeds=feeds_for_output(sheet), feeds_failed=any(i["action"] == "feeds_hidden" for i in sheet["import_warnings"].get("t", [])), diet=diet_for_output(sheet), diet_failed=diet_failed(sheet), dosing_weight=sheet["dosing_weight"] if "i" not in sheet["import_warnings"] else "", sheet=sheet)
     scheduled = orders_text(orders_for_output(sheet))
     if "r" in sheet["import_warnings"]:
         scheduled = "Orders not imported. Review needed."
     if scheduled:
         result["Labs"] = scheduled + ("\n-----\n" + result["Labs"] if result["Labs"].strip() else "")
-    result["Neurologic"] = neuro_body(sheet["fields"]["Neurologic"], sheet["medications"])
-    result["Cardiovascular"] = cardiovascular_body(sheet["fields"]["Cardiovascular"], sheet["medications"])
-    result["Hematology"] = hematology_body(sheet["fields"]["Hematology"], sheet["medications"])
-    result["Respiratory"] = respiratory_body(sheet["fields"]["Respiratory"], sheet["medications"])
-    theophylline = theophylline_summary(sheet)
+    result["Neurologic"] = neuro_body(sheet["fields"]["Neurologic"], sheet["medications"], sheet=sheet)
+    result["Cardiovascular"] = cardiovascular_body(sheet["fields"]["Cardiovascular"], sheet["medications"], sheet=sheet)
+    result["Hematology"] = hematology_body(sheet["fields"]["Hematology"], sheet["medications"], sheet=sheet)
+    result["Respiratory"] = respiratory_body(sheet["fields"]["Respiratory"], sheet["medications"], sheet=sheet)
+    from categories import theophylline_anchor, medication_blocks
+    from infusions import render_body_blocks
+    for section in ("Infectious Disease", "Skin / Wounds", "Other Medications"):
+        result[section] = render_body_blocks(medication_blocks(section, sheet["fields"][section], sheet["medications"], sheet))
+    theophylline = "" if theophylline_anchor(sheet) else theophylline_summary(sheet)
     if theophylline:
         result["Respiratory"] = theophylline + ("\n-----\n" + result["Respiratory"] if result["Respiratory"].strip() else "")
     vent = respiratory_text(sheet)

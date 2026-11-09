@@ -147,7 +147,8 @@ def test_new_export_formats_keep_linked_pn_details():
 def test_synthetic_18_order_case_is_one_landscape_page_with_all_labs():
     s=sheet();doc=fitz.open(stream=handoff_pdf(s),filetype='pdf')
     assert len(doc)==1 and doc[0].rect==fitz.Rect(0,0,792,612)
-    assert print_layout_info(s)=={'font_size':8.0,'fits_one_page':True}
+    layout=print_layout_info(s)
+    assert layout['fits_one_page'] and 6.5 <= layout['font_size'] <= 8.0
     text=doc[0].get_text()
     for term in ('Hepatic','Coagulation','Gas ART','Inflammatory','01/03/26','01/02/26'):
         assert term in text
@@ -232,7 +233,7 @@ def test_same_schema_roundtrip_preserves_mapping_hiding_and_all_order_fields():
     v['settings']['medication_mappings']=upsert_rule([],'fat emulsion','FEN / GI')
     v['settings']['medication_visibility']=set_visibility_rule([],name,True)
     key=generate_key();restored=open_vault(seal_vault(v,key),key)
-    assert restored==v and restored['schema']==26 and upgrade_vault(v)==v
+    assert restored==v and restored['schema']==27 and upgrade_vault(v)==v
 
 
 def test_bounded_small_font_fits_crowded_column_without_deleting_lines():

@@ -9,13 +9,15 @@ import re
 from medications import match_name, normalized
 
 CV_GROUPS = ("antiarrhythmic", "antihypertensive", "inotrope", "vasopressor", "adrenocortical", "vasodilator")
-RESP_GROUPS = ("antisialorrhea",)
+RESP_GROUPS = ("airway_cerebral_steroid", "airway_tone", "antisialorrhea", "beta_agonist",
+               "anticholinergic", "methylxanthine", "corticosteroid", "inhaled_corticosteroid",
+               "pulmonary_hypertension")
 # These groups follow the bedside sedation/PRN/paralytic blocks alphabetically.
-NEURO_OTHER_GROUPS = ("airway_cerebral_steroid", "antiepileptic", "antispasmodic",
+NEURO_OTHER_GROUPS = ("antiepileptic", "antispasmodic",
                       "fever", "insomnia", "neuromodulation")
 NEURO_PRIORITY_GROUPS = ("sedative_prn", "paralytic_infusion", "paralytic_prn")
 MODES = (("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic",
-          "airway_cerebral_steroid", "insomnia", "antispasmodic", "neuromodulation",
+          "insomnia", "antispasmodic", "neuromodulation",
           "paralytic_infusion") + RESP_GROUPS + CV_GROUPS + ("other",))
 MODE_LABELS = {
     "auto": "Automatic", "dvt": "DVT Prophylaxis", "fever": "Fever Control",
@@ -24,6 +26,10 @@ MODE_LABELS = {
     "airway_cerebral_steroid": "Airway/Cerebral Steroids",
     "insomnia": "Insomnia", "antispasmodic": "Antispasmodic",
     "neuromodulation": "Neuromodulation",
+    "beta_agonist": "Beta-Agonist", "anticholinergic": "Anticholinergic",
+    "methylxanthine": "Methylxanthine", "corticosteroid": "Corticosteroid",
+    "inhaled_corticosteroid": "Inhaled Corticosteroids", "airway_tone": "Airway Tone Modulator",
+    "pulmonary_hypertension": "Pulmonary Hypertension",
     "antisialorrhea": "Antisialorrhea Agents", "antiarrhythmic": "Antiarrhythmics",
     "antihypertensive": "Antihypertensives", "inotrope": "Inotrope Infusions",
     "vasopressor": "Vasopressors", "adrenocortical": "Adrenocortical Support",
@@ -88,6 +94,25 @@ def automatic_system_group(row: dict) -> str:
         # Systemic dexamethasone only. Eye/ear/topical preparations keep their
         # existing mapping. The category is a user-requested display label.
         return "" if _local_form(row, name) else "airway_cerebral_steroid"
+    if _starts(name, ("albuterol",)):
+        return "beta_agonist"
+    if _starts(name, ("ipratropium", "ipratroppium")):
+        return "anticholinergic"
+    if _starts(name, ("aminophylline",)):
+        return "methylxanthine"
+    if _starts(name, ("methylprednisolone", "prednisone", "prednisolone")):
+        return "" if _local_form(row, name) else "corticosteroid"
+    if _starts(name, ("bethanechol",)):
+        return "airway_tone"
+    if _starts(name, ("sildenafil",)):
+        return "pulmonary_hypertension"
+    if _starts(name, ("budesonide", "fluticasone", "mometasone")):
+        route = _route(row)
+        inhaled = route in {"inhalation", "inhaled", "nebulization", "nebulisation", "nebulized", "nebulised"}
+        # Do not classify oral, nasal, topical, ophthalmic or otic products as inhaled.
+        if not route and re.search(r"\b(?:inhaler|inhalant|inhalation|nebulizer)\b", name):
+            inhaled = True
+        return "inhaled_corticosteroid" if inhaled else ""
     if _starts(name, ("melatonin", "trazodone")):
         return "insomnia"
     if _starts(name, ("baclofen",)):
