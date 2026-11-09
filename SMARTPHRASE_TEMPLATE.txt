@@ -52,8 +52,9 @@ Wound Review:
 jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
 
 kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
-SBS observations:
-[Insert an observed SBS SmartLink with the actual recording date and time. Targets alone do not count as measured scores.]
+Target Arousal Level:
+SBS Last 24 Hours: [Insert your existing Epic SmartLink for the latest SBS in the past 24 hours.]
+Last SBS Ever: [Optional existing historical SBS SmartLink. This field is ignored by the app.]
 kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
 
 llllllllllllllllllllllllllllllll

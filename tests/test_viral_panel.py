@@ -243,7 +243,7 @@ def test_v9_migration_keeps_every_previous_field():
     v['rooms']['P4102'].pop("feeds", None);v['rooms']['P4102'].pop("devices", None);v['rooms']['P4102'].pop("neuro_devices", None);v['rooms']['P4102'].pop("pacemaker", None);v['rooms']['P4102'].pop("diet", None);v['rooms']['P4102'].pop("import_warnings", None);v['rooms']['P4102'].pop("intake_output", None);v['rooms']['P4102'].pop("recurring_orders", None);v['rooms']['P4102'].pop("cbc", None);v['rooms']['P4102'].pop('blood_gas', None)
     del v['rooms']['P4102']['viral_panel']
     before=deepcopy(v);m=upgrade_vault(v)
-    assert v==before and m['schema']==SCHEMA_VERSION==30 and m['settings']==dict(v['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
+    assert v==before and m['schema']==SCHEMA_VERSION==31 and m['settings']==dict(v['settings'], medication_infusions=[], medication_gi_groups=[], medication_groups=[])
     for key,value in v['rooms']['P4102'].items():assert m['rooms']['P4102'][key]==value
     assert m['rooms']['P4102']['viral_panel']==empty_viral_panel()
     key=generate_key()

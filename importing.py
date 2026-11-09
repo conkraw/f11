@@ -260,13 +260,14 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 out.notices.extend(diet.issues)
                 out.imported.append("diet" if diet.data["rows"] else "diet display cleared")
             elif letter == "k":
-                from sbs import parse_sbs
-                observation = parse_sbs(parsed.blocks[letter])
+                from sbs import parse_sbs, snapshot_reference
+                snapshot_at, snapshot_kind = snapshot_reference(parsed.blocks)
+                observation = parse_sbs(parsed.blocks[letter], window_as_of=snapshot_at, window_reference=snapshot_kind)
                 if observation.error:
                     out.errors.append(observation.error)
                     continue
                 candidate["neuro_vitals"]["k"] = observation.targets
-                if observation.data["readings"] or "sbs_observations" in candidate:
+                if observation.data["readings"] or "source_window" in observation.data or "sbs_observations" in candidate:
                     candidate["sbs_observations"] = observation.data
                 out.notices.extend(observation.issues)
                 out.imported.append("SBS observations" if observation.data["readings"] else "SBS display cleared")

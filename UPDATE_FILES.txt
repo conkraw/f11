@@ -1,16 +1,15 @@
-COMPLETE VERSION 6.45 PACKAGE, BASED ON DELIVERED VERSION 6.44
+COMPLETE VERSION 6.46 PACKAGE, BASED ON DELIVERED VERSION 6.45
 
-Upload this folder's complete contents into the existing application code
-folder. Replace matching files and keep app.py at the root.
-New runtime module: sbs.py
+Replace matching code files with this folder's contents. Keep app.py at the root.
+Restart and refresh. No new Python dependencies.
 
-Keep private Secrets, both passwords, encryption key, mappings, category
-settings, BMI reference data and shared data archive unchanged. Do not rerun
-the setup generators. No new Python dependencies. Archive schema 29 -> 30.
-Avoid downgrading after saving with this release.
+Preserve Secrets, both passwords, encryption key, medication/category mappings,
+BMI reference data, and the shared archive. Do not rerun generators.
+Archive schema: 30 -> 31. Avoid downgrading after saving.
 
-Re-paste complete source sections or the full SmartPhrase to import new
-observed-score timestamps, VANCOTROUGH and ICP/CPP values. Targets do not
-count as measured SBS. Missing source dates/times are never inferred.
+Re-paste K or the full SmartPhrase. SBS Last 24 Hours is the only eligible
+named field in the new structure. A blank value displays SBS: None.
+Last SBS Ever is ignored. An explicit target remains labelled as a target.
+Filgrastim defaults to Hematology / G-CSF Stimulator.
 
-Version 6.45 | Neuro observations, TPN and ID categories
+Version 6.46 | SBS 24-hour field and G-CSF category

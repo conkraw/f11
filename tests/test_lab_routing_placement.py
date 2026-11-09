@@ -113,7 +113,7 @@ def test_no_data_mutation_during_any_export():
     for fn in [handoff_html, handoff_pdf, handoff_text]:
         fn(s)
         assert s == before
-    assert SCHEMA_VERSION ==30
+    assert SCHEMA_VERSION ==31
 
 
 @pytest.mark.parametrize('exporter', [handoff_html, handoff_text])

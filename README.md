@@ -1,42 +1,43 @@
-# PICU Handoff 6.45
+# PICU Handoff 6.46
 
-Built from the supplied Version 6.44 package. Adds observed SBS selection,
-TPN, Antiplatelet Therapy, Antibiotics, ID Drug Levels, and culture headings.
-The M parser accepts the supplied repeated-label ICP/CPP format and wrapped
-Avg/Min/Max lines. The compact landscape layout is retained.
+Built from the supplied Version 6.45 package. Adds direct support for the user's
+SBS Last 24 Hours field and a Hematology / G-CSF Stimulator category for filgrastim.
+The compact handoff layout and all other clinical parsers are unchanged.
 
-Read NEURO_ID_UPDATE.md for behavior, source requirements, and installation.
-TEST_REPORT.md records local verification and its limits.
+Read SBS_WINDOW_GCSF_UPDATE.md for import behavior and installation.
+TEST_REPORT.md records verification and limitations.
 
-## Upgrade
+## Install
 
-Upload all files inside this folder into the existing application code folder,
-replacing matching files. Keep app.py at the root. Include the new sbs.py.
-Restart the app and refresh the browser.
+Upload the contents of this complete folder into your existing application code
+folder, replacing matching files. Keep app.py at the root, restart the app, and
+refresh your browser. Keep Secrets, both passwords, the encryption key, medication
+mappings, category settings, BMI reference data, and your shared archive unchanged.
+Do not rerun setup generators. No new Python dependencies are required.
 
-Keep existing private Secrets, both passwords, encryption key, medication
-mappings, category definitions, BMI reference data, and shared data archive.
-Do not rerun generators. There are no new Python dependencies.
-The archive upgrades from schema 29 to 30. Do not downgrade after saving.
+Archive schema 30 upgrades to 31. Avoid downgrading after saving.
+Re-paste the K section or full SmartPhrase to replace old SBS data.
 
-Re-paste complete B, F, G, K, and M blocks, or the full SmartPhrase, to load
-new source values and replace previously failed sections. Omitted sections
-keep their previous snapshots. Included empty sections clear their own data.
+## Your SBS structure
 
-## Recorded SBS is not an SBS target
+    Target Arousal Level:
+    SBS Last 24 Hours:
+    Last SBS Ever: Target Arousal Level (SBS): SBS -1
 
-Only the most recent observed score with an explicit source date and time,
-within the preceding 24 hours, prints. An upload timestamp is never substituted
-for the observation time. Targets remain editable but do not print as readings.
+The empty recent field above produces SBS: None. Last SBS Ever is not a fallback.
+A populated prefiltered field uses only that value. An explicit target remains
+labelled as a target. Timestamped observed readings keep the rolling 24-hour
+filter. Missing recording times are never fabricated.
 
-A supported K format is:
+A source-filtered untimed value is a snapshot of Epic's 24-hour output. Its report
+or import time is stored separately from observation times and is never renewed
+by saving or room changes. See the release note for timing limitations.
 
-    SBS observations:
-    SBS: -1 [11/09/2026 10:00]
+## Category
 
-Use the actual observation date and time. The template does not provide or
-invent an institution-specific Epic SmartLink. Ask your local Epic team for
-an observed-score output that includes its source recording time.
+Filgrastim defaults to G-CSF Stimulator in Hematology. The label uses G-CSF rather
+than GM-CSF because those are different factors. Existing explicit assignments
+remain authoritative. The heading can be renamed or nested in Admin.
 
-All bundled examples are synthetic. Review in-app import warnings before
-sharing handoffs. No live deployment or clinical validation is claimed.
+This package includes source, synthetic examples, and tests. It does not contain
+live deployment credentials or a private handoff archive.

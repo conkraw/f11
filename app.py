@@ -264,6 +264,17 @@ def editor_snapshot(room: str) -> dict:
             key = "sbs_" + sheet["id"] + "_" + str(index) + "_" + field
             if key in ss:
                 row[field] = ss[key].strip() if isinstance(ss[key], str) else ss[key]
+    window = (sheet.get("sbs_observations") or {}).get("source_window")
+    if window is not None:
+        for field in ("value", "include"):
+            key = "sbs_window_" + sheet["id"] + "_" + field
+            if key in ss:
+                value = ss[key]
+                if field == "value":
+                    from sbs import score
+                    value = str(value).strip()
+                    value = "" if not value or value.casefold() == "none" else score(value)
+                window[field] = value
     if sheet["pacemaker"] is not None:
         for field in PACER_FIELDS:
             key = "pacer_" + sheet["id"] + "_" + field
@@ -622,6 +633,9 @@ def sbs_add_reading(room: str, score_key: str, time_key: str) -> None:
             raise ValueError("Enter the recording date AND time from Epic, not the time of this upload.")
         candidate = deepcopy(ss["drafts"][room].get("sbs_observations") or {"readings": [], "notes": []})
         candidate["readings"].append({"value": value, "recorded_at": recorded_at, "include": True})
+        # An explicitly entered measured observation supersedes a prefiltered
+        # snapshot. Its actual source time, not a report time, controls expiry.
+        candidate.pop("source_window", None)
         validate_sbs(candidate)
         ss["drafts"][room]["sbs_observations"] = candidate
         ss["drafts"][room]["import_warnings"].pop("k", None)
@@ -631,16 +645,56 @@ def sbs_add_reading(room: str, score_key: str, time_key: str) -> None:
         note(str(exc), "error")
 
 
+def sbs_window_change(room: str, field: str, key: str) -> None:
+    if not require_session() or room != st.session_state.get("current_room"):
+        return
+    ss = st.session_state
+    candidate = deepcopy(ss["drafts"][room].get("sbs_observations"))
+    if not candidate or "source_window" not in candidate or field not in ("value", "include"):
+        return
+    from sbs import score, validate_sbs
+    previous = candidate["source_window"][field]
+    try:
+        value = ss[key]
+        if field == "value":
+            value = str(value).strip()
+            value = "" if not value or value.casefold() == "none" else score(value)
+        candidate["source_window"][field] = value
+        validate_sbs(candidate)
+        ss["drafts"][room]["sbs_observations"] = candidate
+        ss["drafts"][room]["import_warnings"].pop("k", None)
+    except ValueError as exc:
+        ss[key] = previous
+        note(str(exc), "error")
+
+
 def sbs_editor(sheet: dict) -> None:
-    from sbs import latest_sbs
+    from sbs import latest_sbs, sbs_display_rows
     data = sheet.get("sbs_observations")
     latest = latest_sbs(data) if "k" not in sheet["import_warnings"] else None
-    if latest:
+    window = (data or {}).get("source_window")
+    if window is not None:
+        rendered = sbs_display_rows(sheet)
+        st.caption((rendered[0]["label"] + ": " + rendered[0]["value"]) if rendered else "The imported SBS snapshot is hidden pending review.")
+        st.caption("Using SBS Last 24 Hours only. Last SBS Ever is ignored. Snapshot time: " + window["reported_as_of"] + ". This is not the recording time of an individual observation.")
+    elif latest:
         st.caption("Latest eligible observed SBS: " + latest["value"] + " [" + latest["recorded_at"] + "]")
     else:
         st.caption("No timestamped observed SBS in the past 24 hours is available. Target SBS is not a measured score.")
     with st.expander("Observed SBS / recording time"):
-        st.caption("Only the newest included reading within the last 24 hours prints. Supply the source recording time in Eastern time. Targets, undated values, and older observations are not used as a current SBS.")
+        st.caption("The explicit SBS Last 24 Hours field is accepted as an Epic-filtered snapshot, including a blank result. Last SBS Ever is never a fallback. Other observations need source recording times. Explicit targets keep a target label.")
+        if window is not None:
+            for field, label in (("value", "SBS Last 24 Hours value (blank means None)"), ("include", "Include the imported 24-hour SBS field")):
+                key = "sbs_window_" + sheet["id"] + "_" + field
+                if key not in st.session_state:
+                    st.session_state[key] = window[field]
+                opts = dict(key=key, on_change=sbs_window_change, args=(sheet["room"], field, key))
+                if field == "include":
+                    st.checkbox(label, **opts)
+                elif not data.get("readings"):
+                    st.text_input(label, max_chars=10, **opts)
+            if window["kind"] == "target":
+                st.caption("Epic labelled this value as a target. It prints as SBS target, not as an observed score.")
         for message in (data or {}).get("notes", []):
             st.caption(message)
         for index, row in enumerate((data or {}).get("readings", [])):
@@ -662,7 +716,7 @@ def sbs_editor(sheet: dict) -> None:
 
 def neuro_weight_editor(sheet: dict) -> None:
     st.subheader("Neurologic observations")
-    st.caption("K: latest observed SBS in 24 hours, Y: CAPD, L: WAT-1, M: ICP/CPP. Targets remain editable but do not print as observed scores. CAPD always prints between SBS and WAT-1. None means no available score, not a zero score. ICP/CPP show the documented range and Last reading in brackets. Range and Last fields can be edited separately.")
+    st.caption("K: SBS Last 24 Hours or latest timestamped SBS, Y: CAPD, L: WAT-1, M: ICP/CPP. Targets remain editable but do not print as observed scores. CAPD always prints between SBS and WAT-1. None means no available score, not a zero score. ICP/CPP show the documented range and Last reading in brackets. Range and Last fields can be edited separately.")
     sbs_editor(sheet)
     present = False
     for source, title in NEURO_SECTIONS.items():
@@ -1418,7 +1472,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.45 | Neuro observations, TPN and ID categories")
+        st.caption("Version 6.46 | SBS 24-hour field and G-CSF category")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Shared storage connected" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)

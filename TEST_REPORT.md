@@ -1,46 +1,38 @@
-# Version 6.45 local validation
+# Version 6.46 local validation
 
-Base: the supplied PICU644.zip. The original baseline passed 3,709 tests here.
-The updated suite has 3,803 tests, including 92 focused synthetic cases in
-`tests/test_neuro_id_tpn.py`.
+Base: the supplied PICU645.zip. The updated full test suite passed:
+3,890 passed in 136.17 seconds. The 86 focused regression cases in
+`tests/test_sbs_window_filgrastim.py` also passed independently.
 
-The full suite passed all 3,803 tests from a clean extraction of the delivery
-ZIP. The run result is recorded in DELIVERY_VERIFICATION.txt. All delivered
-Python files are byte-identical to those tested in that extracted run.
+The exact new K structure with a blank SBS Last 24 Hours field and historical
+SBS -1 imports without error and displays SBS: None. Tests cover positive and
+negative scores, zero, missing data, same-line and multiline boundaries, a
+historical value with a recent date, repeated labels, explicit targets, actual
+observation times, rolling 24-hour limits, future dates, snapshot aging, source
+report times, independent updates, invalid rows, and historical-value isolation.
 
-Coverage includes repeated and wrapped ICP/CPP summaries, full-width colons,
-zero values, independent last readings, source failure isolation, source targets
-versus observed SBS, observed-score validation, explicit date/time formats,
-24-hour boundaries, future and missing times, daylight-saving ambiguity, manual
-editing callbacks, encrypted round trips, single-destination medication groups,
-TPN rates and distinct bags, antiplatelet/DVT separation, existing mapping
-priority, route exclusions, dated vancomycin results, culture formatting,
-empty-versus-hidden cultures, Print all, and non-mutating exports.
+Additional tests cover the Hematology category, filgrastim biosimilar names,
+existing explicit mappings, hidden medications, no duplicate output, manual
+editing callbacks, PDF/HTML/text/Print all, and non-mutating rendering.
+The existing schema-number assertions were updated from 30 to 31 for the
+intentional archive upgrade. No existing tests were removed or skipped.
 
-Older assertions were updated only for intentional changes: schema 30,
-cangrelor's new group, culture None statements, the Antibiotics heading, and
-keeping SBS targets off measured-score output. Ordering tests that need a
-measured SBS now use an explicitly timestamped synthetic observation instead
-of treating a target as observed. No existing tests were removed or skipped.
+A synthetic archive was generated and encrypted by the original 6.45 modules.
+This release opened it with the same generated test key and preserved all
+existing room fields, custom rooms, settings, category names, and saved times.
+Only schema 31 and the missing built-in G-CSF category were added. A subsequent
+encrypted round trip was identical.
 
-An encrypted synthetic archive was created by the original 6.44 modules and
-opened with this release using the same generated test key. Every old room
-field, custom room, prior setting, mapping, and saved timestamp remained
-unchanged. Schema 30 and three missing built-in category definitions were
-added. A subsequent encrypted round trip retained the resulting data exactly.
+Both preview pages contain synthetic examples. Each fits on one landscape page
+at 8-point body text with no extra compression. The generated pages were
+rendered and visually inspected. Long real handoffs may still require more pages.
 
-The supplied exact M block was accepted by original 6.44 in local testing.
-No claim is made that the user's live failure was reproduced. Its full
-import-to-PDF path is covered in this release, along with additional wrapping
-variants. The supplied K snippets have targets or blanks, not timestamped
-measured SBS values. Measured-score formats were tested with synthetic input.
-Relevant supplied trough and medication patterns were tested without copying
-raw patient charts into this release.
+The final delivery ZIP is integrity-checked and contains SHA256SUMS.txt. Focused
+regressions are rerun from a clean extraction, with their result recorded in
+DELIVERY_VERIFICATION.txt. All shipped Python sources are identical to those
+used for the full-suite run.
 
-The preview contains two synthetic rooms. Each fits on one landscape page at
-8-point body text without extra compression. Both pages were rendered and
-visually checked. Longer real handoffs can still require additional pages.
-
-UI and storage tests use local simulations. No live Streamlit deployment,
-private repository, clinical data archive, or deployment credentials were
-accessed or modified. No clinical validation is claimed.
+UI and storage tests use local simulations. No live deployment, private storage,
+patient archive, or deployment credentials were accessed or modified. This is
+software testing, not clinical validation. The snapshot's report/import time is
+not an invented SBS observation time.

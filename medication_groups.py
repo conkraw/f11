@@ -9,7 +9,7 @@ import re
 from medications import match_name, normalized
 
 ID_GROUPS = ("antibiotic",)
-HEME_GROUPS = ("dvt", "antiplatelet")
+HEME_GROUPS = ("dvt", "antiplatelet", "gcsf")
 CV_GROUPS = ("antiarrhythmic", "antihypertensive", "inotrope", "vasopressor", "adrenocortical", "vasodilator")
 RESP_GROUPS = ("airway_cerebral_steroid", "airway_tone", "antisialorrhea", "beta_agonist",
                "anticholinergic", "methylxanthine", "corticosteroid", "inhaled_corticosteroid",
@@ -20,10 +20,10 @@ NEURO_OTHER_GROUPS = ("antiepileptic", "antispasmodic",
 NEURO_PRIORITY_GROUPS = ("sedative_prn", "paralytic_infusion", "paralytic_prn")
 MODES = (("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic",
           "insomnia", "antispasmodic", "neuromodulation",
-          "paralytic_infusion") + RESP_GROUPS + CV_GROUPS + ID_GROUPS + ("antiplatelet", "other",))
+          "paralytic_infusion") + RESP_GROUPS + CV_GROUPS + ID_GROUPS + ("antiplatelet", "gcsf", "other",))
 MODE_LABELS = {
     "auto": "Automatic", "dvt": "DVT Prophylaxis",
-    "antiplatelet": "Antiplatelet Therapy", "antibiotic": "Antibiotics", "fever": "Fever Control",
+    "antiplatelet": "Antiplatelet Therapy", "gcsf": "G-CSF Stimulator", "antibiotic": "Antibiotics", "fever": "Fever Control",
     "sedative_prn": "PRN", "paralytic_prn": "Paralytic PRN", "antiepileptic": "Antiepileptic",
     "paralytic_infusion": "Paralytic Infusions",
     "airway_cerebral_steroid": "Airway/Cerebral Steroids",
@@ -41,7 +41,7 @@ MODE_LABELS = {
 }
 GROUP_NAMES = {key: value for key, value in MODE_LABELS.items() if key not in ("auto", "other")}
 GROUP_SECTIONS = {
-    "dvt": "Hematology", "antiplatelet": "Hematology", "antibiotic": "Infectious Disease", "fever": "Neurologic", "sedative_prn": "Neurologic",
+    "dvt": "Hematology", "antiplatelet": "Hematology", "gcsf": "Hematology", "antibiotic": "Infectious Disease", "fever": "Neurologic", "sedative_prn": "Neurologic",
     **{key: "Neurologic" for key in NEURO_PRIORITY_GROUPS + NEURO_OTHER_GROUPS},
     **{key: "Respiratory" for key in RESP_GROUPS},
     **{key: "Cardiovascular" for key in CV_GROUPS},
@@ -94,6 +94,10 @@ def _local_form(row: dict, name: str) -> bool:
 def automatic_system_group(row: dict) -> str:
     """Requested defaults. Explicit per-order choices remain authoritative."""
     name = match_name(row.get("name", ""))
+    # Filgrastim is G-CSF, not GM-CSF. Match the generic and its biosimilar
+    # suffixes without accidentally matching pegfilgrastim or a mixture.
+    if re.match(r"^(?:filgrastim(?:-[a-z]{4})?|tbo-filgrastim|nivestym|neupogen|zarxio|releuko|nypozi|filkri)(?=$|[\s(,])", name):
+        return "gcsf"
     if _starts(name, ("aspirin", "cangrelor")):
         return "antiplatelet"
     # Organizational defaults only. Existing explicit category assignments win.

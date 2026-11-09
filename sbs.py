@@ -1,9 +1,10 @@
 """Observed State Behavioral Scale readings, separate from prescribed targets.
 
-Only an explicit measured score with a source date AND time can print as a
-recorded SBS in the last 24 hours. Undated readings remain editable but are not
-timestamped at upload. Targets never become measured scores. UTC arithmetic
-makes the rolling window independent of daylight-saving transitions.
+Timestamped observations are filtered to a rolling 24-hour window. The explicit
+Epic field "SBS Last 24 Hours" is a separately stored, source-filtered snapshot.
+Its report time is NOT a measurement time. "Last SBS Ever" is never a fallback.
+An explicitly labelled target keeps a target label. UTC arithmetic makes the
+rolling window independent of daylight-saving transitions.
 
 Scale reference: https://pmc.ncbi.nlm.nih.gov/articles/PMC1626525/
 Time handling: https://docs.python.org/3/library/datetime.html
@@ -50,8 +51,10 @@ def score(value: str) -> str:
 def validate_sbs(data: dict | None) -> None:
     if data is None:
         return
-    if not isinstance(data, dict) or set(data) != {'readings', 'notes'}:
+    if not isinstance(data, dict) or set(data) - {'source_window'} != {'readings', 'notes'}:
         raise ValueError('The observed SBS record has an invalid structure.')
+    if 'source_window' in data:
+        validate_source_window(data['source_window'])
     if not isinstance(data['readings'], list) or len(data['readings']) > 500:
         raise ValueError('The observed SBS history is invalid or too large.')
     for row in data['readings']:
@@ -143,7 +146,7 @@ def _dated_rows(lines: list[str], out: SBSResult) -> set[int]:
     return handled
 
 
-def parse_sbs(block: str) -> SBSResult:
+def _parse_legacy_sbs(block: str) -> SBSResult:
     out = SBSResult()
     lines = block.replace('\r\n', '\n').replace('\r', '\n').replace('\u2212', '-').splitlines()
     target_context = False
@@ -259,5 +262,133 @@ def latest_sbs(data: dict | None, as_of: datetime | None = None) -> dict | None:
 def sbs_display_rows(sheet: dict, as_of: datetime | None = None) -> list[dict]:
     if 'k' in sheet.get('import_warnings', {}):
         return []
-    row = latest_sbs(sheet.get('sbs_observations'), as_of)
-    return [{'label': 'SBS', 'value': score(row['value']), 'section': 'Neurologic', 'include': True}] if row else []
+    data = sheet.get('sbs_observations')
+    validate_sbs(data)
+    window = (data or {}).get('source_window')
+    if window is not None and not window['include']:
+        return []
+    row = latest_sbs(data, as_of)
+    label = 'SBS target' if window and window['kind'] == 'target' else 'SBS'
+    if row:
+        value = score(row['value'])
+    elif window is not None:
+        # An undated source-filtered value is only a snapshot. Never stamp it as
+        # a measured reading, and do not extend its age on save or room changes.
+        reported = datetime.fromisoformat(window['reported_as_of']).astimezone(timezone.utc)
+        now = clock(as_of).astimezone(timezone.utc)
+        value = window['value'] if timedelta(0) <= now - reported <= timedelta(hours=24) else ''
+        if not value:
+            label, value = 'SBS', 'None'
+    else:
+        return []
+    return [{'label': label, 'value': value, 'section': 'Neurologic', 'include': True}]
+
+
+# The explicit window label is authoritative even when its content is empty.
+# Horizontal whitespace only: a blank recent field must not consume the next line.
+RECENT_FIELD = re.compile(r'(?im)^[ \t]*(?:SBS[ \t]+(?:Last|Past)[ \t]+24[ \t]*(?:Hours?|Hrs?)|(?:Last|Past)[ \t]+24[ \t]*(?:Hours?|Hrs?)[ \t]+SBS)[ \t]*:')
+EVER_FIELD = re.compile(r'(?i)\bLast[ \t]+SBS[ \t]+Ever[ \t]*:')
+
+
+def validate_source_window(value: dict) -> None:
+    if not isinstance(value, dict) or set(value) != {'value', 'reported_as_of', 'reference', 'kind', 'include'}:
+        raise ValueError('The source-filtered SBS snapshot has an invalid structure.')
+    if not isinstance(value['value'], str) or (value['value'] and score(value['value']) != value['value']):
+        raise ValueError('The source-filtered SBS score is invalid.')
+    if value['reference'] not in ('smartphrase', 'import') or value['kind'] not in ('score', 'target') or type(value['include']) is not bool:
+        raise ValueError('The source-filtered SBS metadata is invalid.')
+    if not isinstance(value['reported_as_of'], str) or len(value['reported_as_of']) > 80:
+        raise ValueError('The SBS snapshot time is invalid.')
+    try:
+        when = datetime.fromisoformat(value['reported_as_of'])
+        if when.tzinfo is None or when.utcoffset() is None:
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise ValueError('The SBS snapshot time must include a timezone.') from None
+
+
+def snapshot_reference(blocks: dict) -> tuple[datetime, str]:
+    """Use a printed SmartPhrase snapshot time, never an observation time.
+
+    The S summary is the user's primary I/O block. H remains a legacy fallback.
+    This is only used for an explicitly source-filtered SBS field.
+    """
+    for key in ('s', 'h'):
+        for line in blocks.get(key, '').splitlines():
+            match = re.search(r'^\s*Intake/Output Summary.*?\bat\s+(' + DATE + r'\s+' + TIME + r')\s*$', line, re.I)
+            if not match:
+                continue
+            try:
+                when, timed = date_parts(match[1])
+                if timed:
+                    a, b = when.replace(tzinfo=EASTERN, fold=0), when.replace(tzinfo=EASTERN, fold=1)
+                    if a.utcoffset() == b.utcoffset():
+                        return a, 'smartphrase'
+            except ValueError:
+                pass
+    return clock(), 'import'
+
+
+def parse_sbs(block: str, *, window_as_of: datetime | None = None,
+              window_reference: str = 'import') -> SBSResult:
+    """Read the user's K structure without historical fallback or invented times."""
+    source = block.replace('\r\n', '\n').replace('\r', '\n').replace('：', ':')
+    recent = list(RECENT_FIELD.finditer(source))
+    ever = EVER_FIELD.search(source)
+    if not recent and not ever:
+        return _parse_legacy_sbs(source)
+    out = SBSResult()
+    try:
+        if len(recent) > 1:
+            raise ValueError('More than one last-24-hour SBS field was supplied.')
+        if recent:
+            start = recent[0].end()
+            following_ever = EVER_FIELD.search(source, start)
+            body = source[start:following_ever.start() if following_ever else len(source)]
+        else:
+            # A historical-only field cannot refresh any current SBS display.
+            body = ''
+        window = {'value': '', 'reported_as_of': clock(window_as_of).astimezone(timezone.utc).isoformat(),
+                  'reference': window_reference, 'kind': 'score', 'include': True}
+        out.data['source_window'] = window
+        body = body.strip()
+        if not body or MISSING.fullmatch(clean(body)):
+            validate_sbs(out.data)
+            return out
+
+        # Epic may insert its full nested field label. Do not turn a documented
+        # target into an observed score. It is eligible by the window, but remains
+        # explicitly labelled "SBS target" in the output and editor.
+        target_lines = [line for line in body.splitlines() if TARGET.search(line)]
+        if target_lines:
+            window['kind'] = 'target'
+            body = re.sub(r'(?im)^[ \t]*(?:Target Arousal Level(?:[ \t]*\(SBS\))?|(?:Target|Goal|Desired)[ \t]+SBS)[ \t]*:[ \t]*', '', body)
+            if TARGET.search(body):
+                raise ValueError('Unrecognized target label in the SBS 24-hour field.')
+        parsed = _parse_legacy_sbs('SBS observations:\n' + body)
+        if parsed.error:
+            raise ValueError(parsed.error)
+        readings = parsed.data['readings']
+        timed = [r for r in readings if r['recorded_at'] and date_parts(r['recorded_at'])[1]]
+        undated = [r for r in readings if not r['recorded_at']]
+        date_only = [r for r in readings if r['recorded_at'] and not date_parts(r['recorded_at'])[1]]
+        if (timed and (undated or date_only)) or (undated and date_only):
+            raise ValueError('Mixed timed and untimed SBS readings cannot establish a latest result.')
+        if timed:
+            out.data['readings'] = timed
+        elif date_only:
+            # Keep explicit date-only history for editing, without bypassing it
+            # based only on the "24 hours" label.
+            out.data['readings'] = date_only
+            out.data['notes'] = list(parsed.data['notes'])
+            out.issues = list(parsed.issues)
+        elif undated:
+            values = {score(r['value']) for r in undated}
+            if len(values) != 1:
+                raise ValueError('Multiple untimed SBS scores need recording times to select the latest.')
+            window['value'] = values.pop()
+        validate_sbs(out.data)
+    except (ValueError, TypeError, IndexError):
+        out.error = 'The SBS Last 24 Hours field could not be read safely. Last SBS Ever was not used.'
+        out.data = {'readings': [], 'notes': []}
+    return out
