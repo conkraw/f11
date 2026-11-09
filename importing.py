@@ -292,6 +292,8 @@ def import_sections(sheet: dict, text: str, settings: dict) -> ImportResult:
                 if recoveries:
                     candidate['import_warnings'][group] = recoveries
                     out.diagnostics.extend(recoveries)
+    from empty_groups import refresh_empty_group_layout
+    refresh_empty_group_layout(candidate, settings)
     validate_sheet(candidate)
     out.sheet = candidate
     return out

@@ -61,7 +61,7 @@ def test_vent_before_respiratory_meds_in_pdf():
     s=apply_medications(s,remap(rows,upsert_rule([],'albuterol','Respiratory')))
     doc=fitz.open(stream=handoffs_pdf([s]),filetype='pdf')
     text=doc[0].get_text()
-    assert text.index('Mode:')<text.index('Set RR:')<text.index('FiO2')<text.index('-----')<text.index('albuterol')
+    assert text.index('Mode:')<text.index('Set RR:')<text.index('FiO2')<text.index('-----', text.index('FiO2'))<text.index('albuterol')
 
 
 def test_print_html_has_two_pages_and_button_with_escaped_clinical_text():

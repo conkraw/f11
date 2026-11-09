@@ -1,6 +1,7 @@
 """PICU SmartPhrase v6.37: compact printing and optional difficult airway, based on 6.35."""
 from __future__ import annotations
 from copy import deepcopy
+from empty_groups import refresh_empty_group_layout
 from categories import apply_category_rules, set_category_rule, theophylline_anchor
 from category_ui import placement_picker, category_admin, local_target
 from html import escape
@@ -127,6 +128,7 @@ def set_editor(room: str, sheet: dict) -> None:
     discard_editor_widget_values()
     st.session_state.setdefault("drafts", {})[room] = deepcopy(sheet)
     st.session_state["drafts"][room]["medications"] = apply_category_rules(sheet["medications"], st.session_state.get("vault", {}).get("settings", {}))
+    refresh_empty_group_layout(st.session_state["drafts"][room], st.session_state.get("vault", {}).get("settings", {}))
     st.session_state["paste"] = ""
     st.session_state.pop("import_result", None)
 
@@ -176,6 +178,7 @@ def editor_snapshot(room: str) -> dict:
             if group and row["section"] != GROUP_SECTIONS[group]:
                 row["group_mode"] = "other"
     sheet["medications"] = apply_category_rules(sheet["medications"], ss["vault"]["settings"])
+    refresh_empty_group_layout(sheet, ss["vault"]["settings"])
     if sheet["intake_output"] is not None:
         for field in IO_FIELDS + IO_META_FIELDS + ("include",):
             key = "io_" + sheet["id"] + "_" + field
@@ -583,7 +586,7 @@ def viral_editor(sheet: dict) -> None:
 
 def neuro_weight_editor(sheet: dict) -> None:
     st.subheader("Neurologic observations")
-    st.caption("K: target arousal, Y: CAPD, L: WAT-1, M: ICP/CPP. CAPD always prints between SBS and WAT-1. None means no available score, not a zero score.")
+    st.caption("K: target arousal, Y: CAPD, L: WAT-1, M: ICP/CPP. CAPD always prints between SBS and WAT-1. None means no available score, not a zero score. ICP/CPP show the documented range and Last reading in brackets. Range and Last fields can be edited separately.")
     present = False
     for source, title in NEURO_SECTIONS.items():
         if source == "y" and not sheet["neuro_vitals"].get("y"):
@@ -1082,6 +1085,7 @@ def reapply_open_mappings() -> None:
     for sheet in ss.get("drafts", {}).values():
         sheet["medications"] = apply_group_rules(apply_gi_rules(apply_infusion_rules(remap(sheet["medications"], rules, ss["vault"]["settings"]["medication_visibility"]), ss["vault"]["settings"]["medication_infusions"]), ss["vault"]["settings"]["medication_gi_groups"]), ss["vault"]["settings"]["medication_groups"])
         sheet["medications"] = apply_category_rules(sheet["medications"], ss["vault"]["settings"])
+        refresh_empty_group_layout(sheet, ss["vault"]["settings"])
     # These callbacks run before the widgets are instantiated on the next run.
     for key in list(ss):
         if (key.startswith("med_") and key.endswith(("_section", "_infusion_mode", "_gi_mode", "_group_mode", "_category_target"))) or key.startswith(("infusion_rule_mode_", "gi_rule_mode_", "group_rule_mode_")):
@@ -1337,7 +1341,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.43 | CAPD, Vent Settings and medication categories")
+        st.caption("Version 6.44 | Empty medication groups and ICP/CPP trends")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
         st.caption("Shared storage connected" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)

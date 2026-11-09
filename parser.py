@@ -109,9 +109,13 @@ def parse_smartphrase(text: str) -> ParseResult:
             re.match(r"^(?:results? from (?:the )?last |blood gases?:?$|latest blood gas:?$|complete blood count:?$|cbc:?$|lab\s+units\b|no results?\b|no lab exists for component:|none$)", nonempty[0], re.I))
         r_start = key == "r" and (not nonempty or _heading(nonempty[0]) == "r" or re.match(r"^no orders?\b", nonempty[0], re.I))
         s_start = key == "s" and (not nonempty or _heading(nonempty[0]) in ("h", "s") or re.match(r"^(?:Intake\s*/\s*Output\s+Summary|Fluid balance:?$|Intake\s|Output\s|Net\s|none$|no data$|not documented$|no results?\b)", nonempty[0], re.I))
+        # M may now start with a user-added Range or Last wrapper rather than ICP Trends.
+        m_start = key == "m" and (not nonempty or bool(re.match(
+            r"^(?:(?:Last\s+)?(?:ICP(?:\s+Mean)?|CPP)(?:\s+Range)?(?:\s*\(\s*mm\s*Hg\s*\))?\s*:|no data recorded$)",
+            nonempty[0], re.I)))
         # T contains device-prefixed lines and may have no heading at all.
         t_start = key in ("t", "u", "v", "w", "x", "y")
-        if not p_start and not r_start and not s_start and not t_start and (not nonempty or _heading(nonempty[0]) != key):
+        if not p_start and not r_start and not s_start and not t_start and not m_start and (not nonempty or _heading(nonempty[0]) != key):
             result.invalid.add(key)
             result.issues.append(f"The {SECTION_NAMES[key]} divider pair must begin with its matching heading.")
         elif any(_heading(ln) not in (None, key) and not (key == "g" and _heading(ln) in ("p", "q")) and not (key == "s" and _heading(ln) == "h") for ln in nonempty[1:]):

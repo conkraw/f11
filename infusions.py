@@ -168,6 +168,8 @@ def render_body_blocks(blocks: list[tuple[str, object]], rich: bool = False, esc
             lines.append(infusion_entry(item, rich, esc, handoff_only=True))
         elif kind == "heading":
             lines.append("<b>" + encode(item) + "</b>" if rich else item)
+        elif kind == "empty_group":
+            lines.append(encode(item + ": None"))
         elif kind == "subheading":
             lines.append("<b><i>" + encode(item) + "</i></b>" if rich else item)
         elif kind == "medication":

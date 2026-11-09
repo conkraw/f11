@@ -284,6 +284,19 @@ def medication_blocks(section: str, notes: str, rows: list[dict], sheet: dict | 
             child["rows"].append(row)
         else:
             root["direct"].append(row)
+    if sheet is not None:
+        from empty_groups import empty_group_paths
+        for path in empty_group_paths(sheet, rows):
+            if path["section"] != section:
+                continue
+            root_id = path["parent_id"] or path["id"]
+            root = roots.setdefault(root_id, dict(name=path["parent_name"] or path["name"],
+                order=path["parent_order"], direct=[], children={}))
+            if path["parent_id"]:
+                root["children"].setdefault(path["id"], dict(name=path["name"],
+                    order=path["order"], rows=[], empty=True))
+            else:
+                root["empty"] = True
     anchor = theophylline_anchor(sheet) if sheet else ""
     def entries(items):
         blocks = []
@@ -300,9 +313,15 @@ def medication_blocks(section: str, notes: str, rows: list[dict], sheet: dict | 
         return ([("notes", notes.rstrip())] if notes.strip() else []) + entries(plain)
     groups = []
     for root in sorted(roots.values(), key=lambda x: (x["order"], x["name"].casefold())):
-        block = [("heading", root["name"])] + entries(root["direct"])
+        if root.get("empty") and not root["direct"] and not root["children"]:
+            block = [("empty_group", root["name"])]
+        else:
+            block = [("heading", root["name"])] + entries(root["direct"])
         for child in sorted(root["children"].values(), key=lambda x: (x["order"], x["name"].casefold())):
-            block += [("subheading", child["name"])] + entries(child["rows"])
+            if child.get("empty") and not child["rows"]:
+                block += [("empty_group", child["name"])]
+            else:
+                block += [("subheading", child["name"])] + entries(child["rows"])
         groups.append(block)
     if notes.strip():
         groups.append([("notes", notes.rstrip())])

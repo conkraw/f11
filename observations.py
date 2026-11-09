@@ -38,6 +38,8 @@ def validate_neuro(data: dict) -> None:
             raise ValueError('Neurologic observations must remain in the Neurologic section.')
     from capd import validate_capd_rows
     validate_capd_rows(data.get('y', []))
+    from icp_cpp import validate_icp_cpp_rows
+    validate_icp_cpp_rows(data["m"])
 
 
 def neuro_rows(data: dict) -> list[dict]:
@@ -48,6 +50,9 @@ def neuro_rows(data: dict) -> list[dict]:
     for key in NEURO_SECTIONS:
         if key == "y":
             result.append(capd_display_row(data.get("y", [])))
+        elif key == "m":
+            from icp_cpp import display_icp_cpp_rows
+            result.extend(display_icp_cpp_rows(data[key]))
         else:
             result.extend(data[key])
     return result
@@ -65,6 +70,10 @@ def parse_neuro(block: str, source: str) -> ObservationResult:
     if source == "y":
         from capd import parse_capd
         return parse_capd(block)
+    if source == "m":
+        from icp_cpp import is_range_format, parse_icp_cpp
+        if is_range_format(block):
+            return parse_icp_cpp(block)
     if source not in NEURO_SECTIONS:
         out.error = 'The neurologic source section is unsupported. Nothing was imported.'
         return out

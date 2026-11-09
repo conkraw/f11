@@ -37,7 +37,7 @@ from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 from problem_review import validate_review, empty_review
 from difficult_airway import validate_airway
 from lab_windows import cardiac_labs_summary, theophylline_summary, id_summary, laboratory_data
@@ -83,7 +83,7 @@ def new_vault() -> dict:
 
 
 def validate_sheet(sheet: dict) -> None:
-    if not isinstance(sheet, dict) or set(sheet) - {"anthropometrics", "problem_review", "difficult_airway"} != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "devices", "neuro_devices", "pacemaker", "diet", "import_warnings"}:
+    if not isinstance(sheet, dict) or set(sheet) - {"anthropometrics", "problem_review", "difficult_airway", "empty_group_layout"} != {"id", "room", "created_at", "updated_at", "fields", "medications", "ventilation", "noninvasive", "vitals", "labs", "neuro_vitals", "nutrition", "cultures", "dosing_weight", "admission_date", "viral_panel", "blood_gas", "cbc", "recurring_orders", "intake_output", "feeds", "devices", "neuro_devices", "pacemaker", "diet", "import_warnings"}:
         raise ValidationError("The handoff structure is invalid.")
     if not isinstance(sheet["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", sheet["id"]):
         raise ValidationError("The handoff identifier is invalid.")
@@ -105,6 +105,8 @@ def validate_sheet(sheet: dict) -> None:
         validate_vitals(sheet["vitals"])
         validate_labs(sheet["labs"])
         validate_neuro(sheet["neuro_vitals"])
+        from empty_groups import validate_empty_group_layout
+        validate_empty_group_layout(sheet.get("empty_group_layout", []))
         validate_nutrition(sheet["nutrition"])
         validate_cultures(sheet["cultures"])
         validate_dosing_weight(sheet["dosing_weight"])
@@ -199,6 +201,11 @@ def upgrade_vault(vault: dict) -> dict:
     if version == SCHEMA_VERSION:
         validate_vault(vault)
         return vault
+    if version == 28:
+        candidate = deepcopy(vault)
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     if version == 27:
         candidate = deepcopy(vault)
         # Existing categories, subcategories and assignments keep their IDs.
@@ -533,6 +540,9 @@ def automatic_vitals(sheet: dict) -> dict[str, str]:
     if "y" in sheet.get("import_warnings", {}):
         # Do not print a retained old score as though a failed Y import refreshed it.
         neuro = dict(neuro, y=[])
+    if "m" in sheet.get("import_warnings", {}):
+        # A failed M paste cannot refresh the retained last pressures.
+        neuro = dict(neuro, m=[])
     result = text_by_system(neuro_rows(neuro) + sheet["vitals"])
     evd = evd_text(sheet)
     if evd:
