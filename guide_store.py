@@ -53,9 +53,9 @@ class GuideStore:
         if response.status_code in (409, 422):
             raise ConflictError("The shared guide changed or a repository rule blocked this save. Your draft is retained. Reload the published guide, compare, then save again.")
         if response.status_code not in (200, 201):
-            raise StorageError("GitHub did not confirm the guide save. Your draft is retained. Reload and compare before retrying.")
+            raise StorageError("Shared storage did not confirm the guide save. Your draft is retained. Reload and compare before retrying.")
         result = self.vault._json(response)
         sha = result.get("content", {}).get("sha")
         if not isinstance(sha, str) or not sha:
-            raise StorageError("GitHub did not return a saved guide version. Reload and compare before retrying.")
+            raise StorageError("Shared storage did not return a saved guide version. Reload and compare before retrying.")
         return sha

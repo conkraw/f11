@@ -8,11 +8,89 @@ from copy import deepcopy
 import re
 from medications import match_name, normalized
 
-MODES = ("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic", "other")
-MODE_LABELS = {"auto": "Automatic", "dvt": "DVT Prophylaxis", "fever": "Fever Control",
-               "sedative_prn": "PRN", "paralytic_prn": "Paralytic PRN", "antiepileptic": "Antiepileptic", "other": "No special grouping"}
-GROUP_NAMES = {key: MODE_LABELS[key] for key in ("dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic")}
-GROUP_SECTIONS = {"dvt": "Hematology", "fever": "Neurologic", "sedative_prn": "Neurologic", "paralytic_prn": "Neurologic", "antiepileptic": "Neurologic"}
+CV_GROUPS = ("antiarrhythmic", "antihypertensive", "inotrope", "vasopressor", "adrenocortical", "vasodilator")
+RESP_GROUPS = ("antisialorrhea",)
+MODES = ("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic") + RESP_GROUPS + CV_GROUPS + ("other",)
+MODE_LABELS = {
+    "auto": "Automatic", "dvt": "DVT Prophylaxis", "fever": "Fever Control",
+    "sedative_prn": "PRN", "paralytic_prn": "Paralytic PRN", "antiepileptic": "Antiepileptic",
+    "antisialorrhea": "Antisialorrhea Agents", "antiarrhythmic": "Antiarrhythmics",
+    "antihypertensive": "Antihypertensives", "inotrope": "Inotrope Infusions",
+    "vasopressor": "Vasopressors", "adrenocortical": "Adrenocortical Support",
+    "vasodilator": "Vasodilators", "other": "No special grouping",
+}
+GROUP_NAMES = {key: value for key, value in MODE_LABELS.items() if key not in ("auto", "other")}
+GROUP_SECTIONS = {
+    "dvt": "Hematology", "fever": "Neurologic", "sedative_prn": "Neurologic",
+    "paralytic_prn": "Neurologic", "antiepileptic": "Neurologic",
+    **{key: "Respiratory" for key in RESP_GROUPS},
+    **{key: "Cardiovascular" for key in CV_GROUPS},
+}
+
+# These are the user's display groups, not inferred medication indications.
+# Match the medication at the start of the product name. For example,
+# norepinephrine must not match epinephrine, or enalaprilat match enalapril.
+ANTIARRHYTHMICS = (
+    "esmolol", "amiodarone", "procainamide", "mexiletine", "flecainide",
+    "propranolol", "sotalol", "diltiazem", "verapamil", "digoxin",
+)
+ANTIHYPERTENSIVES = (
+    "enalapril", "metoprolol", "amlodipine", "lisinopril", "hydrochlorothiazide",
+    "clonidine", "atenolol", "carvedilol", "losartan", "valsartan", "captopril",
+    "labetalol", "nifedipine", "isradipine",
+)
+INOTROPES = ("milrinone", "dobutamine", "epinephrine", "dopamine")
+VASOPRESSORS = ("norepinephrine", "vasopressin", "phenylephrine")
+VASODILATORS = ("nitroglycerin", "nitroglycerine", "nicardipine", "nicadipine", "hydralazine", "enalaprilat", "enalapriatat")
+IV_ROUTES = {"intravenous", "iv", "intra arterial", "intraarterial", "ia"}
+
+
+def _starts(name: str, names: tuple[str, ...]) -> bool:
+    return bool(re.match(r"^(?:" + "|".join(re.escape(n) for n in names) + r")(?=$|[\s(,])", name))
+
+
+def _route(row: dict) -> str:
+    return normalized(row.get("route", "")).replace("-", " ")
+
+
+def _continuous_iv(row: dict) -> bool:
+    # No drug in a local-anesthetic mixture, no rescue bolus, no nebulized dose.
+    if _route(row) not in IV_ROUTES or is_prn(row):
+        return False
+    if row.get("infusion_mode") == "other":
+        return False
+    return row.get("infusion_mode") == "infusion" or bool(
+        re.search(r"\bcontinuous\b|\btitrat(?:e|able)\b", normalized(row.get("frequency", "")))
+    )
+
+
+def _local_form(row: dict, name: str) -> bool:
+    # Do not recategorize topical hydrocortisone, eye/nose drops, or local products.
+    route = _route(row)
+    return (bool(re.search(r"topical|ophthalm|otic|nostril|nasal|rectal|buccal|nebul|inhal|irrigation|infiltrat|intraderm", route))
+            or bool(re.search(r"\b(?:cream|ointment|ophthalmic|otic|nasal|enema|suppository|suppositories)\b", name)))
+
+
+def automatic_system_group(row: dict) -> str:
+    """Requested defaults. Explicit per-order choices remain authoritative."""
+    name = match_name(row.get("name", ""))
+    if _starts(name, ("scopolamine", "glycopyrrolate", "glycopyrollate")):
+        return "antisialorrhea"
+    if _starts(name, ("lidocaine",)):
+        return "antiarrhythmic" if _continuous_iv(row) else ""
+    if _starts(name, INOTROPES):
+        return "inotrope" if _continuous_iv(row) else ""
+    if _starts(name, VASOPRESSORS):
+        return "vasopressor" if _route(row) in IV_ROUTES else ""
+    if _starts(name, ANTIARRHYTHMICS):
+        return "antiarrhythmic"
+    if _starts(name, ANTIHYPERTENSIVES):
+        return "antihypertensive"
+    if _starts(name, ("hydrocortisone",)):
+        return "" if _local_form(row, name) else "adrenocortical"
+    if _starts(name, VASODILATORS):
+        return "vasodilator"
+    return ""
 
 
 def is_prn(row: dict) -> bool:
@@ -21,6 +99,9 @@ def is_prn(row: dict) -> bool:
 
 
 def automatic_group(row: dict) -> str:
+    system_group = automatic_system_group(row)
+    if system_group:
+        return system_group
     name = match_name(row.get("name", ""))
     if re.match(r"^(?:enoxaparin|cangrelor)\b", name):
         return "dvt"
@@ -48,7 +129,7 @@ def group_for(row: dict) -> str:
     mode = row.get("group_mode", "auto")
     # An explicit GI override wins over automatic defaults, not over an explicit
     # special-group choice. UI callbacks clear the competing explicit choice.
-    if mode == "auto" and row.get("gi_mode", "auto") in ("prophylaxis", "bowel", "diuretic"):
+    if mode == "auto" and row.get("gi_mode", "auto") in ("prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine"):
         return ""
     return automatic_group(row) if mode == "auto" else mode if mode in GROUP_NAMES else ""
 

@@ -125,9 +125,11 @@ def validate_medication(row: dict) -> None:
     validate_admin_fields(row)
     if row.get("infusion_mode", "auto") not in ("auto", "infusion", "other"):
         raise ValueError("Choose a valid infusion display setting.")
-    if row.get("gi_mode", "auto") not in ("auto", "prophylaxis", "bowel", "diuretic", "antiemetic", "other"):
+    from fen_gi import MODES as GI_MODES
+    from medication_groups import MODES as GROUP_MODES
+    if row.get("gi_mode", "auto") not in GI_MODES:
         raise ValueError("Choose a valid FEN/GI display setting.")
-    if row.get("group_mode", "auto") not in ("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic", "other"):
+    if row.get("group_mode", "auto") not in GROUP_MODES:
         raise ValueError("Choose a valid medication group.")
     if not isinstance(row["id"], str) or not re.fullmatch(r"[0-9a-f]{32}", row["id"]):
         raise ValueError("A medication identifier is invalid.")

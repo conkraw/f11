@@ -52,7 +52,7 @@ Open Difficult airway immediately after Problems. Enable This patient has a diff
 
 ## 8. Save and confirm
 
-Click Save handoff. Confirm the saved status and the Last saved to GitHub date and time. Changing rooms also saves the current imported draft when storage is enabled, but text only pasted into the box is not imported or saved until you click Create / update handoff. Save before logging out or closing the tab. A failed save is not a saved handoff. Session-only testing does not persist data to GitHub.
+Click Save handoff. Confirm the saved status and the Last saved to shared storage date and time. Changing rooms also saves the current imported draft when storage is enabled, but text only pasted into the box is not imported or saved until you click Create / update handoff. Save before logging out or closing the tab. A failed save is not a saved handoff. Session-only testing does not persist handoffs.
 
 ## Print the team's handoffs
 

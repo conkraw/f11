@@ -220,4 +220,6 @@ def test_page_render_has_existing_editors_and_downloads(app, monkeypatch):
     app.create_handoff()
     downloads = equip(app, monkeypatch)
     app.handoff_page(None)
-    assert any(isinstance(d, bytes) and b'ETCO2: 28 to 61 mmHg' in d for _, d in downloads)
+    pdfs = [d for _, d in downloads if isinstance(d, bytes) and d.startswith(b'%PDF')]
+    assert pdfs
+    assert any('ETCO2: 28 to 61 mmHg' in ''.join(p.get_text() for p in fitz.open(stream=d, filetype='pdf')) for d in pdfs)

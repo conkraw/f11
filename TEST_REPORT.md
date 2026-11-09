@@ -1,60 +1,72 @@
-# Version 6.38 validation report
+# Version 6.39 validation report
 
-## Baseline and scope
+## Source and test results
 
-Source package: original PICU637.zip, extracted as the base for this update.
-Baseline suite: 3,004 tests passed.
-Updated full suite: 3,082 tests passed, including 78 new cases in
-`tests/test_mode_specific_ventilator.py`.
+Base: the delivered /mnt/data/PICU638.zip, not a reconstruction.
+Original full suite before changes: 3,082 passed.
+New focused module: 158 passed in tests/test_cv_resp_endocrine_categories.py.
+Updated full suite: 3,247 passed.
+The increase of 165 is 158 new tests plus seven additional cases in an existing
+parameterized test that automatically covers all supported medication groups.
 
-The new tests cover the supplied PC, PRVC and home-vent source patterns, nested
-labels, Avg/Min/Max parsing, set vs observed separation, inspiratory vs expiratory
-volume labels, blank and zero-valued home settings, all supplied mode-name
-mappings, synthetic VC cases, original C/D NIV combinations, named advanced NIV,
-unknown/missing values, partial import recovery, retained source values,
-encryption round trips, editor callbacks, room snapshots, and PDF/HTML/text
-output with no cross-room ventilator content.
+Existing test expectations were changed only for requested display changes:
+- two former HTML-download assertions now extract the surviving PDF download
+- the milrinone example expects Inotrope Infusions rather than CV Infusions
+- save status expects shared storage rather than the provider name
 
-Existing test expectations were changed only where the user explicitly changed
-printed labels or which parameters print for a mode. The original input fixtures
-and standard-vs-ISTAT, CBC, lab, medication, and vital-value selection rules were
-not changed. Printed-mode label assertions now use Mode rather than Vent Mode.
-Legacy observed TV data remain saved even when the new volume-targeted profile
-prints only set TV.
+An existing read-only-editor test found that exposing the new group selector
+could add an unnecessary group_mode=auto to legacy medication records. The
+snapshot collector now avoids adding unchanged optional automatic settings.
+The original assertion was retained and passes.
 
-The three attached examples' C/D ranges were read through Files. Tests exercise
-those source patterns plus the home-vent C section pasted in the conversation.
-This release was not tested against every byte of every historical patient paste.
-No complete patient sample is added to the package. New PDF previews use existing
-synthetic fixtures, not the actual patients' full handoffs.
+## Coverage
+
+All requested named defaults, case variants, start/held annotations, lidocaine
+infusion-only routing, epinephrine bolus/nebulization exclusions, phenylephrine
+local-route exclusions, topical/rectal hydrocortisone exclusions, endocrine
+injections versus infusions, matching boundaries, distinct epinephrine versus
+norepinephrine and enalapril versus enalaprilat, shared override persistence,
+manual clonidine placement, hidden/excluded orders, no duplicate output, output
+heading order, Last Admin rate emphasis, encryption round trips, and UI removal
+were exercised with synthetic inputs.
+
+UI tests use widget stubs, not a live Streamlit browser. Storage callbacks use
+mock responses, not the user's private repository. Removing provider branding
+was tested without changing HTTP headers or the storage API endpoint.
 
 ## Compatibility
 
-A synthetic encrypted archive was created with the unmodified Version 6.37
-modules. It was opened with this version and compared against its original JSON.
-Every saved field, difficult-airway value, medication rule and timestamp matched.
-It was then re-encrypted and reopened with the same generated test key, again
-matching exactly. New ventilator values also have encryption round-trip tests.
+A separate interpreter loaded the unmodified Version 6.38 modules extracted
+from the original ZIP and generated an encrypted synthetic archive with two
+rooms, a custom room, a remembered medication mapping, saved timestamps and
+reset metadata. The new release opened it and compared it exactly with its
+original JSON. It was re-encrypted with the same generated test key and reopened
+without changing any field. No credentials or clinical handoffs are packaged.
 
-Schema remains 26. Additional ventilation-value keys and supported NIV labels
-mean that an older release may reject data saved with this release. Do not
-roll back after saving newly captured ventilator fields.
+These modules are byte-for-byte unchanged from Version 6.38: parser.py,
+importing.py, infusion_rates.py, medication_columns.py, ventilation.py,
+ventilator_modes.py, noninvasive.py, labs.py, lab_windows.py, vitals.py, cbc.py,
+blood_gases.py, feeds.py, diet.py, devices.py, pacemaker.py, anthropometrics.py,
+difficult_airway.py, security.py and models.py.
 
-## Printed output
+Medication grouping/validation and display modules changed. Storage adapter
+changes are limited to user-facing error wording. The schema remains 26.
+Older versions will not understand newly saved group choices.
 
-The app generated PC, PRVC and Home Vent synthetic handoffs. The PDF preflight
-reported one landscape page per room and 8-point body text for all three, without
-requiring tighter spacing or balanced columns. All three rendered pages were
-visually inspected. The middle example includes the retained difficult-airway
-alert at the end. No clipped text or overlapping fields were seen.
+## Preview
 
-## Unchanged components
+The app generated a synthetic landscape handoff demonstrating every new group.
+The actual export renderer reports one page at 8-point body text, without tighter
+spacing or adjusted column widths. Its rendered page was visually inspected.
+No clinical patient data are used in that preview.
 
-The CBC, blood-gas, medication, laboratory, vital-sign, feeding, device,
-pacemaker, anthropometric, export/page-fitting, encryption and GitHub storage
-modules are unchanged from 6.37. The changed production files are app.py,
-ventilation.py and noninvasive.py, plus new ventilator_modes.py.
+Automatic fitting still runs during export. This synthetic example is not a
+promise that every real handoff will fit on one page. Long handoffs continue
+rather than dropping entries. The routine UI diagnostics table is removed.
 
-No live Streamlit deployment, private repository, live device or patient record
-was queried or modified. Interface/storage tests use the existing mocks and
-synthetic data. This is software regression testing, not clinical validation.
+## Limitations
+
+No live deployment, private archive connection, clinical integration, or clinical
+validation was performed. Categories implement the user's organizational choices,
+not a clinical indication or treatment recommendation. Existing published custom
+instructions are not overwritten. Removing UI wording does not add security.

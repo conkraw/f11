@@ -15,13 +15,15 @@ from feeds import feeds_text
 from diet import diet_text
 from medication_groups import group_for as special_group, GROUP_SECTIONS
 
-MODES = ("auto", "prophylaxis", "bowel", "diuretic", "antiemetic", "other")
-MODE_LABELS = {"auto": "Automatic", "prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "antiemetic": "Antiemetics", "other": "No GI grouping"}
-GROUP_NAMES = {"prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "antiemetic": "Antiemetics"}
+MODES = ("auto", "prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "other")
+MODE_LABELS = {"auto": "Automatic", "prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "antiemetic": "Antiemetics", "endocrine": "Endocrine Medications", "other": "No GI grouping"}
+GROUP_NAMES = {"prophylaxis": "GI prophylaxis", "bowel": "Bowel Regimen", "diuretic": "Diuretics", "antiemetic": "Antiemetics", "endocrine": "Endocrine Medications"}
 
 
 def automatic_group(row: dict) -> str:
     name = match_name(row.get("name", ""))
+    if re.match(r"^(?:levothyroxine|synthroid|levoxyl|insulin|lantus|metformin)(?=$|[\s(,])", name):
+        return "endocrine"
     if re.match(r"^(?:ondansetron|zofran)\b", name):
         return "antiemetic"
     if re.match(r"^(?:bumetanide|chlorothiazide|furosemide)\b", name):
@@ -61,7 +63,7 @@ def validate_gi_rules(rules: list[dict]) -> None:
         for key in ("name", "route", "frequency"):
             if not isinstance(rule[key], str) or len(rule[key]) > 4000 or any(c in rule[key] for c in "\n\r\t"):
                 raise ValueError("A FEN/GI display rule contains invalid text.")
-        if not rule["name"] or rule["mode"] not in ("prophylaxis", "bowel", "diuretic", "antiemetic", "other"):
+        if not rule["name"] or rule["mode"] not in ("prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "other"):
             raise ValueError("A FEN/GI display rule has an invalid choice.")
         key = (rule["name"], rule["route"], rule["frequency"])
         if key in seen:
@@ -118,7 +120,14 @@ def fen_gi_body(notes: str, rows: list[dict], intake_output: dict | None, rich: 
         grouped = [r for r in meds if group_for(r) == mode]
         if grouped:
             heading = "<b>" + encode(label) + "</b>" if rich else label
-            sections.append("\n".join([heading] + [encode(medication_output(format_medication(r))) for r in grouped]))
+            # Local import avoids the presentation-module import cycle. It is
+            # evaluated only when rendering, after all modules are initialized.
+            from infusions import infusion_entry, is_infusion
+            entries = [(infusion_entry(r, rich, esc, handoff_only=True).replace("\n", "<br/>") if rich
+                        else infusion_entry(r, False, esc, handoff_only=True))
+                       if mode == "endocrine" and is_infusion(r)
+                       else encode(medication_output(format_medication(r))) for r in grouped]
+            sections.append("\n".join([heading] + entries))
     if notes.strip():
         sections.append(encode(notes.rstrip()))
     others = [r for r in meds if not group_for(r)]

@@ -168,5 +168,6 @@ def test_page_render_uses_existing_vital_editor_and_export(app, monkeypatch):
     app.create_handoff()
     downloads = equip(app, monkeypatch)
     app.handoff_page(None)
-    assert any(isinstance(data, bytes) and b'SpO2: 93% to 100%' in data
-               for _, data in downloads)
+    pdfs = [d for _, d in downloads if isinstance(d, bytes) and d.startswith(b'%PDF')]
+    assert pdfs
+    assert any('SpO2: 93% to 100%' in ''.join(p.get_text() for p in fitz.open(stream=d, filetype='pdf')) for d in pdfs)

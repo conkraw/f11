@@ -1,9 +1,9 @@
-COMPLETE VERSION 6.38 PACKAGE, BASED ON 6.37
-Keep app.py at the root. Replace matching files and include ventilator_modes.py.
-No Version 6.36 font picker. No new Python dependencies.
-Keep Secrets, both passwords, encryption key, mappings, private data repository
-and CDC BMI reference data. Do not rerun any generator.
-Re-paste the full SmartPhrase or complete paired C and D sections to capture the
-new ventilator fields. Click Create / update handoff, inspect and save.
-Existing schema-26 archives open unchanged. Do not downgrade after saving the
-new ventilation fields. Read VENTILATOR_UPDATE.md and TEST_REPORT.md.
+COMPLETE VERSION 6.39 PACKAGE, BASED ON DELIVERED VERSION 6.38
+Replace matching files with this folder's contents. Keep app.py at the root.
+Do not add another enclosing folder around the application entry point.
+Keep current Secrets, both passwords, encryption key, mappings, BMI reference data
+and the existing private data repository. Do not rerun generators.
+No dependencies or new secret fields. No re-paste is needed for display groups.
+Read MEDICATION_CATEGORIES_UPDATE.md and TEST_REPORT.md.
+New group choices are not understood by older app releases. Do not downgrade
+after saving them without restoring a compatible backup.

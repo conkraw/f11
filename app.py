@@ -152,6 +152,8 @@ def editor_snapshot(room: str) -> dict:
         prefix = "med_draft_" + row["id"] + "_"
         for field in ("name", "dose", "route", "frequency", "last_rate", "rate_time", "section", "custom_text", "include", "infusion_mode", "gi_mode", "group_mode"):
             if prefix + field in ss:
+                if field in ("group_mode", "gi_mode", "infusion_mode") and field not in row and ss[prefix + field] == "auto":
+                    continue  # Merely opening an editor must not change a legacy record.
                 if field == "section" and ss[prefix + field] == old_effective:
                     continue  # The automatic FEN/GI label is not a changed saved mapping.
                 row[field] = ss[prefix + field]
@@ -370,8 +372,8 @@ def autosave_before_room_change(store: GitHubVault | None) -> bool:
     ss.setdefault("base_sheets", {})[room] = deepcopy(saved)
     if changed_rules:
         reapply_open_mappings()
-    message = ("Previous room automatically saved to encrypted GitHub." if store else
-               "Previous room saved in this session only. GitHub storage is not enabled.")
+    message = ("Previous room automatically saved to shared storage." if store else
+               "Previous room saved in this session only. Shared storage is not enabled.")
     note(message + " Last saved: " + saved_time_text(saved["updated_at"]),
          "success" if store else "info")
     return True
@@ -655,7 +657,7 @@ def change_visibility_rule(name: str, hidden: bool, match: str, store: GitHubVau
         candidate["settings"]["medication_visibility"] = set_visibility_rule(candidate["settings"]["medication_visibility"], name, hidden, match)
         commit(candidate, store)
         reapply_open_mappings()
-        note(("Medication hidden from exports and kept for restoration." if hidden else "Medication restored to exports.") + (" Rule saved to encrypted GitHub." if store else " Session-only mode."), "success")
+        note(("Medication hidden from exports and kept for restoration." if hidden else "Medication restored to exports.") + (" Rule saved to shared storage." if store else " Session-only mode."), "success")
     except (ValueError, StorageError) as exc:
         note(str(exc) + " The visibility rule was not changed.", "error")
 
@@ -1050,8 +1052,8 @@ def save_rooms(store: GitHubVault | None, rooms: list[str]) -> None:
         saved = deepcopy(candidate["rooms"][room])
         ss["drafts"][room] = saved
         ss.setdefault("base_sheets", {})[room] = deepcopy(saved)
-    message = ("Handoffs saved to encrypted GitHub." if store else
-               "Saved in this session only. GitHub is not enabled.")
+    message = ("Handoffs saved to shared storage." if store else
+               "Saved in this session only. Shared storage is not enabled.")
     stamp = latest_saved_time({room: candidate["rooms"][room] for room in rooms})
     note(message + (" Last saved: " + stamp if stamp else ""), "success" if store else "info")
 
@@ -1102,7 +1104,7 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
             candidate["settings"]["medication_groups"] = set_group_rule(candidate["settings"]["medication_groups"], edited, edited["group_mode"])
             commit(candidate, store)
             reapply_open_mappings()
-            note("Medication display group remembered." + (" Saved to encrypted GitHub." if store else " Session-only test mode."), "success")
+            note("Medication display group remembered." + (" Saved to shared storage." if store else " Session-only test mode."), "success")
         elif field == "gi_mode":
             candidate = deepcopy(ss["vault"])
             if edited["gi_mode"] not in ("auto", "other"):
@@ -1110,7 +1112,7 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
             candidate["settings"]["medication_gi_groups"] = set_gi_rule(candidate["settings"]["medication_gi_groups"], edited, edited["gi_mode"])
             commit(candidate, store)
             reapply_open_mappings()
-            note("FEN/GI display choice remembered." + (" Saved to encrypted GitHub." if store else " Session-only test mode."), "success")
+            note("FEN/GI display choice remembered." + (" Saved to shared storage." if store else " Session-only test mode."), "success")
         elif field == "infusion_mode":
             candidate = deepcopy(ss["vault"])
             candidate["settings"]["medication_infusions"] = set_infusion_rule(
@@ -1118,7 +1120,7 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
             commit(candidate, store)
             reapply_open_mappings()
             note("Infusion display choice remembered for this formulation, route and frequency." +
-                 (" Saved to encrypted GitHub." if store else " Session-only test mode."), "success")
+                 (" Saved to shared storage." if store else " Session-only test mode."), "success")
         elif field == "section":
             rules = ss["vault"]["settings"]["medication_mappings"]
             name, match = rule_for_inline_mapping(edited["name"], rules)
@@ -1136,7 +1138,7 @@ def medication_row_change(room: str, row_id: str, field: str, widget_key: str, s
             ss["admin_rule_index"] = -1
             for key in ("mapping_name", "mapping_destination", "mapping_match", "mapping_original"):
                 ss.pop(key, None)
-            note("Medication destination remembered in Admin." + (" Saved to encrypted GitHub." if store else " Session-only test mode."), "success")
+            note("Medication destination remembered in Admin." + (" Saved to shared storage." if store else " Session-only test mode."), "success")
         else:
             if field in ("name", "route", "frequency"):
                 edited["infusion_mode"] = infusion_mode_for(edited, ss["vault"]["settings"]["medication_infusions"])
@@ -1244,7 +1246,7 @@ def load_config() -> tuple[dict, GitHubVault | None]:
                                             branch=gh.get("branch", "main"), api_base=gh.get("api_base", "https://api.github.com"),
                                             api_version=gh.get("api_version", "2022-11-28")), key)
         except (ValueError, StorageError):
-            st.error("The GitHub or encryption-key settings are incomplete. Check deployment secrets. No archive was opened.")
+            st.error("The storage or encryption-key settings are incomplete. Check deployment secrets. No archive was opened.")
             st.stop()
     return app, store
 
@@ -1305,16 +1307,14 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.38 | Mode-specific ventilator summaries")
+        st.caption("Version 6.39 | Medication categories and simpler printing")
         page = st.radio("Workspace", ["Handoff", "Instructions / SmartPhrase", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
-        st.caption("Encrypted GitHub storage" if store else "Session-only testing. No persistence.")
+        st.caption("Shared storage connected" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
         st.button("Log out", on_click=clear_session)
         if st.session_state.get("pending_error_events"):
             st.warning("Technical error reports are not saved. Open Import errors to retry before closing this session.")
         st.caption("Room changes automatically save the current handoff. Use Save before logout. Medication mappings save immediately.")
-        if not app.get("clinical_use_approved", False):
-            st.caption("Use synthetic data unless your hosting and storage have institutional approval. See the setup guide.")
     if "notice" in st.session_state:
         kind, text = st.session_state.pop("notice")
         getattr(st, kind)(text)
@@ -1362,7 +1362,7 @@ def medication_editor(rows: list[dict], room: str, store: GitHubVault | None) ->
             st.selectbox(DISPLAY_LABELS[effective_section(row)] + " display for order " + str(number), MODES, key=key,
                          format_func=lambda value: MODE_LABELS[value], on_change=medication_row_change,
                          args=(room, row["id"], "infusion_mode", key, store))
-        if effective_section(row) in ("Neurologic", "Hematology") or automatic_special_group(row) or row.get("group_mode", "auto") != "auto":
+        if effective_section(row) in ("Neurologic", "Hematology", "Respiratory", "Cardiovascular") or automatic_special_group(row) or row.get("group_mode", "auto") != "auto":
             key = prefix + "group_mode"
             if key not in st.session_state:
                 st.session_state[key] = row.get("group_mode", "auto")
@@ -1526,7 +1526,7 @@ def handoff_page(store: GitHubVault | None) -> None:
     with st.expander("Save status for all rooms", expanded=False):
         render_room_save_table(choices, store)
         st.caption("Times are Eastern (EST/EDT). Reload saved archive to see saves made in another session." if store else
-                   "Session-only testing: these times do not indicate a save to GitHub.")
+                   "Session-only testing: these times do not indicate a save to shared storage.")
     if ss.get("removed_room"):
         st.button("Undo last room removal", key="undo_room_handoff", on_click=undo_room_removal, args=(store,))
     if ss.get("room_choice") == "Other room":
@@ -1650,7 +1650,7 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.caption("Edit imported specimens and results in Cultures. Temperature stays first in the printed ID column.")
                 if section == "FEN / GI":
                     st.markdown('<div style="white-space:pre-wrap">' + fen_gi_body("", sheet["medications"], None, True) + "</div>", unsafe_allow_html=True)
-                    st.caption("Printed order: Intake/Output/Net, GI prophylaxis, Bowel Regimen, Diuretics, Antiemetics, then separate notes and remaining FEN/GI medications.")
+                    st.caption("Printed order: Intake/Output/Net, Diet, Feeds, GI prophylaxis, Bowel Regimen, Diuretics, Antiemetics, Endocrine Medications, then separate notes and remaining FEN/GI medications.")
                 elif section in INFUSION_SECTIONS:
                     render_body = {"Neurologic": neuro_body, "Cardiovascular": cardiovascular_body, "Hematology": hematology_body, "Respiratory": respiratory_body}[section]
                     st.markdown('<div style="white-space:pre-wrap">' + render_body("", sheet["medications"], True) + '</div>', unsafe_allow_html=True)
@@ -1663,16 +1663,14 @@ def handoff_page(store: GitHubVault | None) -> None:
                     st.caption("Edit measured weight, Z-score, dosing weight and admission date in Labs / Vitals.")
     with preview_tab:
         import streamlit.components.v1 as components
-        st.caption("Compact landscape. The upper-left stamp uses Eastern time. PDFs are stamped when downloaded. Printable HTML refreshes its stamp when printed.")
+        st.caption("Compact landscape. The upper-left stamp uses Eastern time. PDFs are stamped when downloaded.")
         components.html(handoff_html(sheet), height=650, scrolling=True)
         try:
             target = print_target_control("room_print_target")
             render_print_fit([sheet], target)
             st.download_button("Download this handoff (PDF)", download_payload([sheet], "pdf", download_deadline(), target_pages=target, cancelled=download_revocation()), "handoff.pdf", "application/pdf", key="download_single_pdf", on_click="ignore")
         except (ValueError, ImportError):
-            st.error("PDF export could not be created. Confirm requirements.txt is installed or use HTML.")
-        st.download_button("Download printable handoff (HTML)", download_payload([sheet], "html", download_deadline(), cancelled=download_revocation()), "handoff.html", "text/html", key="download_single_html", on_click="ignore")
-        st.download_button("Download handoff text", download_payload([sheet], "text", download_deadline(), cancelled=download_revocation()), "handoff.txt", "text/plain", key="download_single_text", on_click="ignore")
+            st.error("PDF export could not be created. Confirm requirements.txt is installed and retry.")
 
 
 
@@ -1689,19 +1687,12 @@ def print_target_control(key: str) -> int:
 
 
 def render_print_fit(sheets: list[dict], target: int) -> None:
-    rows = []
+    """Keep actual overflow alerts, without the routine layout diagnostics table."""
     for sheet in sheets:
         report = print_fit_report(sheet, target)
-        pages = report["page_count"]
-        detail = "Default spacing"
-        if report["tight_spacing"]:
-            detail = "Tighter spacing" + (" / adjusted column widths" if report["balanced_columns"] else "")
-        rows.append("<tr><td>" + escape(sheet["room"]) + "</td><td>" + str(pages) +
-                    "</td><td>" + str(report["font_size"]) + " pt</td><td>" + detail + "</td></tr>")
         if not report["target_met"]:
-            st.warning("Room " + sheet["room"] + " needs " + str(pages) + " pages. All content is retained rather than cropped or reduced below the font-size limit.")
-    st.markdown("<table><thead><tr><th>Room</th><th>PDF pages</th><th>Body text</th><th>Layout</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>", unsafe_allow_html=True)
-    st.caption("PDF page count is checked using the export renderer. Automatic fitting changes spacing, widths and text size only, down to 6.5 pt. It never drops entries. Browser/HTML printing can paginate differently.")
+            st.warning("Room " + sheet["room"] + " needs " + str(report["page_count"]) +
+                       " pages. All content is retained rather than cropped.")
 
 
 def print_all_page(store: GitHubVault | None) -> None:
@@ -1729,7 +1720,7 @@ def print_all_page(store: GitHubVault | None) -> None:
     st.caption(str(len(selected_sheets)) + " handoffs selected. " + str(unsaved) + " include unsaved draft changes. Each room starts on a new page.")
     render_room_save_table([sheet["room"] for sheet in selected_sheets], store)
     st.caption("Save times are Eastern (EST/EDT) and come from the loaded archive. Reload saved archive to see saves from another session." if store else
-               "Session-only testing: these save times are not durable GitHub saves.")
+               "Session-only testing: these save times are not durable shared saves.")
     if unsaved:
         st.warning("Some selected handoffs have unsaved changes. Save all open handoffs before printing to store them. Downloading alone does not save.")
     try:
@@ -1737,8 +1728,7 @@ def print_all_page(store: GitHubVault | None) -> None:
         render_print_fit(selected_sheets, target)
         st.download_button("Download all selected handoffs (PDF)", download_payload(selected_sheets, "pdf", download_deadline(), target_pages=target, cancelled=download_revocation()), "all_handoffs.pdf", "application/pdf", type="primary", key="download_all_pdf", on_click="ignore")
     except (ValueError, ImportError):
-        st.error("The combined PDF could not be created. Use HTML or check the export requirements.")
-    st.download_button("Download all selected handoffs (printable HTML)", download_payload(selected_sheets, "html", download_deadline(), cancelled=download_revocation()), "all_handoffs.html", "text/html", key="download_all_html", on_click="ignore")
+        st.error("The combined PDF could not be created. Check the export requirements and retry.")
     st.caption("Compact PDF is preferred for printing. Each room starts on its own page. Exceptionally long handoffs continue rather than losing content. Downloads are not encrypted.")
 
 
@@ -2412,7 +2402,7 @@ def update_gi_admin(rule_key: tuple, key: str, store: GitHubVault | None) -> Non
 
 def gi_admin(store: GitHubVault | None) -> None:
     with st.expander("FEN/GI display choices", expanded=False):
-        st.caption("Automatic GI prophylaxis: famotidine, omeprazole, pantoprazole. Automatic Bowel Regimen: docusate, lactulose, polyethylene glycol, glycerin suppositories, sennosides. Diuretics: bumetanide, chlorothiazide, furosemide. Antiemetics: ondansetron (Zofran). These are display groups, not inferred indications.")
+        st.caption("Automatic GI prophylaxis: famotidine, omeprazole, pantoprazole. Automatic Bowel Regimen: docusate, lactulose, polyethylene glycol, glycerin suppositories, sennosides. Diuretics: bumetanide, chlorothiazide, furosemide. Antiemetics: ondansetron (Zofran). Endocrine Medications: levothyroxine, insulin including Lantus, and metformin. These are display groups, not inferred indications.")
         st.caption("To override a default, use a medication's FEN/GI display control. Choosing another system turns off its automatic GI grouping. The original order and hidden-medication choice stay intact.")
         rules = st.session_state["vault"]["settings"]["medication_gi_groups"]
         for index, rule in enumerate(rules):
@@ -2504,6 +2494,7 @@ def group_admin(store: GitHubVault | None) -> None:
         st.file_uploader("Or upload CDC bmi-age-2022.csv (public reference only)", type=["csv"], key="bmi_public_reference_upload", on_change=upload_bmi_reference)
     with st.expander("Medication subgroup choices", expanded=False):
         st.caption("DVT Prophylaxis: enoxaparin, cangrelor and heparin with an explicit Units/kg/hr Dose. Fever Control: acetaminophen and ibuprofen. PRN: the requested sedative PRNs. Paralytic PRN: rocuronium, cisatracurium and vecuronium PRNs.")
+        st.caption("Respiratory: Antisialorrhea Agents. Cardiovascular: Antiarrhythmics, Antihypertensives, Inotrope Infusions, Vasopressors, Adrenocortical Support, and Vasodilators. Lidocaine is automatic only for an IV infusion. Endocrine Medications is in FEN/GI display choices.")
         st.caption("These are user-defined display labels, not inferred indications or a determination that a dose is prophylactic. Original orders and hidden-medication choices are preserved. Overrides use the formulation, route and frequency.")
         rules = [r for r in st.session_state["vault"]["settings"]["medication_groups"] if r.get("match") != "prefix"]
         for index, rule in enumerate(rules):
@@ -2556,7 +2547,7 @@ def send_pending_errors(store: GitHubVault | None) -> None:
         ss.pop("error_log_notice", None)
         return
     if store is None:
-        ss["error_log_notice"] = "Technical errors are session-only. GitHub storage is not enabled."
+        ss["error_log_notice"] = "Technical errors are session-only. Shared storage is not enabled."
         return
     try:
         journal = ErrorJournal(store)
@@ -2609,7 +2600,7 @@ def set_error_review(ident: str, status: str, store: GitHubVault | None) -> None
 def import_errors_page(store: GitHubVault | None) -> None:
     st.title("Import errors")
     ss = st.session_state
-    st.caption("Shared technical reports in the existing private GitHub repository. These reports contain app version, event time, section, error code and row/column positions only. No patient text, clinical values, rooms, names, MRNs, or staff identity are logged.")
+    st.caption("Shared technical reports in the existing shared archive. These reports contain app version, event time, section, error code and row/column positions only. No patient text, clinical values, rooms, names, MRNs, or staff identity are logged.")
     st.caption("This uses the app's existing sign-in. It is not an individual staff audit trail. Marking a report resolved does not change any handoff or remove Git history.")
     if "error_log_month" not in ss:
         ss["error_log_month"] = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -2617,7 +2608,7 @@ def import_errors_page(store: GitHubVault | None) -> None:
     st.button("Refresh shared errors", key="refresh_shared_errors", on_click=refresh_error_log, args=(store,), disabled=store is None)
     pending = ss.get("pending_error_events", {})
     if pending:
-        st.warning(str(len(pending)) + " technical report(s) are not saved to GitHub and exist only in this session.")
+        st.warning(str(len(pending)) + " technical report(s) are not saved to shared storage and exist only in this session.")
         st.button("Retry saving errors", key="retry_error_upload", on_click=send_pending_errors, args=(store,), disabled=store is None)
     for message in ss.get("error_list_notices", []):
         st.warning(message)
@@ -2807,7 +2798,7 @@ def save_user_guide(store: GitHubVault | None) -> None:
         return
     ss.update(user_guide=guide, guide_sha=sha, guide_editor_sha=sha, guide_loaded=True)
     ss.pop("guide_load_error", None)
-    note("Guide and SmartPhrase published to encrypted GitHub. Other users can choose Refresh published guide." if store else
+    note("Guide and SmartPhrase published to shared storage. Other users can choose Refresh published guide." if store else
          "Guide saved in this session only. Enable the existing encrypted storage for shared persistence.", "success")
 
 

@@ -50,7 +50,7 @@ class RoomSaveStatus:
 
     @property
     def caption(self) -> str:
-        label = "Last saved in this session only" if self.session_only else "Last saved to GitHub"
+        label = "Last saved in this session only" if self.session_only else "Last saved to shared storage"
         return label + ": " + self.last_saved
 
 

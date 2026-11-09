@@ -58,7 +58,7 @@ def test_saved_status_same_for_preset_and_custom_rooms(room):
     assert status.last_saved == DISPLAY
     assert status.status == 'Saved'
     assert not status.unsaved
-    assert status.caption == 'Last saved to GitHub: ' + DISPLAY
+    assert status.caption == 'Last saved to shared storage: ' + DISPLAY
 
 
 def test_changed_draft_keeps_last_confirmed_time_not_draft_timestamp():
@@ -324,7 +324,7 @@ def test_room_page_places_timestamp_next_to_room_heading_and_in_all_room_list(ap
     app.handoff_page(Store())
     heading = events.index(('subheader', 'Room P4301'))
     assert events[heading + 1] == ('caption', 'Age: -- | Sex: --')
-    assert events[heading + 2] == ('caption', 'Last saved to GitHub: ' + DISPLAY)
+    assert events[heading + 2] == ('caption', 'Last saved to shared storage: ' + DISPLAY)
     assert events[heading + 3] == ('caption', 'Saved')
     tables = [text for kind, text in events if kind == 'markdown' and 'Handoff save status' in text]
     assert len(tables) == 1 and 'P4301' in tables[0] and 'P4102' in tables[0]

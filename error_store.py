@@ -149,9 +149,9 @@ class ErrorJournal:
         candidates.sort(reverse=True)
         notices = []
         if len(listing) >= 1000:
-            notices.append('GitHub may have truncated this monthly directory. The listing may be incomplete.')
+            notices.append('Shared storage may have truncated this monthly directory. The listing may be incomplete.')
         if len(candidates) > limit:
-            notices.append('Showing the newest ' + str(limit) + ' records from this listing. Older records remain in GitHub.')
+            notices.append('Showing the newest ' + str(limit) + ' records from this listing. Older records remain in shared storage.')
         records = []
         for name in candidates[:limit]:
             path = directory + '/' + name

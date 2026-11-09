@@ -127,7 +127,7 @@ def test_all_groups_are_deterministic_and_no_source_fields_change():
     s=example_sheet();before=deepcopy(s);f=fields_with_medications(s)
     n=f['Neurologic'];c=f['Cardiovascular'];h=f['Hematology']
     assert n.index('Infusions')<n.index('\nPRN\n')<n.index('Paralytic PRN')<n.index('Fever Control')
-    assert c.index('Heart Rate')<c.index('CV Infusions')<c.index('CARDIAC_DRIP')<c.index('Synthetic cardiac note')
+    assert c.index('Heart Rate')<c.index('Inotrope Infusions')<c.index('CARDIAC_DRIP')<c.index('Synthetic cardiac note')
     assert h.index('DVT Prophylaxis')<h.index('WEIGHT_BASED')
     for sentinel in ('NEURO_DRIP','NEURO_PRN','PARALYTIC_PRN','FEVER_MED','CARDIAC_DRIP','WEIGHT_BASED','CANG_MED','ENOX_MED','DIURETIC_MED','FLUSH_MED'):
         assert sum(text.count(sentinel) for text in f.values())==1
@@ -138,10 +138,10 @@ def test_all_groups_are_deterministic_and_no_source_fields_change():
 def test_formats_have_same_groups_and_bold_cv_dose():
     s=example_sheet();before=deepcopy(s)
     h=handoff_html(s);t=handoff_text(s);pdf=handoff_pdf(s)
-    for name in ('Infusions','CV Infusions','Fever Control','PRN','Paralytic PRN','DVT Prophylaxis','Diuretics'):
+    for name in ('Infusions','Inotrope Infusions','Fever Control','PRN','Paralytic PRN','DVT Prophylaxis','Diuretics'):
         assert name in h and name in t
         assert name in '\n'.join(p.extract_text() for p in PdfReader(BytesIO(pdf)).pages)
-    assert '<b>CV Infusions</b>' in h and '<b>milrinone CARDIAC_DRIP</b>' in h
+    assert '<b>Inotrope Infusions</b>' in h and '<b>milrinone CARDIAC_DRIP</b>' in h
     assert '<b><u>Dose: 0.25 mcg/kg/min</u></b>' in h
     assert 'INFUSIONS' not in h and '(Dosing Weight)' not in h
     doc=fitz.open(stream=pdf,filetype='pdf')

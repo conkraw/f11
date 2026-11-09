@@ -32,12 +32,12 @@ class GitHubConfig:
 
     def validate(self) -> None:
         if not self.token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", self.repository):
-            raise StorageError("Set the GitHub token and repository in deployment secrets.")
+            raise StorageError("Set the storage token and repository in deployment secrets.")
         url = urlparse(self.api_base)
         if url.scheme != "https" or not url.netloc or url.query or url.fragment or url.username:
-            raise StorageError("Use an HTTPS GitHub API address without credentials or query parameters.")
+            raise StorageError("Use an HTTPS storage API address without credentials or query parameters.")
         if not self.branch or not re.fullmatch(r"[A-Za-z0-9_./-]+", self.branch) or ".." in self.branch:
-            raise StorageError("The GitHub branch setting is invalid.")
+            raise StorageError("The storage branch setting is invalid.")
         if self.path != "encrypted-data/handoff-v1.enc":
             raise StorageError("Use the fixed, nonclinical archive path.")
 
@@ -56,11 +56,11 @@ class GitHubVault:
             response = self.http.request(method, self.url + endpoint, headers=self.headers,
                                          timeout=(10, 30), allow_redirects=False, **kwargs)
         except requests.RequestException:
-            raise StorageError("GitHub could not be reached. A save may have completed before the connection ended. Reload and compare before retrying.") from None
+            raise StorageError("Shared storage could not be reached. A save may have completed before the connection ended. Reload and compare before retrying.") from None
         if response.status_code in (401, 403):
-            raise StorageError("GitHub rejected access. Check the token permissions, organization approval, and rate limits.")
+            raise StorageError("Shared storage rejected access. Check the token permissions, organization approval, and rate limits.")
         if 300 <= response.status_code < 400:
-            raise StorageError("GitHub redirected the request. Check the repository/API address. No redirect was followed.")
+            raise StorageError("Shared storage redirected the request. Check the repository/API address. No redirect was followed.")
         return response
 
     @staticmethod
@@ -71,7 +71,7 @@ class GitHubVault:
                 raise ValueError
             return data
         except ValueError:
-            raise StorageError("GitHub returned an unexpected response. Nothing was overwritten.") from None
+            raise StorageError("Shared storage returned an unexpected response. Nothing was overwritten.") from None
 
     def _check_repo(self) -> None:
         response = self._request("GET", "")
@@ -116,9 +116,9 @@ class GitHubVault:
         if response.status_code in (409, 422):
             raise ConflictError("The save was refused. Another session may have changed the archive, or a repository rule blocked the write. Keep your draft and reload the saved archive before retrying.")
         if response.status_code not in (200, 201):
-            raise StorageError("GitHub did not confirm the save. Reload and compare before retrying.")
+            raise StorageError("Shared storage did not confirm the save. Reload and compare before retrying.")
         data = self._json(response)
         new_sha = data.get("content", {}).get("sha")
         if not new_sha:
-            raise StorageError("GitHub did not return a saved version. Reload before retrying.")
+            raise StorageError("Shared storage did not return a saved version. Reload before retrying.")
         return new_sha

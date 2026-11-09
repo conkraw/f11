@@ -13,8 +13,8 @@ import re
 from medications import normalized, match_name, visible, format_medication
 from output_text import medication_output
 from infusion_rates import administration_display, show_recorded_pump_rate
-from fen_gi import effective_section
-from medication_groups import group_for as special_group, GROUP_NAMES
+from fen_gi import effective_section, group_for as gi_group
+from medication_groups import group_for as special_group, GROUP_NAMES, CV_GROUPS, RESP_GROUPS
 
 MODES = ("auto", "infusion", "other")
 MODE_LABELS = {"auto": "Automatic", "infusion": "Infusion", "other": "Other medication"}
@@ -24,7 +24,7 @@ INFUSION_HEADINGS = {
 }
 INFUSION_SECTIONS = tuple(INFUSION_HEADINGS)
 DISPLAY_LABELS = {"Neurologic": "Neuro", "Cardiovascular": "CV",
-                  "Respiratory": "Respiratory", "Hematology": "Heme"}
+                  "Respiratory": "Respiratory", "Hematology": "Heme", "FEN / GI": "Endocrine"}
 
 
 def supports_infusion_display(row: dict) -> bool:
@@ -35,7 +35,10 @@ def supports_infusion_display(row: dict) -> bool:
     """
     section = effective_section(row)
     group = special_group(row)
-    return section in INFUSION_HEADINGS and (not group or (section == "Hematology" and group == "dvt"))
+    if section == "FEN / GI":
+        return gi_group(row) == "endocrine"
+    return section in INFUSION_HEADINGS and (not group or group == "dvt"
+                                            or group in CV_GROUPS + RESP_GROUPS)
 
 
 def infusion_key(row: dict) -> tuple[str, str, str]:
@@ -59,7 +62,7 @@ def is_infusion(row: dict) -> bool:
         "nebulization", "nebulisation", "nebulized", "nebulised",
         "inhalation", "inhaled", "nebulized inhalation", "nebulised inhalation",
     }
-    return bool(re.search(r"\bcontinuous\b", frequency) and (parenteral or respiratory_delivery))
+    return bool(re.search(r"\bcontinuous\b|\btitrat(?:e|able)\b", frequency) and (parenteral or respiratory_delivery))
 
 
 def validate_infusion_rules(rules: list[dict]) -> None:
@@ -165,18 +168,28 @@ def system_body_blocks(section: str, notes: str, rows: list[dict]) -> list[tuple
                  else "medication", r) for r in dvt
             ])
             assigned.update(r["id"] for r in dvt)
+    # Category headings take priority over the generic CV infusion bucket.
+    # An infusion remains emphasized inside its category and appears only once.
+    if section == "Cardiovascular":
+        for mode in CV_GROUPS:
+            group = [r for r in meds if r["id"] not in assigned and special_group(r) == mode]
+            if group:
+                groups.append([("heading", GROUP_NAMES[mode])] + [
+                    ("infusion" if is_infusion(r) else "medication", r) for r in group])
+                assigned.update(r["id"] for r in group)
     if section in INFUSION_SECTIONS:
         drips = [r for r in meds if r["id"] not in assigned
-                 and supports_infusion_display(r) and is_infusion(r)]
+                 and supports_infusion_display(r) and is_infusion(r) and not special_group(r)]
         if drips:
             groups.append([("heading", INFUSION_HEADINGS[section])] +
                           [("infusion", r) for r in drips])
             assigned.update(r["id"] for r in drips)
-    modes = ("antiepileptic", "sedative_prn", "paralytic_prn", "fever") if section == "Neurologic" else ()
+    modes = (("antiepileptic", "sedative_prn", "paralytic_prn", "fever") if section == "Neurologic"
+             else RESP_GROUPS if section == "Respiratory" else ())
     for mode in modes:
         group = [r for r in meds if r["id"] not in assigned and special_group(r) == mode]
         if group:
-            groups.append([("heading", GROUP_NAMES[mode])] + [("infusion" if mode == "antiepileptic" and is_infusion(r) else "medication", r) for r in group])
+            groups.append([("heading", GROUP_NAMES[mode])] + [("infusion" if (mode == "antiepileptic" or mode in RESP_GROUPS) and is_infusion(r) else "medication", r) for r in group])
             assigned.update(r["id"] for r in group)
     other = [r for r in meds if r["id"] not in assigned]
     if not groups:

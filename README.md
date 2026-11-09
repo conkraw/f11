@@ -1,26 +1,112 @@
-# Version 6.38: mode-specific ventilator summaries
+# Version 6.39: medication categories and simpler printing
 
-Built directly from Version 6.37, retaining its Version 6.35-based print layout.
-Read VENTILATOR_UPDATE.md for the new C-block patterns and their exact display rules.
+Built from the delivered Version 6.38 package. The Version 6.35-derived compact
+layout, Version 6.37 difficult-airway feature, and Version 6.38 ventilator rules
+remain. There is no Version 6.36 font picker.
 
-## Install this release
+## Interface changes
 
-Extract PICU638.zip and upload the contents of PICU_Handoff_v6_38_Ventilator
-into the existing application code repository, replacing matching files.
-Keep app.py at the root and include ventilator_modes.py. Restart and refresh.
-Keep existing Secrets, both passwords, encryption key, mappings, BMI reference
-data and private storage. Do not rerun the generators. No new dependencies.
+The routine PDF layout table (Room, PDF pages, Body text, Layout) and its explanatory
+caption are removed. A warning still appears if the actual PDF exceeds the chosen
+page target. The PDF renderer still fits pages and never drops clinical content.
 
-Look for: Version 6.38 | Mode-specific ventilator summaries
+Only PDF handoff download buttons remain in Preview / print and Print all.
+The on-screen HTML preview is retained. The internal HTML/text exporters remain
+for compatibility and automated tests, but no longer have handoff download buttons.
+SmartPhrase and user-guide downloads are not affected.
 
-Existing saved fields open unchanged. Re-paste the complete C and D sections
-or full SmartPhrase to import the newly available measurements and home-vent
-limits. New labels cannot be recovered from an older saved record that never
-captured them. Do not downgrade after saving the expanded ventilator fields.
+The pictured synthetic-data/approval sidebar notice is removed. Built-in routine
+status messages use shared storage instead of naming the storage provider.
+Save times, unsaved-state warnings, access controls, session limits, encrypted
+storage, conflict checks, setup documentation and error reporting still work.
+Removing a label does not change or strengthen security. Hosting approval and
+local data-handling requirements remain described in the setup documentation.
+Existing published custom instructions are not silently overwritten.
 
-The source mode and raw settings stay available in Edit ventilator values.
-Vt Insp is TVi, not TVe. Set PIP is not calculated from observed PIP or PEEP.
-Pmin-based Home Vent identification and PRVC naming are local display rules.
+## New automatic display groups
+
+Respiratory / Antisialorrhea Agents:
+scopolamine and glycopyrrolate.
+
+Cardiovascular / Antiarrhythmics:
+esmolol, amiodarone, procainamide, lidocaine (IV infusion only), mexiletine,
+flecainide, propranolol, sotalol, diltiazem, verapamil and digoxin.
+
+Cardiovascular / Antihypertensives:
+enalapril, metoprolol, amlodipine, lisinopril, hydrochlorothiazide, clonidine,
+atenolol, carvedilol, losartan, valsartan, captopril, labetalol, nifedipine
+and isradipine. Repeated names in the request are represented once.
+
+Cardiovascular / Inotrope Infusions:
+continuous IV milrinone, dobutamine, epinephrine and dopamine.
+Rescue boluses and nebulized epinephrine are not moved into this infusion group.
+
+Cardiovascular / Vasopressors:
+IV norepinephrine, vasopressin and phenylephrine. Nasal and ophthalmic products
+are not automatically moved to this group.
+
+Cardiovascular / Adrenocortical Support:
+systemic hydrocortisone. Topical/rectal local preparations are not automatically
+moved to this group.
+
+Cardiovascular / Vasodilators:
+nitroglycerin, nicardipine, hydralazine and enalaprilat. Enalapril and enalaprilat
+are kept distinct. Nitroprusside was not added to this requested default list and
+keeps its prior mapping/generic infusion grouping unless assigned manually.
+
+FEN/GI / Endocrine Medications:
+levothyroxine, insulin (including continuous infusions and Lantus), and metformin.
+Synthroid and Levoxyl name prefixes are also recognized. Subcutaneous Lantus
+orders remain regular medication entries, not continuous infusions.
+
+Canonical name matching includes the requested spelling variants glycopyrollate,
+nicadipine, nitroglycerine and enalapriatat. Matching does not rewrite the original
+source medication/formulation name, dose, route, frequency or administration rate.
+
+## Rendering and overrides
+
+The cardiovascular groups appear in the order requested, after vitals, pacemaker
+information and cardiac labs. An infusion stays in its category with the existing
+bold medication name and emphasized Last Admin rate. It is not duplicated under
+CV Infusions. Unclassified CV infusions keep that general group.
+
+Respiratory Infusions remain available. Antisialorrhea Agents appear separately.
+Endocrine Medications appear in FEN/GI after Antiemetics, before separate notes
+and other FEN/GI medications. Insulin infusions use the same emphasized rate style.
+Empty headings do not print. All existing hidden/excluded orders remain hidden.
+
+Choose a medication's system and Medication group to override a default.
+For Endocrine Medications use FEN/GI display. Choices are remembered in shared
+settings and editable in Admin. A deliberate group override takes precedence
+rather than duplicating the order. For example, select Neurologic for clonidine
+when that is the intended placement. Its new automatic cardiovascular grouping
+is then disabled for that formulation, route and frequency.
+
+These categories are user-defined display labels, not inferred indications.
+No new diagnosis rules, medication recommendations, dose conversions, or changes
+to the Last Admin selection logic were added.
+
+## Install
+
+Extract PICU639.zip and open PICU_Handoff_v6_39_Medication_Categories.
+Upload its contents into the existing application code repository, replacing
+matching files. Keep app.py at the root. Restart the deployment and refresh.
+Keep the existing Secrets, both passwords, encryption key, medication mappings,
+BMI reference data and private data repository. Do not rerun setup generators.
+No dependencies or new secret fields are required.
+
+Look for: Version 6.39 | Medication categories and simpler printing
+
+No re-pasting is needed to group already captured medications. The new defaults
+are applied when the saved handoff is displayed. Explicit grouping overrides
+remain authoritative. Existing archive values are not rewritten during display.
+Schema remains 26, but older releases do not understand the new group choices.
+Do not downgrade after saving one of those choices without restoring a compatible
+backup. Back up the current code and encrypted archive before updating.
+
+See TEST_REPORT.md for exactly what was tested. No live deployment or private
+repository was modified or tested in this work.
+
 
 ## Features retained from Version 6.37
 
@@ -36,7 +122,7 @@ No published source means "not published yet", not an invented date.
 Use Refresh SmartPhrase publication to load the current shared version. With
 shared storage, Handoff also checks on the next rerun after 30 seconds. This is
 not background polling. If refresh fails, the last loaded timestamp is labeled
-as such. Session-only mode clearly says the time is session-only, not a GitHub
+as such. Session-only mode clearly says the time is session-only, not a shared
 publication. The published guide's actual source and custom instructions are
 not changed by installing this package.
 
@@ -52,8 +138,8 @@ Their stored mappings are not changed.
 The starting body font is 8 pt instead of 7.2 pt. The 6.35 automatic page-fitting
 approach remains, including its 6.5-pt lower limit and one/two-page target.
 There is no per-user numeric font control. Very long handoffs can still span
-pages rather than cropping clinical content. Preflight reports the actual PDF
-page count and chosen size. The HTML preview can paginate differently.
+pages rather than cropping clinical content. The renderer checks the actual PDF
+page count internally. The HTML preview can paginate differently.
 
 CBC/BMP tree titles, latest/preceding captions, and the explanatory paragraph
 are removed. Hgb/Hct/electrolyte labels, values, abnormal flags, dates and times
