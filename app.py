@@ -1669,8 +1669,8 @@ def remove_support_device(room: str, device: str) -> None:
 def ventilation_editor(sheet: dict) -> None:
     if sheet["ventilation"] is not None:
         invasive_editor(sheet)
-    if not sheet["ventilation"] and not sheet["noninvasive"]:
-        st.caption("No automatic respiratory-support entries are currently included.")
+    #if not sheet["ventilation"] and not sheet["noninvasive"]:
+        #st.caption("No automatic respiratory-support entries are currently included.")
     for device in sheet["noninvasive"]:
         st.text(format_noninvasive([device]))
         if device["pressure_inferred"]:
