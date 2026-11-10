@@ -1669,8 +1669,8 @@ def remove_support_device(room: str, device: str) -> None:
 def ventilation_editor(sheet: dict) -> None:
     if sheet["ventilation"] is not None:
         invasive_editor(sheet)
-    #if not sheet["ventilation"] and not sheet["noninvasive"]:
-        #st.caption("No automatic respiratory-support entries are currently included.")
+    if not sheet["ventilation"] and not sheet["noninvasive"]:
+        st.caption("No automatic respiratory-support entries are currently included.")
     for device in sheet["noninvasive"]:
         st.text(format_noninvasive([device]))
         if device["pressure_inferred"]:
@@ -1781,7 +1781,7 @@ def handoff_page(store: GitHubVault | None) -> None:
                 st.caption("Updated: " + ", ".join(result["imported"]) + ". Edit below or save the handoff.")
             for message in result["notices"]:
                 st.info(message)
-        #st.subheader("Respiratory support to RESP")
+        st.subheader("Respiratory support to RESP")
         ventilation_editor(sheet)
     with meds_tab:
         st.caption("Choose a system beside an order. It is remembered immediately in Admin and reused on future imports. The named GI/bowel medications group automatically in FEN/GI. Other unmapped orders remain in Other Medications.")
