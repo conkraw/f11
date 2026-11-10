@@ -103,15 +103,19 @@ def test_clear_failures_keep_archive_drafts_widgets_and_downloads(app,error):
 
 
 @pytest.mark.parametrize('state',['locked','expired_admin','logged_out','same_password'])
-def test_clear_needs_independent_admin_auth(app,state):
+def test_clear_needs_app_session_not_independent_admin_auth(app,state):
     ss=populated(app); before=deepcopy(ss['vault']);store=Store(before)
     if state=='locked': lock_admin(ss)
     if state=='expired_admin': ss['admin_last_activity']=time.monotonic()-901
     if state=='logged_out': ss['authenticated']=False
     if state=='same_password': ss['admin_grant_hash']='invalid-grant'
     app.clear_all_handoffs(store)
-    assert not store.calls
-    if ss.get('vault'): assert ss['vault']==before
+    if state == 'logged_out':
+        assert not store.calls
+        assert not ss
+    else:
+        assert len(store.calls) == 1 and not store.vault['rooms']
+        assert not ss['drafts'] and not ss['vault']['rooms']
 
 
 def test_session_only_clear_does_not_claim_github_save(app):

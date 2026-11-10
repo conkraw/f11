@@ -199,12 +199,12 @@ def test_publication_caption_uses_saved_publication_not_room_time(app):
     assert 'not published' in app.smartphrase_publish_caption(default_guide())
 
 
-def test_publication_timestamp_visible_even_without_selected_room(app,monkeypatch):
+def test_publication_timestamp_hidden_without_selected_room(app,monkeypatch):
     equip(app,monkeypatch);seen=[];app.st.caption=lambda text,*a,**k:seen.append(text)
     g=publication('.TEAM','SOURCE','',default_guide()['instructions']);g['updated_at']='2026-11-08T18:45:23+00:00'
     app.st.session_state['user_guide']=g
     app.handoff_page(None)
-    assert any('01:45:23 PM EST' in line for line in seen)
+    assert not any('01:45:23 PM EST' in line or line.startswith(('SmartPhrase published:', 'SmartPhrase saved in this session only:', 'SmartPhrase:')) for line in seen)
 
 
 @pytest.mark.parametrize('value',['No growth','No growth (In process)','No growth (Preliminary)',

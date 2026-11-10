@@ -1,10 +1,12 @@
-PICU Handoff 6.49
-Base package: PICU648.zip, original ZIP and manifest verified.
-Clean-extraction full suite: 4200 passed in 85.34s (0:01:25).
-146 new regression cases included, no existing tests removed or changed.
-Supplied complete SmartPhrase imports without errors.
-Original 6.48 encrypted synthetic archive opens and round-trips unchanged.
-One synthetic landscape preview page inspected, 8-point body text.
-Archive schema: 32, unchanged. No new dependencies.
+PICU Handoff 6.51
+Base: supplied PICU650.zip, ZIP integrity and source manifest verified.
+Full local regression suite: 4233 passed in 91.95s (0:01:31)
+Focused reset, workflow and header suite: 128 passed in 19.56s
+21 new reset-access regression cases included.
+Updated prior expectations for the intentionally removed Admin-password check.
+Only app.py changed among application modules.
+Storage, encryption, app login, Admin settings access, clinical parsers,
+PDF rendering, archive schema and dependencies otherwise unchanged.
+Reset tests use synthetic records, simulated widgets and simulated storage.
 No live deployment or shared patient archive accessed or modified.
-SHA256SUMS.txt covers every other packaged file.
+SHA256SUMS.txt covers every other file in the complete package.

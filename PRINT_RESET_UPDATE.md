@@ -22,7 +22,7 @@ No text is abbreviated, summarized, or removed by this feature. Notes, medicatio
 
 ## Clear all handoffs with one button
 
-Open Admin, unlock with the existing separate Admin password, then expand Clear all handoffs and custom rooms. Click Clear all handoffs + delete custom rooms once. There is no second confirmation dialog.
+As of 6.51, open Handoff, expand Delete all handoff data, and click Delete all handoff data. Any signed-in user can clear the current shared census without an Admin password. There is no second confirmation dialog.
 
 This removes all handoffs in the shared current archive and all open drafts in the current session. All custom rooms are deleted from the room selector. The preset P-prefixed rooms remain available as empty rooms.
 

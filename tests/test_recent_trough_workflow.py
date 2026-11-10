@@ -175,7 +175,7 @@ def test_handoff_delete_control_available_for_empty_census(app, monkeypatch):
     app.st.form_submit_button = lambda label, **kw: labels.append(label)
     app.handoff_page(None)
     assert 'Delete all handoff data' in labels
-    assert 'delete_all_password' in app.st.session_state
+    assert 'delete_all_password' not in app.st.session_state
 
 
 def test_delete_all_from_handoff_writes_once_and_preserves_settings(app):
@@ -199,14 +199,14 @@ def test_delete_all_from_handoff_writes_once_and_preserves_settings(app):
 
 
 @pytest.mark.parametrize('password', ['', 'wrong', 'example-app-password'])
-def test_handoff_delete_requires_distinct_admin_password(app, password):
+def test_handoff_delete_no_longer_checks_legacy_admin_password(app, password):
     ss = populated(app); lock_admin(ss)
     before = deepcopy(ss['vault']); store = Store(before)
     ss['delete_all_password'] = password
     app.delete_all_from_handoff(store)
-    assert not store.calls and ss['vault'] == before and ss['drafts']
+    assert len(store.calls) == 1 and not ss['vault']['rooms'] and not ss['drafts']
     assert 'delete_all_password' not in ss and not ss.get('admin_unlocked')
-    assert ss['notice'][0] == 'error'
+    assert ss['notice'][0] == 'success'
 
 
 @pytest.mark.parametrize('failure', [StorageError('Offline'), ConflictError('Stale'), RuntimeError('Unknown')])
@@ -262,11 +262,11 @@ def test_main_moves_old_instruction_workspace_to_handoff_without_losing_draft(ap
     assert ss['drafts'] == before
 
 
-def test_delete_control_missing_admin_configuration_has_no_destructive_button(app, monkeypatch):
+def test_delete_control_missing_admin_configuration_keeps_reset_available(app, monkeypatch):
     from types import SimpleNamespace
     equip(app, monkeypatch)
     app.st.secrets = SimpleNamespace(to_dict=lambda: {'app': {}})
     buttons = []
     app.st.form_submit_button = lambda label, **kwargs: buttons.append(label)
     app.delete_handoffs_control(None)
-    assert 'Delete all handoff data' not in buttons
+    assert 'Delete all handoff data' in buttons

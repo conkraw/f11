@@ -1,4 +1,4 @@
-"""PICU SmartPhrase v6.49: annotated ventilator settings and a cleaner opening screen."""
+"""PICU SmartPhrase v6.51: clear all handoffs without an Admin password."""
 from __future__ import annotations
 from copy import deepcopy
 from empty_groups import refresh_empty_group_layout
@@ -1488,7 +1488,7 @@ def reload_archive(store: GitHubVault | None) -> None:
         st.session_state.update(vault=fresh, vault_sha=sha)
         if was_reset:
             discard_all_handoff_state()
-            note("An administrator cleared the handoffs. The archive is reloaded and older open drafts were discarded so they cannot be saved back.", "warning")
+            note("The shared handoffs were cleared. The archive is reloaded and older open drafts were discarded so they cannot be saved back.", "warning")
         else:
             note("Saved archive reloaded. Open drafts were kept.")
     except (StorageError, ValidationError) as exc:
@@ -1523,7 +1523,7 @@ def main() -> None:
     upgrade_existing_session()
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.49 | Ventilator markers and cleaner Handoff")
+        st.caption("Version 6.51 | Clear all without Admin password")
         # Retire the old instructions workspace without discarding room drafts.
         if st.session_state.get("page") == "Instructions / SmartPhrase":
             st.session_state["page"] = "Handoff"
@@ -1709,10 +1709,6 @@ def handoff_page(store: GitHubVault | None) -> None:
     if due:
         st.session_state["handoff_guide_checked"] = time.monotonic()
     st.markdown(handoff_instructions(guide), unsafe_allow_html=False)
-    st.caption(smartphrase_publish_caption(guide, session_only=store is None,
-                                          stale=bool(st.session_state.get("guide_load_error"))))
-    st.button("Refresh SmartPhrase publication", key="refresh_handoff_guide",
-              on_click=refresh_user_guide, args=(store,))
     if st.session_state.get("guide_load_error"):
         st.warning(st.session_state["guide_load_error"])
     # Keep the opening workflow short. Source text remains editable in Admin,
@@ -2028,8 +2024,8 @@ def discard_all_handoff_state() -> None:
 
 
 def clear_all_handoffs(store: GitHubVault | None) -> None:
-    """Single protected click. Clear local drafts only after a confirmed write."""
-    if not require_admin():
+    """Allow a signed-in user to reset. Discard drafts only after a confirmed write."""
+    if not require_session():
         return
     ss = st.session_state
     try:
@@ -2049,23 +2045,10 @@ def clear_all_handoffs(store: GitHubVault | None) -> None:
 
 
 def delete_all_from_handoff(store: GitHubVault | None) -> None:
-    """Authenticate this destructive action without granting ongoing Admin access."""
-    ss = st.session_state
-    password = ss.pop("delete_all_password", "")
-    if not require_session():
-        return
-    config = admin_config()
-    already_unlocked = admin_valid(ss, config)
-    try:
-        if not already_unlocked and not unlock_admin(ss, config, password):
-            note(ss.get("admin_login_error", "Admin password not accepted. No handoffs were deleted."), "error")
-            return
-        clear_all_handoffs(store)
-    finally:
-        # Never retain the entered password or promote a Handoff session to Admin.
-        ss.pop("delete_all_password", None)
-        if not already_unlocked:
-            lock_admin(ss)
+    """Use the app session, not the separate Admin grant, for a census reset."""
+    # Remove a stale password widget value left by an older running version.
+    st.session_state.pop("delete_all_password", None)
+    clear_all_handoffs(store)
 
 
 def delete_handoffs_control(store: GitHubVault | None) -> None:
@@ -2073,12 +2056,8 @@ def delete_handoffs_control(store: GitHubVault | None) -> None:
     with st.expander("Delete all handoff data", expanded=False):
         st.warning("Deletes every patient's saved handoff and this session's drafts, including notes and airway details. Custom rooms are removed. Preset rooms remain blank.")
         st.caption("Categories, medication mappings, SmartPhrase settings and passwords stay unchanged. Earlier archive versions and downloaded copies are not erased. Other team members must reload the saved archive.")
-        problem = admin_config_error(admin_config())
-        if problem:
-            st.info(problem)
-            return
+        st.caption("Any signed-in user can clear all patients. No Admin password is required. This button clears immediately.")
         with st.form("delete_all_handoffs_form"):
-            st.text_input("Admin password", type="password", key="delete_all_password", max_chars=1024)
             st.form_submit_button("Delete all handoff data", on_click=delete_all_from_handoff, args=(store,))
 
 
@@ -2923,7 +2902,7 @@ def admin_gate() -> bool:
         st.info(problem)
         st.caption("The setup helper adds one Admin password hash only. Keep your app password and encryption key unchanged.")
         return False
-    st.caption("Enter the separate Admin password to change shared settings. You do not need it to create, edit, save, or print a handoff, or to read the user guide.")
+    st.caption("Enter the separate Admin password to change shared settings. You do not need it to create, edit, save, print, or clear handoffs, or to read the user guide.")
     with st.form("admin_unlock"):
         st.text_input("Admin password", type="password", key="admin_login_password", max_chars=1024)
         st.form_submit_button("Unlock Admin", on_click=authenticate_admin)
@@ -2951,7 +2930,7 @@ def load_user_guide(store: GitHubVault | None, refresh: bool = False) -> dict:
     try:
         guide, sha = GuideStore(store).load() if store else (ss.get("user_guide", default_guide()), None)
     except (StorageError, ValueError):
-        ss["guide_load_error"] = "The published guide could not be loaded. Any previously loaded copy is shown below. Use Refresh published guide to retry. No guide or handoff was overwritten."
+        ss["guide_load_error"] = "The published guide could not be loaded. Any previously loaded copy is shown below. Return to Handoff to retry, or reload the published guide in Admin. No guide or handoff was overwritten."
         return ss.get("user_guide", default_guide())
     ss.update(user_guide=guide, guide_sha=sha, guide_loaded=True)
     ss.pop("guide_load_error", None)
@@ -3018,7 +2997,7 @@ def save_user_guide(store: GitHubVault | None) -> None:
         return
     ss.update(user_guide=guide, guide_sha=sha, guide_editor_sha=sha, guide_loaded=True)
     ss.pop("guide_load_error", None)
-    note("Guide and SmartPhrase published to shared storage. Other users can choose Refresh SmartPhrase publication." if store else
+    note("Guide and SmartPhrase published to shared storage. The short instructions update when users return to Handoff." if store else
          "Guide saved in this session only. Enable the existing encrypted storage for shared persistence.", "success")
 
 

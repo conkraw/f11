@@ -1,15 +1,9 @@
-COMPLETE VERSION 6.49 PACKAGE, BASED ON SUPPLIED VERSION 6.48
+Version 6.51, based on PICU650.zip
 
-Replace matching code files with this folder's contents. Keep app.py at the root.
-Restart and refresh. No new dependencies or archive-schema changes are required.
+For an existing 6.50 app, replace app.py, restart, and refresh.
+All other application modules are byte-identical to the supplied 6.50 package.
+This full ZIP also includes updated documentation and regression tests.
 
-Preserve Secrets, passwords, encryption key, medication/category mappings,
-BMI reference data and shared archive. Do not rerun setup generators.
-
-Re-paste complete C/D sections together or the full SmartPhrase. Create/update
-and save. Earlier omitted ventilator settings require re-pasting to recover.
-
-Changed application modules: app.py, ventilator_modes.py, ventilation.py,
-noninvasive.py and feeds.py. All remaining modules are unchanged from 6.48.
-
-Version 6.49 | Ventilator markers and cleaner Handoff
+Keep existing Secrets, passwords, encryption key, medication/category mappings,
+BMI reference data and shared archive unchanged. No setup generators required.
+Installing this update does not clear any patient handoffs automatically.
