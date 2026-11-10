@@ -1,0 +1,10 @@
+PICU Handoff 6.52
+Base: supplied PICU651.zip, original ZIP and 316 manifest checks verified.
+Full regression suite: 4310 passed in 94.74s.
+New focused regression suite: 77 passed.
+Unmodified 6.51 synthetic encrypted archive opens unchanged in 6.52.
+Two-page synthetic preview rendered and visually inspected, one page per room.
+Only app.py, categories.py, lab_windows.py and problem_review.py changed among
+application modules. Schema and dependencies are unchanged.
+No live deployment or patient archive accessed or modified.
+SHA256SUMS.txt covers every other delivered file.
