@@ -1,11 +1,11 @@
-Version 6.55 based on the supplied PICU654.zip.
-Original baseline: 4512 passed.
-Working-tree suite: 4591 passed.
-Clean staged-ZIP extraction: 4591 passed in 96.69 seconds.
-Focused new regression suite: 78 passed.
-Encrypted 6.54 migration and same-key round-trip passed on synthetic data.
-PDF preview: one landscape page, 8-point body text, rendered and visually checked.
-Only documentation was updated after the clean-extraction full-suite run.
-Source code is unchanged from that tested archive.
-All delivered files are listed with SHA256 hashes in SHA256SUMS.txt.
-No live deployment or shared patient archive was accessed or modified.
+PICU Handoff 6.59, based on PICU658.zip.
+
+219 focused tests passed. All data was synthetic.
+Both MRSA codes are compared together by laboratory collection date and time.
+HTML, text, single PDF, Print All and bold-label font checks passed.
+Encrypted source rows are unchanged after save/reload and rendering.
+Only app.py, labs.py and mrsa.py changed among application modules.
+ZIP CRC and SHA256 manifest verified.
+
+See TEST_REPORT.md for details. No running deployment or patient archive was
+accessed. No new dependency or archive-schema change is required.

@@ -1,77 +1,101 @@
-# Version 6.55: demographic labels, CAPD flags and airway category
+# PICU Handoff 6.59
 
-Built directly from the supplied PICU654.zip.
+Built from PICU658.zip. This update adds MRSANPADM to the MRSA screen and
+compares both supported MRSA components by their laboratory collection date
+and time. The 6.58 medication, sodium, line-day and saving features are included.
 
-## Labels and values
+## MRSA screening
 
-Room, Age, Sex, Admission, Diagnoses, Weight, Z-score, Dosing weight,
-Height, BSA and EVD labels are bold through the colon. Their values remain
-regular weight. The same formatting is used in the HTML preview and PDF,
-including Print all.
+The newest included result across MRSADNA and MRSANPADM in the G laboratory
+block appears in Demographics / Weight as MRSA Screen: followed by the original result and
+collection date. Only the label is bold in the preview and PDF.
 
-The compact lactate summary now starts with a bold Lactate: label.
-The existing 24-hour selection, earliest-to-latest order, source units,
-flags and latest-result date are unchanged. Example:
+Negative, Not detected, Positive, Detected, and Pending retain their original
+wording. Both lab codes are compared together by collection date and time,
+regardless of code or where a result appears in the pasted text. Upload time
+and handoff-save time do not determine the chosen result. If same-day collection
+times are incomplete, the existing Epic source order is retained. A newer
+negative or pending result replaces an older positive result. A missing or
+excluded result is not presented as a negative screen.
 
-    Lactate: 1.0 -> 1.1 [11/9/2026]
+A MRSADNA or MRSANPADM result must be present in the pasted G laboratory block
+with its collection date. Both tab-separated rows and rows whose tabs became spaces are accepted.
+Existing saved rows for either component work immediately. Edit or exclude the source result
+using the existing laboratory editor. A failed G-block import hides the old
+screen until that block is successfully refreshed or reviewed.
 
-## CAPD
+## Bupivacaine
 
-A displayed CAPD total of 9 or greater gains a red (H) flag, for example:
+Orders containing bupivacaine appear under Neuro > Epidural, including combined
+fentanyl-bupivacaine orders. This placement takes priority over older saved
+mappings and category snapshots, so an existing saved order does not require
+another paste. Each visible order appears once.
 
-    CAPD: 11 (H)
+The source dose, concentration, route, frequency and recorded rate are retained.
+The Epidural display heading does not rewrite a documented route. Existing
+hidden or excluded orders keep their display choices. Other medications and
+custom categories keep their prior placement.
 
-CAPD remains bold through the colon. The number and flag remain regular
-weight. Scores 0 through 8 do not receive the new flag. Missing, excluded,
-or import-failed totals retain the existing CAPD: None display.
+## Hypernatremia
 
-This is a requested presentation rule. The numeric total stored in the
-archive and editor is unchanged, and no delirium diagnosis is added.
-SBS, CAPD and WAT ordering and their selection logic are unchanged.
+The Problems rules now add Hypernatremia when the newest eligible blood sodium
+result is greater than 145 mmol/L or mEq/L. Routine NA and SODIUM results with
+omitted units follow the same cutoff. Urine sodium and sodium-containing
+medications do not trigger this rule.
 
-## Respiratory category
+An older elevated result does not override a newer normal result. A newer
+unusable result does not cause an older high result to be reused. The rule uses
+the existing problem review controls, so its evidence can be reviewed and the
+prompt can be confirmed or dismissed. Manually entered diagnoses stay intact.
 
-Airway Vasoconstrictor is a new editable medication category in Respiratory.
-Racemic epinephrine / racepinephrine inhalation or nebulization orders use
-this automatic placement. The Asthmanefrin name is also recognized.
-Systemic epinephrine and norepinephrine, injections, and generic non-racemic
-epinephrine are not moved to this category.
+Cutoff reference: Royal Children's Hospital, Hypernatraemia guideline.
+https://www.rch.org.au/clinicalguide/guideline_index/hypernatraemia/
 
-Saved category overrides remain authoritative. Hidden orders stay hidden.
-Separate scheduled and PRN orders are preserved, with each order printed once.
-Names, doses, routes and frequencies are not changed. Admin can rename or
-nest the category, and the medication selector can assign a different one.
+## Vascular line day numbers
 
-Medication naming reference checked: National Library of Medicine DailyMed,
-S2 racepinephrine hydrochloride solution, respiratory (inhalation).
-https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=dd1b35c7-b23b-4b95-8162-df3d263fe32e
+PIVs, PICCs, CVCs/CVLs, arterial lines and other recognized vascular access keep
+their documented insertion date and show the current day beside it.
+
+Example on November 10, 2026:
+PICC Left Basilic (11/08/26, Day 3)
+
+Insertion is Day 1. The next calendar date is Day 2. Calculations use
+America/New_York, including daylight saving changes, rather than elapsed
+24-hour periods or the server's UTC date.
+
+The date remains the stored value. The day number is calculated when the
+handoff is displayed or exported, so reopening a saved handoff does not freeze
+its day count. The HTML preview refreshes its line days every minute, on focus,
+and before browser printing. PDFs are fixed snapshots and must be regenerated
+to show a later day's count.
+
+Missing, invalid or future insertion dates do not produce an invented day
+number. Removed lines remain excluded. ETT history and other nonvascular devices
+keep their existing formatting. Older CVLs stored under Other are recognized at
+display time without modifying their saved category.
 
 ## Install
 
-Replace the application files with this folder's contents, keeping app.py
-at the root. Restart the app and refresh the browser. Keep your existing
-Secrets, both passwords, encryption key, mappings, category settings,
-BMI reference data and shared patient archive unchanged. Do not rerun
-setup generators. No new dependencies or re-pasting are required for
-information already stored. Regenerate existing PDFs to see the changes.
+Extract this package and upload the contents of the application folder to your
+existing code repository. Keep app.py at the repository root. Use the complete
+folder so the new mrsa.py module and all related changes are included. Restart
+the Streamlit app and refresh your browser.
 
-Updated application files:
+Keep your existing Streamlit Secrets, passwords, encryption key, saved archive,
+BMI reference data, mappings and custom categories. Do not rerun setup or secret
+generators. This update adds no dependency and keeps archive schema 34.
 
-    app.py
-    capd.py
-    clinical_style.py
-    exports.py
-    lab_windows.py
-    medication_groups.py
-    models.py
+The save-before-Print-All behavior, per-room Last saved timestamps, BMI label
+formatting, difficult-airway choices and existing conflict checks remain in
+place. These changes apply to saved source data that is already present. Paste
+updated SmartPhrase output when adding a laboratory result or order that was
+not previously included.
 
-Archive schema 33 upgrades to 34, adding only the missing built-in category.
-Existing names, locations, custom categories, mappings, rooms, notes and
-save timestamps are preserved. Do not downgrade after saving new category
-choices, because prior versions cannot validate the new category ID.
+## Verification and example
 
-The compact workspace, quiet Alerts tab, one-click clear-all access,
-password protection, autosave, clinical import parsers and PDF fitting
-behavior are unchanged. No live deployment or shared archive was modified.
+Tests use synthetic data. The running deployment and shared patient archive
+were not accessed. TEST_REPORT.md records verification of this package.
 
-Verification details: TEST_REPORT.md. Historical feature notes remain in the package.
+The examples folder includes mrsa_epidural_sodium_line_days_preview.pdf and the
+matching synthetic SmartPhrase text. The PDF uses November 10, 2026 as its
+example date. The matching HTML refreshes its line days to the date it is opened.

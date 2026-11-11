@@ -1,0 +1,10 @@
+Version 6.59 keeps archive schema 34.
+
+Both MRSADNA and MRSANPADM use the existing saved laboratory rows. Their original
+component names, values and dates remain unchanged. The screen compares both
+codes at display time, so existing saved rows work without a migration or paste.
+Encrypted save/reload and source-preservation tests passed.
+
+The original-code compatibility checks performed for 6.58 remain applicable to
+the unchanged archive structure. Keep existing Streamlit Secrets and encryption
+key. No setup generators or new keys are needed.

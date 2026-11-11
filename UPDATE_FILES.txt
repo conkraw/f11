@@ -1,15 +1,11 @@
-Version 6.55, based on PICU654.zip
+Version 6.59, based on PICU658.zip
 
 Changed application files:
 app.py
-capd.py
-clinical_style.py
-exports.py
-lab_windows.py
-medication_groups.py
-models.py
+labs.py
+mrsa.py
 
-Upload the full folder contents, restart and refresh.
-No new dependencies. Keep current Secrets, encryption key and reference data.
-No re-pasting is needed for already stored data. Schema 33 upgrades to 34.
-Regenerate existing PDFs. Avoid downgrading after saving new categories.
+Replace all three files together, or upload the full application folder.
+Keep app.py at the repository root. Restart Streamlit and refresh the browser.
+Keep existing Secrets and encryption key. No new dependencies or archive-schema
+change are required. Existing stored MRSANPADM and MRSADNA rows work immediately.
