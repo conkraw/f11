@@ -1,15 +1,28 @@
-COMPLETE VERSION 6.49 PACKAGE, BASED ON SUPPLIED VERSION 6.48
+Version 6.64, based on the latest PICU663.zip package
 
-Replace matching code files with this folder's contents. Keep app.py at the root.
-Restart and refresh. No new dependencies or archive-schema changes are required.
+Changed application files:
+app.py
+lab_windows.py
+clinical_style.py
 
-Preserve Secrets, passwords, encryption key, medication/category mappings,
-BMI reference data and shared archive. Do not rerun setup generators.
+Replace all three together, or upload the complete application folder.
+Keep app.py at the repository root. Restart Streamlit and refresh the browser.
+The sidebar should show Version 6.64 | Methemoglobin and SvO2.
 
-Re-paste complete C/D sections together or the full SmartPhrase. Create/update
-and save. Earlier omitted ventilator settings require re-pasting to recover.
+METHB appears as Methemoglobin in Cardiovascular.
+O2SATV appears as SvO2 in Cardiovascular.
+Each shows its latest included numeric result within the past 24 hours.
+Results retain their source value, units, flags and collection date/time.
+No eligible result means no automatic entry for that test.
 
-Changed application modules: app.py, ventilator_modes.py, ventilation.py,
-noninvasive.py and feeds.py. All remaining modules are unchanged from 6.48.
+Include both codes in the G laboratory block. Collection times allow results
+from yesterday to qualify. Date-only rows qualify only when the start of the
+recorded Eastern date is within 24 hours. Existing saved rows work immediately.
+Paste a new SmartPhrase to add rows that were not previously included.
 
-Version 6.49 | Ventilator markers and cleaner Handoff
+Existing Secrets, encryption key, saved archive, medication mappings and
+custom notes remain compatible. No new dependency or setup step is needed.
+
+Other changes: README.md, SMARTPHRASE_TEMPLATE.txt, START_HERE.html,
+ARCHIVE_COMPATIBILITY.txt, TEST_REPORT.md, DELIVERY_VERIFICATION.txt and checksums.
+A synthetic preview and focused tests are included.

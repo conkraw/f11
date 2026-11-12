@@ -1,3 +1,4 @@
+from style_assert_helpers import without_style_tags
 from recovery_helpers import assert_retained
 from models import fields_with_medications
 """Synthetic PN connector and compact print regressions. No patient records."""
@@ -86,7 +87,11 @@ def test_linked_order_mapping_ignores_connector_not_clinical_text(prefix):
     assert destination_for(name,rules)=='FEN / GI'
     assert suggested_key(name)=='fat emulsion'
     result=parse_medications('Medications:\n'+order(name),rules)
-    assert not result.error and format_medication(result.rows[0]).startswith(name)
+    assert not result.error and result.rows[0]['name'] == name
+    expected = ('[Held by provider] ' if '[Held by provider]' in prefix else '') + 'fat emulsion (Example) bag'
+    assert format_medication(result.rows[0]).startswith(expected)
+    assert 'And:' not in format_medication(result.rows[0])
+    assert '[START ON' not in format_medication(result.rows[0])
 
 
 def test_exact_hide_restore_linked_formulation():
@@ -139,8 +144,9 @@ def test_new_export_formats_keep_linked_pn_details():
     outputs=[handoff_html(s),handoff_text(s)]
     outputs+=['\n'.join(page.extract_text() for page in PdfReader(BytesIO(handoff_pdf(s))).pages)]
     for text in outputs:
-        for token in ['Pediatric 2-in-1 PN','And: fat emulsion','25 mL/hr','2.5 mL/hr','[Held by provider]','[START ON 1/4/2026]']:
+        for token in ['Pediatric 2-in-1 PN','fat emulsion','25 mL/hr','2.5 mL/hr','[Held by provider]']:
             assert token in text
+        assert 'And: fat emulsion' not in text and '[START ON' not in text
         assert 'TEST_PROVIDER_NOT_RETAINED' not in text and 'TEST_ADMIN_NOT_RETAINED' not in text
 
 
@@ -157,7 +163,7 @@ def test_synthetic_18_order_case_is_one_landscape_page_with_all_labs():
 
 
 def test_new_lab_summaries_are_horizontal_and_only_latest_gas():
-    s=sheet();html=handoff_html(s)
+    s=sheet();html=without_style_tags(handoff_html(s))
     assert html.count('<svg ')==4
     assert html.count('class="lab-summary"')==3  # only inflammatory markers print in ID
     fields = fields_with_medications(s)
@@ -178,7 +184,7 @@ def test_mixed_lab_dates_stay_attached_to_each_result():
     card={'title':'Hepatic | latest','kind':'branch','rows':{
         'ALT':{'component':'ALT','value':'21','date':'01/03/2026'},
         'AST':{'component':'AST','value':'32 (H)','date':'01/02/2026'}}}
-    text=horizontal_card_markup(card)
+    text=without_style_tags(horizontal_card_markup(card))
     assert 'ALT: 21 [01/03/26]' in text and 'AST: 32 (H) [01/02/26]' in text
 
 
@@ -205,7 +211,7 @@ def test_more_content_continues_without_dropping_or_duplicate_entries():
     text='\n'.join(p.get_text() for p in doc)
     for prefix,count in [('NEURO',180),('MED',140),('ACCESS',55)]:
         for i in range(count):assert text.count(f'{prefix}_SENTINEL_{i:04d}')==1
-    assert 'And: fat emulsion' in text
+    assert 'fat emulsion' in text and 'And: fat emulsion' not in text
     for page in doc:
         for block in page.get_text('blocks'):
             assert block[0]>=0 and block[2]<=793 and block[1]>=0 and block[3]<=613
@@ -233,7 +239,7 @@ def test_same_schema_roundtrip_preserves_mapping_hiding_and_all_order_fields():
     v['settings']['medication_mappings']=upsert_rule([],'fat emulsion','FEN / GI')
     v['settings']['medication_visibility']=set_visibility_rule([],name,True)
     key=generate_key();restored=open_vault(seal_vault(v,key),key)
-    assert restored==v and restored['schema']==32 and upgrade_vault(v)==v
+    assert restored==v and restored['schema']==34 and upgrade_vault(v)==v
 
 
 def test_bounded_small_font_fits_crowded_column_without_deleting_lines():

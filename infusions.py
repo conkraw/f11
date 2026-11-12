@@ -11,7 +11,7 @@ from copy import deepcopy
 from html import escape
 import re
 from medications import normalized, match_name, visible, format_medication
-from output_text import medication_output
+from output_text import medication_output, medication_name_output
 from infusion_rates import administration_display, show_recorded_pump_rate
 from fen_gi import effective_section, group_for as gi_group
 from medication_groups import (group_for as special_group, GROUP_NAMES, CV_GROUPS,
@@ -41,7 +41,7 @@ def supports_infusion_display(row: dict) -> bool:
     if section == "FEN / GI":
         return gi_group(row) in {"endocrine", "tpn"}
     return section in INFUSION_HEADINGS and (not group or group in {"dvt", "antiplatelet"}
-                                            or group in CV_GROUPS + RESP_GROUPS + ("paralytic_infusion",))
+                                            or group in CV_GROUPS + RESP_GROUPS + ("paralytic_infusion", "epidural"))
 
 
 def infusion_key(row: dict) -> tuple[str, str, str]:
@@ -123,13 +123,16 @@ def infusion_entry(row: dict, rich: bool = False, esc=escape, handoff_only: bool
         row = deepcopy(row)
         for field in ("name", "dose", "route", "frequency", "last_rate", "custom_text", "last_admin_rate"):
             row[field] = medication_output(row.get(field, ""))
+        if "_display_name" in row:
+            row["_display_name"] = medication_output(row["_display_name"])
     encode = esc if rich else lambda v: v
     bold = lambda v: '<b>' + encode(v) + '</b>' if rich else v
     custom = row.get('custom_text', '').strip()
     if custom:
         # A user override remains authoritative. Do not add a contradictory dose.
         return bold(custom)
-    lines = [bold(row['name'].strip())]
+    name = medication_name_output(row.get('_display_name') or row['name'])
+    lines = [bold(name)]
     dose = row['dose'].strip()
     rate = row['last_rate'].strip()
     admin = administration_display(row)
@@ -172,6 +175,9 @@ def render_body_blocks(blocks: list[tuple[str, object]], rich: bool = False, esc
             lines.append("<b>" + encode(item + ":") + "</b> None" if rich else item + ": None")
         elif kind == "subheading":
             lines.append("<b><i>" + encode(item) + "</i></b>" if rich else item)
+        elif kind == "lab" and rich:
+            from clinical_style import clinical_markup
+            lines.append(clinical_markup(item, esc))
         elif kind == "medication":
             lines.append(encode(medication_output(format_medication(item))))
         else:

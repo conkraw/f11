@@ -160,12 +160,13 @@ def test_grouping_never_restores_hidden_or_excluded(hidden,include):
             assert sentinel not in text
 
 
-def test_held_start_labels_custom_text_and_html_escaping_retained():
+def test_start_label_hidden_with_held_custom_text_and_html_escaping_retained():
     s=new_sheet('P4102')
     r=med('[Held by provider] [START ON 01/02/2027] cangrelor <marker>',dose='0.1 mcg/kg/min (Dosing Weight)')
     s['medications']=[r]
     h=handoff_html(s)
-    assert '[Held by provider]' in h and '[START ON 01/02/2027]' in h and '&lt;marker&gt;' in h
+    assert '[Held by provider]' in h and '[START ON' not in h and '&lt;marker&gt;' in h
+    assert '[START ON 01/02/2027]' in r['name']
     r['custom_text']='Override <script>display</script> 0.2 mcg/kg/min (Dosing Weight)'
     h=handoff_html(s)
     assert '<script>display</script>' not in h and '&lt;script&gt;display&lt;/script&gt;' in h
@@ -236,7 +237,7 @@ def test_schema16_upgrade_preserves_every_field_and_import_warning():
     v['rooms'][s['room']]=res.sheet;before=deepcopy(v)
     key=Fernet.generate_key().decode();encrypted=Fernet(key.encode()).encrypt(json.dumps(v).encode())
     upgraded=open_vault(encrypted,key)
-    assert upgraded['schema']==SCHEMA_VERSION==32
+    assert upgraded['schema']==SCHEMA_VERSION==34
     assert upgraded['rooms']=={room: dict(sheet, feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None) for room, sheet in before['rooms'].items()}
     assert upgraded['settings']==dict(before['settings'],medication_groups=[])
     assert v==before

@@ -1,3 +1,4 @@
+from style_assert_helpers import without_style_tags
 """6.20: synthetic display regressions. UI/storage use existing local stubs."""
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -144,7 +145,8 @@ def test_held_start_labels_source_dose_and_distinct_pump_rate_unchanged(section)
     r = med('[Held by provider] [START ON 01/04/2027] synthetic <tag>', dose='0.1-2 mcg/kg/min (Dosing Weight)', rate='0 mL/hr', section=section)
     s['medications']=[r]; before = deepcopy(s)
     h=handoff_html(s)
-    assert '<b>[Held by provider] [START ON 01/04/2027] synthetic &lt;tag&gt;</b>' in h
+    assert '<b>[Held by provider] synthetic &lt;tag&gt;</b>' in h
+    assert '[START ON' not in h
     assert '<b><u>Last Admin rate: UNK</u></b>' in h
     assert 'Recorded rate: 0 mL/hr' in h
     assert '(Dosing Weight)' not in h and s == before
@@ -283,9 +285,9 @@ def test_rendering_saved_data_preserves_archive_every_field_and_timestamp():
     v['settings']['medication_infusions']=set_infusion_rule([],s['medications'][1],'other')
     key=generate_key();encrypted=seal_vault(v,key);before=deepcopy(v)
     restored=open_vault(encrypted,key)
-    assert restored==before and restored['schema']==32==SCHEMA_VERSION
+    assert restored==before and restored['schema']==34==SCHEMA_VERSION
     for sheet in restored['rooms'].values():
-        fields_with_medications(sheet);handoff_html(sheet);handoff_pdf(sheet,STAMP)
+        fields_with_medications(sheet);without_style_tags(handoff_html(sheet));handoff_pdf(sheet,STAMP)
     assert restored==before and upgrade_vault(restored)==before
 
 

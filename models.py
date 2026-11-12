@@ -37,10 +37,11 @@ from fen_gi import validate_gi_rules, effective_section, fen_gi_body
 
 from import_review import validate_import_warnings, orders_for_output
 
-SCHEMA_VERSION = 32
+SCHEMA_VERSION = 34
 from problem_review import validate_review, empty_review
 from difficult_airway import validate_airway
 from lab_windows import cardiac_labs_summary, theophylline_summary, id_summary, laboratory_data
+from mrsa import mrsa_screen_text
 from anthropometrics import empty_anthropometrics, validate_anthropometrics, measurements_text
 
 
@@ -148,8 +149,14 @@ def validate_vault(vault: dict) -> None:
     if not isinstance(vault["reset_generation"], str) or not re.fullmatch(r"(?:[0-9a-f]{32})?", vault["reset_generation"]):
         raise ValidationError("The archive reset generation is invalid.")
     settings = vault["settings"]
-    if not isinstance(settings, dict) or set(settings) - {"medication_categories", "medication_category_rules"} != {"diagnoses_destination", "rooms", "medication_mappings", "medication_visibility", "medication_infusions", "medication_gi_groups", "medication_groups"}:
+    if not isinstance(settings, dict) or set(settings) - {"medication_categories", "medication_category_rules", "patient_list_started_at"} != {"diagnoses_destination", "rooms", "medication_mappings", "medication_visibility", "medication_infusions", "medication_gi_groups", "medication_groups"}:
         raise ValidationError("The saved Admin settings are invalid.")
+    if "patient_list_started_at" in settings:
+        from save_status import saved_instant
+        marker = settings["patient_list_started_at"]
+        if (not isinstance(marker, str) or len(marker) > 80
+                or any(c in marker for c in "\r\n\t") or saved_instant(marker) is None):
+            raise ValidationError("The patient-list start time must be a valid timestamp with a timezone.")
     try:
         from categories import validate_settings
         validate_settings(settings)
@@ -209,6 +216,16 @@ def upgrade_vault(vault: dict) -> dict:
         from categories import add_missing_builtin_categories
         vault = deepcopy(vault)
         vault["settings"] = add_missing_builtin_categories(vault["settings"])
+    if version == 33:
+        candidate = deepcopy(vault)
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
+    if version == 32:
+        candidate = deepcopy(vault)
+        candidate["schema"] = SCHEMA_VERSION
+        validate_vault(candidate)
+        return candidate
     if version == 31:
         candidate = deepcopy(vault)
         candidate["schema"] = SCHEMA_VERSION
@@ -512,6 +529,10 @@ def fields_with_medications(sheet: dict, include_lab_text: bool = True) -> dict[
     if sheet["admission_date"]:
         text = "Admission: " + sheet["admission_date"]
         result["Demographics / Weight"] = text + ("\n" + result["Demographics / Weight"] if result["Demographics / Weight"].strip() else "")
+    screen = mrsa_screen_text(sheet)
+    if screen:
+        demographic_notes = result["Demographics / Weight"].rstrip()
+        result["Demographics / Weight"] = (demographic_notes + "\n" if demographic_notes else "") + screen
     nutrition = demographic_weight_text(sheet["nutrition"], sheet["dosing_weight"])
     if nutrition:
         diagnosis = result["Diagnoses"].rstrip()

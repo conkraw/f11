@@ -62,17 +62,19 @@ ONE-TIME SETUP
 DAILY ACCESS
 
 All signed-in users can read the short instructions at the top of Handoff.
-The SmartPhrase source expander is available there when a reusable source has
-been published. Use Refresh SmartPhrase publication for the latest shared copy.
+The source/sample panel, publication timestamp and publication refresh button
+are not shown on Handoff. Source editing and its Last published time remain in
+Admin. Existing automatic guide loading continues when Handoff renders.
 The separate instructions workspace has been removed. Returning to Admin restores
 the saved editor content. Save before leaving Admin.
 
-Delete all handoff data is available on Handoff with the separate Admin password.
+Delete all handoff data is available on Handoff to any signed-in user without an Admin password.
 It clears every current patient handoff and custom room, but preserves categories,
 mappings, settings, passwords and the SmartPhrase. The same action is available
 inside unlocked Admin. It does not erase earlier archive versions or downloads.
 
-The entire Admin workspace and its callbacks require the separate password.
+The Admin workspace and its settings-editing callbacks require the separate password.
+Clearing patient handoffs is also available to signed-in users outside Admin.
 Admin locks when you leave its workspace, select Lock Admin, log out, reach
 15 minutes without Admin activity, or reach one hour since unlocking. Changing
 the configured password hash revokes an old unlock on its next check.

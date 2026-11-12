@@ -18,7 +18,7 @@ from labs import canonical, date_parts, ordered_components
 from cbc import cbc_cards
 from medications import visible
 from fen_gi import effective_section, group_for as gi_group
-from lab_windows import clock, eligible_time
+from lab_windows import clock, eligible_time, measured
 
 TITLE = 'Problems'
 STATUSES = ('review', 'confirmed', 'dismissed')
@@ -26,14 +26,19 @@ RULES = {
     'sepsis': 'Sepsis',
     'respiratory': 'Acute hypoxemic respiratory failure',
     'aki': 'Acute kidney injury',
-    'NA': 'Hyponatremia', 'K': 'Hypokalemia', 'ALBUMIN': 'Hypoalbuminemia',
+    'NA': 'Hyponatremia', 'NA_HIGH': 'Hypernatremia',
+    'K': 'Hypokalemia', 'ALBUMIN': 'Hypoalbuminemia',
     'CO2': 'Metabolic acidosis', 'MG': 'Hypomagnesemia', 'PHOS': 'Hypophosphatemia',
     'HGB': 'Anemia', 'PLT': 'Thrombocytopenia', 'constipation': 'Constipation',
+    'BILITOT': 'Hyperbilirubinemia',
+    'CALCIUM_HIGH': 'Hypercalcemia', 'PHOS_HIGH': 'Hyperphosphatemia',
+    'coagulopathy': 'Coagulopathy',
 }
 LOW_RULES = tuple(k for k in RULES if k in ('NA','K','ALBUMIN','CO2','MG','PHOS','HGB','PLT'))
 LABELS = {'NA':'Sodium', 'K':'Potassium', 'ALBUMIN':'Albumin', 'CO2':'Serum CO2',
           'MG':'Magnesium', 'PHOS':'Phosphorus', 'HGB':'Hemoglobin', 'PLT':'Platelets'}
 LOW = re.compile(r'\((?:L|LL|LOW)\)', re.I)
+HIGH = re.compile(r'\((?:H|HH|HIGH)\)', re.I)
 # Clinician-requested workflow cutoffs, not age-specific reference ranges.
 # These defaults apply only to asterisk-flagged values with documented units.
 STAR_LOW_LIMITS = {
@@ -135,6 +140,29 @@ def _is_low(row: dict, limit: dict | None, key: str = '') -> tuple[bool, str]:
     return low, reason + limit['value'] + ' ' + limit['unit'] if low else ''
 
 
+def _is_high_sodium(row: dict | None) -> bool:
+    """Apply >145 only to the latest usable standard blood sodium result.
+
+    NA/SODIUM in the Epic lab block uses mmol/L or equivalent mEq/L. Pasted
+    rows commonly omit units. An explicit incompatible unit is not converted.
+    The caller selects the newest row before validating its result, so an
+    unusable latest result cannot resurrect a historical abnormal value.
+    """
+    if not row or canonical(row['component']) != 'NA' or LOW.search(row['value']):
+        return False
+    parsed = numeric(row['value'])
+    if not parsed or not measured(row['value']):
+        return False
+    comparator, number, units = parsed
+    if unit_key(row.get('unit') or units) not in ('', 'mmol/l', 'meq/l'):
+        return False
+    if comparator == '>':
+        return number >= Decimal('145')
+    if comparator in ('', '≥'):
+        return number > Decimal('145')
+    return False
+
+
 def _medication_active(row: dict, now: datetime) -> bool:
     if not visible(row):
         return False
@@ -225,6 +253,36 @@ def suggestions(sheet: dict, as_of: datetime | None = None) -> list[dict]:
             caution = ('Low serum CO2 does not alone determine the acid-base disorder. Review pH, PCO2 and the clinical context.'
                        if key == 'CO2' else 'Verify the applicable reference range and clinical context.')
             add(key, evidence, caution)
+    sodium = latest.get('NA')
+    if _is_high_sodium(sodium):
+        units = (' ' + sodium['unit']) if sodium.get('unit') else ''
+        add('NA_HIGH', 'Sodium ' + sodium['value'] + units + ' [' + sodium['date'] + '], above 145',
+            'Blood sodium >145 mmol/L or mEq/L review rule. Verify the reference range and clinical context.')
+    bilirubin = latest.get('BILITOT')
+    if (bilirubin and measured(bilirubin['value']) and HIGH.search(bilirubin['value'])
+            and not re.search(r'\b(?:pending|cancelled|canceled|hemolyzed|haemolysed|rejected|invalid)\b', bilirubin['value'], re.I)
+            and not LOW.search(bilirubin['value'])
+            and numeric(bilirubin['value'])[1] >= 0):
+        add('BILITOT', 'Total bilirubin ' + bilirubin['value'] + ' [' + bilirubin['date'] + '], source marked high',
+            'User-requested total-bilirubin high-flag rule. Verify the source reference range and clinical context.')
+    def high_flag(row):
+        if not row or not HIGH.search(row['value']) or LOW.search(row['value']):
+            return False
+        parsed = numeric(row['value'])
+        return bool(parsed and parsed[1] >= 0 and measured(row['value']) and not re.search(
+            r'\b(?:pending|cancelled|canceled|hemolyzed|haemolysed|rejected|invalid)\b', row['value'], re.I))
+    for component, key, label in (("CALCIUM", "CALCIUM_HIGH", "Calcium"),
+                                   ("PHOS", "PHOS_HIGH", "Phosphorus")):
+        row = latest.get(component)
+        if high_flag(row):
+            add(key, label + ' ' + row['value'] + ' [' + row['date'] + '], source marked high',
+                'User-requested high-flag rule. Verify reference range and clinical context.')
+    # PT/INR/aPTT are the coagulation-time screen. A high fibrinogen or an
+    # anti-Xa treatment-monitoring level alone does not establish coagulopathy.
+    coags = [latest[key] for key in ('INR', 'PT', 'PTT') if high_flag(latest.get(key))]
+    if coags:
+        add('coagulopathy', '; '.join(row['component'] + ' ' + row['value'] + ' [' + row['date'] + ']' for row in coags),
+            'High PT/INR/aPTT review rule, not a confirmed diagnosis. Verify anticoagulant treatment, reference ranges and clinical context.')
     if 'g' not in sheet.get('import_warnings', {}):
         rows = [r for r in sheet['labs']['rows'] if r['include'] and canonical(r['component']) == 'CREATININE'
                 and eligible_time(r, now, admission=sheet.get('admission_date', ''))]

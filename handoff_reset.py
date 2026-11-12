@@ -11,6 +11,7 @@ from models import DEFAULT_ROOMS, validate_vault
 
 
 def cleared_vault(vault: dict) -> dict:
+    """Remove every patient record, including airway details, without mutation."""
     validate_vault(vault)
     result = deepcopy(vault)
     result['rooms'] = {}

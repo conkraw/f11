@@ -1,6 +1,8 @@
-"""PICU SmartPhrase v6.49: annotated ventilator settings and a cleaner opening screen."""
+"""PICU SmartPhrase v6.64: recent methemoglobin and SvO2 in Cardiovascular."""
 from __future__ import annotations
 from copy import deepcopy
+from workspace_ui import (WORKSPACE_TABS, COMPACT_STYLES, compact_help, alert_rows,
+                          alert_lines_html, remember_notice, remember_import, workspace_attention)
 from empty_groups import refresh_empty_group_layout
 from categories import apply_category_rules, set_category_rule, theophylline_anchor
 from category_ui import placement_picker, category_admin, local_target
@@ -28,6 +30,8 @@ from noninvasive import DEVICE_FIELDS, format_noninvasive, validate_noninvasive
 from importing import import_sections, SUPPORTED_SECTIONS
 from batching import available_handoffs
 from handoff_reset import cleared_vault, census_was_reset
+from daily_start import daily_reset_plan, start_daily_list, START_MARKER
+from census_guard import guard_download
 from save_status import (room_save_status, saved_time_text, latest_saved_time,
                          most_recent_save_caption, save_status_table)
 from parser import MAX_PASTE, SECTION_NAMES
@@ -50,6 +54,8 @@ from vitals import validate_vitals, text_by_system
 from lab_layout import laboratory_html
 from observations import NEURO_SECTIONS, validate_neuro, validate_nutrition, format_nutrition
 from demographics import validate_dosing_weight, validate_admission_date, demographic_weight_text
+from mrsa import mrsa_screen_text
+from clinical_style import clinical_markup
 from anthropometrics import empty_anthropometrics, clean_field, validate_anthropometrics, measurements_text, FIELDS as ANTHRO_FIELDS
 from bmi_reference import bmi_percentile_summary, download_reference, install_reference, REFERENCE_PATH
 from cultures import validate_cultures, cultures_text, compact_groups, category_for
@@ -125,12 +131,16 @@ def discard_editor_widget_values() -> None:
 
 def set_editor(room: str, sheet: dict) -> None:
     validate_sheet(sheet)
+    st.session_state.pop("airway_update_pending", None)
     discard_editor_widget_values()
     st.session_state.setdefault("drafts", {})[room] = deepcopy(sheet)
     st.session_state["drafts"][room]["medications"] = apply_category_rules(sheet["medications"], st.session_state.get("vault", {}).get("settings", {}))
     refresh_empty_group_layout(st.session_state["drafts"][room], st.session_state.get("vault", {}).get("settings", {}))
     st.session_state["paste"] = ""
     st.session_state.pop("import_result", None)
+    st.session_state.get("workspace_imports", {}).pop(sheet["id"], None)
+    st.session_state["handoff_tab"] = "Preview / print"
+    st.session_state["handoff_active_tab"] = "Preview / print"
 
 
 def editor_snapshot(room: str) -> dict:
@@ -347,15 +357,16 @@ def editor_snapshot(room: str) -> dict:
     return sheet
 
 
-def autosave_before_room_change(store: GitHubVault | None) -> bool:
+def autosave_before_room_change(store: GitHubVault | None, *, for_print: bool = False) -> bool:
     ss = st.session_state
     room = ss.get("current_room")
+    ss.pop("airway_update_pending", None)  # Obsolete pre-6.62 prompt state.
     if not room or room not in ss.get("drafts", {}):
         return True
     try:
         draft = editor_snapshot(room)
     except (ValueError, TypeError, KeyError) as exc:
-        note("The current room was not saved or changed. Correct the highlighted editor value before switching rooms. " + str(exc), "error")
+        note("The current room was not saved or changed. Correct the highlighted editor value before " + ("opening Print all. " if for_print else "switching rooms. ") + str(exc), "error")
         return False
     # Keep the original draft and all widgets until the write is confirmed.
     # A retry captures the same values, including pending mapping changes.
@@ -408,8 +419,8 @@ def autosave_before_room_change(store: GitHubVault | None) -> bool:
     ss.setdefault("base_sheets", {})[room] = deepcopy(saved)
     if changed_rules:
         reapply_open_mappings()
-    message = ("Previous room automatically saved to shared storage." if store else
-               "Previous room saved in this session only. Shared storage is not enabled.")
+    message = (("Handoff automatically saved before Print all." if for_print else "Previous room automatically saved to shared storage.") if store else
+               "Handoff saved in this session only. Shared storage is not enabled.")
     note(message + " Last saved: " + saved_time_text(saved["updated_at"]),
          "success" if store else "info")
     return True
@@ -446,6 +457,8 @@ def open_room(store: GitHubVault | None = None) -> None:
         discard_editor_widget_values()
         ss["paste"] = ""
         ss.pop("import_result", None)
+        ss["handoff_tab"] = "Preview / print"
+        ss["handoff_active_tab"] = "Preview / print"
 
 
 def room_changed(store: GitHubVault | None = None) -> None:
@@ -1064,7 +1077,7 @@ def gas_edit(room: str, sample_id: str, label: str, field: str, key: str) -> Non
 def gas_editor(sheet: dict) -> None:
     st.subheader("Latest blood gas")
     data = sheet["blood_gas"]
-    selection_data = legacy_gases(sheet["labs"]) if data is None else data
+    selection_data = legacy_gases(laboratory_data(sheet)) if data is None else data
     sample, issues = latest_sample(selection_data)
     if sample:
         st.text(gas_summary(selection_data))
@@ -1114,6 +1127,7 @@ def labs_vitals_editor(sheet: dict) -> None:
     if cardiac_labs_summary(sheet):
         st.text("Cardiovascular: " + cardiac_labs_summary(sheet))
         st.caption("Lactate shows the earliest and latest usable results in the rolling 24-hour display window. The printed result omits the source code. All original codes, dates, flags and units remain in the editor. NT-proBNP shows the latest from all supplied dates. The original dates remain visible.")
+    st.caption("Cardiovascular shows the latest METHB as Methemoglobin and O2SATV as SvO2 within 24 hours. Include collection times to use results from yesterday. A date-only result is included only when the start of that Eastern date is within 24 hours.")
     if id_summary(sheet):
         st.text("Infectious Disease:\n" + id_summary(sheet))
     st.caption("Glucose is in the BMP tree. Mg and phosphorus are below it. Albumin stays in Hepatic. Coagulation, including Anti-Xa (HEPLMW), is immediately below Hepatic in the lab results. CRP and procalcitonin (PROCAL) remain in ID below temperature. The latest eligible THEOPH result prints directly below a visible aminophylline order, once. Without a visible aminophylline order it remains in Respiratory.")
@@ -1167,6 +1181,24 @@ def clear_paste() -> None:
         st.session_state.pop("import_result", None)
 
 
+def _finish_handoff_import(room: str, result, store: GitHubVault | None) -> None:
+    """Apply the normal section update and its import diagnostics."""
+    ss = st.session_state
+    ss.pop("airway_update_pending", None)
+    ss.pop("last_error_reference", None)
+    if result.sheet is not None:
+        set_editor(room, result.sheet)
+    ss["import_result"] = {"room": room, "errors": result.errors,
+                           "notices": result.notices, "imported": result.imported}
+    remember_import(ss, ss["drafts"][room], ss["import_result"])
+    if result.diagnostics:
+        record = new_error_event(result.diagnostics)
+        ss.setdefault("pending_error_events", {})[record["id"]] = record
+        ss["last_error_reference"] = record["id"]
+        ss["error_log_saved"] = False
+        send_pending_errors(store)
+
+
 def create_handoff(store: GitHubVault | None = None) -> None:
     if not require_session():
         return
@@ -1175,18 +1207,15 @@ def create_handoff(store: GitHubVault | None = None) -> None:
     if not room:
         note("Select a room first.", "error")
         return
-    ss.pop("last_error_reference", None)
-    result = import_sections(ss["drafts"][room], ss.get("paste", ""), ss["vault"]["settings"])
-    if result.sheet is not None:
-        set_editor(room, result.sheet)
-    ss["import_result"] = {"room": room, "errors": result.errors,
-                           "notices": result.notices, "imported": result.imported}
-    if result.diagnostics:
-        record = new_error_event(result.diagnostics)
-        ss.setdefault("pending_error_events", {})[record["id"]] = record
-        ss["last_error_reference"] = record["id"]
-        ss["error_log_saved"] = False
-        send_pending_errors(store)
+    # Capture just-blurred editor values before applying supplied sections.
+    # Manual fields absent from the SmartPhrase keep their normal sheet values.
+    try:
+        before = editor_snapshot(room)
+        result = import_sections(before, ss.get("paste", ""), ss["vault"]["settings"])
+    except (ValueError, ValidationError) as exc:
+        note("The handoff was not updated. " + str(exc), "error")
+        return
+    _finish_handoff_import(room, result, store)
 
 
 def start_new_patient() -> None:
@@ -1218,17 +1247,18 @@ def commit(candidate: dict, store: GitHubVault | None) -> None:
     st.session_state["vault"] = candidate
 
 
-def save_rooms(store: GitHubVault | None, rooms: list[str]) -> None:
+def save_rooms(store: GitHubVault | None, rooms: list[str]) -> bool:
     if not require_session():
-        return
+        return False
     ss = st.session_state
     if not rooms:
         note("There are no open drafts to save.")
-        return
+        return False
+    ss.pop("airway_update_pending", None)  # Obsolete pre-6.62 prompt state.
     for room in rooms:
         if ss.get("base_sheets", {}).get(room) != ss["vault"]["rooms"].get(room):
             note("A saved room changed after its draft was opened. Reload that saved handoff and reapply your edits. No rooms were saved.", "error")
-            return
+            return False
     try:
         candidate = deepcopy(ss["vault"])
         for room in rooms:
@@ -1237,7 +1267,10 @@ def save_rooms(store: GitHubVault | None, rooms: list[str]) -> None:
         commit(candidate, store)
     except (StorageError, ValidationError, ValueError) as exc:
         note(str(exc), "error")
-        return
+        return False
+    except Exception:
+        note("Save was not confirmed. Your edits are kept. Check the connection and retry.", "error")
+        return False
     for room in rooms:
         saved = deepcopy(candidate["rooms"][room])
         ss["drafts"][room] = saved
@@ -1246,6 +1279,8 @@ def save_rooms(store: GitHubVault | None, rooms: list[str]) -> None:
                "Saved in this session only. Shared storage is not enabled.")
     stamp = latest_saved_time({room: candidate["rooms"][room] for room in rooms})
     note(message + (" Last saved: " + stamp if stamp else ""), "success" if store else "info")
+
+    return True
 
 
 def save_room(store: GitHubVault | None) -> None:
@@ -1479,20 +1514,195 @@ def idle_guard(minutes: int) -> None:
 
 
 
-def reload_archive(store: GitHubVault | None) -> None:
+def _retained_reset_state(previous: dict, fresh: dict) -> dict:
+    """Keep edits only when the saved handoff survives the shared reset.
+
+    Original base snapshots stay intact so a concurrent edit still conflicts.
+    Unsaved handoffs without a saved base cannot restore a cleared census.
+    """
+    ss = st.session_state
+    drafts, bases = {}, {}
+    for room, draft in ss.get("drafts", {}).items():
+        before = previous["rooms"].get(room)
+        after = fresh["rooms"].get(room)
+        base = ss.get("base_sheets", {}).get(room)
+        if (before is not None and after is not None and base is not None
+                and before["id"] == after["id"] == base["id"] == draft["id"]):
+            drafts[room] = deepcopy(draft)
+            bases[room] = deepcopy(base)
+    current = ss.get("current_room")
+    if current in drafts:
+        drafts[current] = editor_snapshot(current)
+    else:
+        current = None
+    return {"drafts": drafts, "base_sheets": bases, "current_room": current,
+            "paste": ss.get("paste", "") if current else ""}
+
+
+def _apply_reset_state(retained: dict) -> None:
+    """Discard obsolete widgets/downloads after a confirmed save or reload."""
+    discard_all_handoff_state()
+    ss = st.session_state
+    ss.update(drafts=retained["drafts"], base_sheets=retained["base_sheets"])
+    if retained["current_room"]:
+        ss.update(current_room=retained["current_room"],
+                  room_choice=retained["current_room"], paste=retained["paste"])
+
+
+def reload_archive(store: GitHubVault | None) -> bool:
     if not require_session() or store is None:
-        return
+        return False
     try:
         fresh, sha = store.load()
+        validate_vault(fresh)
         was_reset = census_was_reset(st.session_state["vault"], fresh)
-        st.session_state.update(vault=fresh, vault_sha=sha)
         if was_reset:
-            discard_all_handoff_state()
-            note("An administrator cleared the handoffs. The archive is reloaded and older open drafts were discarded so they cannot be saved back.", "warning")
+            # Revoke stale prepared files even if an invalid editor value
+            # prevents this reload from replacing the current local state.
+            download_revocation().set()
+            retained = _retained_reset_state(st.session_state["vault"], fresh)
+        st.session_state.update(vault=fresh, vault_sha=sha)
+        st.session_state.pop("daily_start_preview", None)
+        if was_reset:
+            _apply_reset_state(retained)
+            note("The patient list changed. The archive is reloaded and older open drafts were discarded for removed patients. Edits to retained handoffs were kept.", "warning")
         else:
             note("Saved archive reloaded. Open drafts were kept.")
-    except (StorageError, ValidationError) as exc:
+        return True
+    except (StorageError, ValidationError, ValueError, TypeError, KeyError) as exc:
         note(str(exc), "error")
+        return False
+
+
+def patient_list_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def continue_patient_list() -> None:
+    """Enter the workspace without writing or deleting any handoff."""
+    if not require_session():
+        return
+    ss = st.session_state
+    ss["patient_list_ready"] = True
+    ss.pop("daily_start_preview", None)
+    ss.setdefault("page", "Handoff")
+
+
+def prepare_daily_start(store: GitHubVault | None = None) -> None:
+    """Read the current archive and freeze exactly what the user will review."""
+    if not require_session():
+        return
+    ss = st.session_state
+    if ss.get("patient_list_ready"):
+        return
+    ss.pop("daily_start_preview", None)
+    if store is not None:
+        try:
+            if not reload_archive(store):
+                return
+        except Exception:
+            note("The saved patient list could not be loaded. No handoffs were changed. Try loading it again.", "error")
+            return
+    try:
+        plan = daily_reset_plan(ss["vault"], patient_list_now())
+        ss["daily_start_preview"] = {"source": deepcopy(ss["vault"]),
+                                     "sha": ss.get("vault_sha"), "plan": plan}
+    except (ValueError, TypeError, KeyError):
+        note("The patient list could not be reviewed. No handoffs were changed. Reload the saved archive.", "error")
+
+
+def confirm_daily_start(store: GitHubVault | None = None) -> None:
+    """Commit only the reviewed snapshot, with no automatic deletion retry."""
+    if not require_session():
+        return
+    ss = st.session_state
+    preview = ss.get("daily_start_preview")
+    if ss.get("patient_list_ready") or not preview or preview.get("failed"):
+        return
+    try:
+        if ss["vault"] != preview["source"] or ss.get("vault_sha") != preview["sha"]:
+            raise ValueError("The saved list changed after this review.")
+        now = patient_list_now()
+        if daily_reset_plan(preview["source"], now)["date"] != preview["plan"]["date"]:
+            raise ValueError("The date changed after this review.")
+        if preview["plan"]["already_started"]:
+            continue_patient_list()
+            note("Today's patient list is already started. All saved handoffs were kept.")
+            return
+        candidate = start_daily_list(preview["source"], datetime.fromisoformat(preview["plan"]["as_of"]))
+        # The selection stays frozen at review time. The shared start time
+        # records confirmation, so later logins recognize the completed start.
+        candidate["settings"][START_MARKER] = now.isoformat()
+        validate_vault(candidate)
+        retained = _retained_reset_state(ss["vault"], candidate)
+        commit(candidate, store)
+    except Exception:
+        preview["failed"] = True
+        note("Starting the new list was not confirmed. Your open handoffs were kept. Reload the saved list before trying again.", "error")
+        return
+    removed, kept = len(preview["plan"]["remove"]), len(preview["plan"]["keep"])
+    _apply_reset_state(retained)
+    continue_patient_list()
+    note(("Today's patient list started. " if store else "Session-only patient list started. ") +
+         str(removed) + " handoff(s) removed. " + str(kept) + " handoff(s) kept.",
+         "success" if store else "info")
+
+
+def _daily_room_table(rows: list[dict]) -> str:
+    cells = "".join("<tr>" + "".join("<td style='padding:6px 10px;border-bottom:1px solid #ddd'>" +
+        escape(row[key]) + "</td>" for key in ("room", "last_saved", "reason")) + "</tr>" for row in rows)
+    return ("<div style='max-height:330px;overflow:auto'><table style='width:100%;text-align:left;border-collapse:collapse'>"
+            "<thead><tr><th>Room</th><th>Last saved (Eastern)</th><th>Reason</th></tr></thead><tbody>" +
+            cells + "</tbody></table></div>")
+
+
+def patient_list_startup(store: GitHubVault | None) -> bool:
+    """Two choices after every sign-in. Rendering never changes stored data."""
+    ss = st.session_state
+    if ss.get("patient_list_ready"):
+        return True
+    st.title("PICU Handoff")
+    if "notice" in ss:
+        kind, message = ss.pop("notice")
+        getattr(st, kind)(message)
+    preview = ss.get("daily_start_preview")
+    if preview:
+        plan = preview["plan"]
+        st.subheader("Start a new patient list")
+        if preview.get("failed"):
+            st.warning("Reload the saved list to check its current status before trying again.")
+            st.button("Reload saved list", key="daily_start_reload", on_click=prepare_daily_start, args=(store,))
+        elif plan["already_started"]:
+            st.info("Today's list was already started at " + saved_time_text(plan["started_at"]) + ". All saved handoffs will be kept.")
+            st.button("Open today's patient list", key="daily_start_existing", on_click=continue_patient_list, type="primary")
+        else:
+            st.caption("Remove handoffs saved before today and today's saves from 5:00 AM through 8:30 AM Eastern. Other handoffs stay.")
+            st.text("To remove: " + str(len(plan["remove"])) + ". To keep: " + str(len(plan["keep"])) + ".")
+            if plan["remove"]:
+                st.markdown(_daily_room_table(plan["remove"]), unsafe_allow_html=True)
+                st.caption("Each selected handoff is removed in full, including its difficult-airway details.")
+            if plan["keep"]:
+                with st.expander("Handoffs that will stay", expanded=False):
+                    st.markdown(_daily_room_table(plan["keep"]), unsafe_allow_html=True)
+            st.caption("This starts the list once for today. Later sign-ins will keep the handoffs entered for that list.")
+            label = ("Start new list and remove " + str(len(plan["remove"])) + " handoff(s)"
+                     if plan["remove"] else "Start today's list")
+            st.button(label, key="daily_start_confirm", on_click=confirm_daily_start, args=(store,), type="primary")
+        st.button("Continue without deleting", key="daily_start_cancel", on_click=continue_patient_list)
+    else:
+        st.subheader("How would you like to start?")
+        st.caption(str(len(ss["vault"]["rooms"])) + " saved handoff(s)")
+        fresh, existing = st.columns(2)
+        with fresh:
+            st.subheader("Start a new patient list")
+            st.caption("Review older handoffs and today's 5:00–8:30 AM saves for removal, then enter your patients.")
+            st.button("Start new patient list", key="daily_start_review", on_click=prepare_daily_start, args=(store,), type="primary")
+        with existing:
+            st.subheader("Continue saved handoffs")
+            st.caption("Print processed handoffs, update existing patients, or add patients. Nothing is deleted.")
+            st.button("Continue saved handoffs", key="daily_start_continue", on_click=continue_patient_list)
+    st.button("Log out", key="daily_start_logout", on_click=clear_session)
+    return False
 
 
 def main() -> None:
@@ -1521,22 +1731,28 @@ def main() -> None:
             return
         st.session_state.update(vault=vault, vault_sha=sha, drafts={}, base_sheets={})
     upgrade_existing_session()
+    if not patient_list_startup(store):
+        return
     with st.sidebar:
         st.header("PICU Handoff")
-        st.caption("Version 6.49 | Ventilator markers and cleaner Handoff")
+        st.caption("Version 6.64 | Methemoglobin and SvO2")
         # Retire the old instructions workspace without discarding room drafts.
         if st.session_state.get("page") == "Instructions / SmartPhrase":
             st.session_state["page"] = "Handoff"
-        page = st.radio("Workspace", ["Handoff", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed)
+        page = st.radio("Workspace", ["Handoff", "Print all", "Admin", "Import errors"], key="page", on_change=workspace_changed, args=(store,))
         st.caption("Shared storage connected" if store else "Session-only testing. No persistence.")
         st.button("Reload saved archive", on_click=reload_archive, args=(store,), disabled=store is None)
         st.button("Log out", on_click=clear_session)
         if st.session_state.get("pending_error_events"):
-            st.warning("Technical error reports are not saved. Open Import errors to retry before closing this session.")
-        st.caption("Room changes automatically save the current handoff. Use Save before logout. Medication mappings save immediately.")
+            st.caption("Unsaved technical reports: see Alerts or Import errors.")
+        st.caption("Room changes and Print all save your handoff automatically. Use Save before logout.")
+    st.session_state["active_workspace"] = page
     if "notice" in st.session_state:
         kind, text = st.session_state.pop("notice")
-        getattr(st, kind)(text)
+        if page == "Handoff":
+            remember_notice(st.session_state, kind, text)
+        else:
+            getattr(st, kind)(text)
     if page == "Admin":
         admin_page(store)
     elif page == "Import errors":
@@ -1687,10 +1903,10 @@ def ventilation_editor(sheet: dict) -> None:
             st.button("Remove " + device["device"], key="remove_niv_" + sheet["id"] + "_" + device["device"],
                       on_click=remove_support_device, args=(sheet["room"], device["device"]))
 
-def display_room_save_status(room: str, store: GitHubVault | None):
+def display_room_save_status(room: str, store: GitHubVault | None = None, *, session_only: bool | None = None):
     """Read confirmed save metadata, independent of display or print timestamps."""
     ss = st.session_state
-    kwargs = {"session_only": store is None}
+    kwargs = {"session_only": store is None if session_only is None else session_only}
     if room in ss.get("base_sheets", {}):
         kwargs["base_sheet"] = ss["base_sheets"][room]
     return room_save_status(room, ss["vault"]["rooms"].get(room),
@@ -1702,177 +1918,233 @@ def render_room_save_table(rooms: list[str], store: GitHubVault | None) -> None:
     st.markdown(save_status_table(statuses, session_only=store is None), unsafe_allow_html=True)
 
 
+def handoff_tab_changed() -> None:
+    """Capture pending edits before an inactive tab's widgets are cleaned up."""
+    if not require_session():
+        return
+    ss = st.session_state
+    room = ss.get("current_room")
+    previous = ss.get("handoff_active_tab", "Preview / print")
+    if room and room in ss.get("drafts", {}):
+        try:
+            ss["drafts"][room] = editor_snapshot(room)
+        except (ValueError, TypeError, KeyError):
+            ss["handoff_tab"] = previous
+            note("The tab was not changed. Correct the invalid editor value before continuing.", "error")
+            return
+    ss["handoff_active_tab"] = ss.get("handoff_tab", "Preview / print")
+
+
+def handoff_tools(store: GitHubVault | None, choices: list[str]) -> None:
+    """Secondary and destructive actions stay out of the copy/paste path."""
+    ss = st.session_state
+    room = ss.get("current_room")
+    active = room in ss.get("drafts", {}) and ss.get("room_choice") == room
+    with st.popover("Room actions"):
+        st.button("Clear pasted text", on_click=clear_paste)
+        if active:
+            st.button("Load saved handoff", on_click=load_saved_into_editor)
+            with st.expander("Start over / reload", expanded=False):
+                st.caption("Replaces the open draft immediately. Save to replace the saved room.")
+                st.button("Start blank for new patient", on_click=start_new_patient)
+            if room not in DEFAULT_ROOMS:
+                with st.expander("Custom room options", expanded=False):
+                    st.button("Remove custom room", key="remove_current_room", on_click=remove_custom_room, args=(room, store))
+        if ss.get("removed_room"):
+            st.button("Undo last room removal", key="undo_room_handoff", on_click=undo_room_removal, args=(store,))
+        with st.expander("Save status for all rooms", expanded=False):
+            render_room_save_table(choices, store)
+            st.caption("Eastern time. Reload saved archive to see another user's saves.")
+        delete_handoffs_control(store)
+
+
+def handoff_alerts(sheet: dict) -> None:
+    """Read-only details plus the existing explicit import-review actions."""
+    rows = alert_rows(sheet, st.session_state)
+    st.markdown(alert_lines_html(rows), unsafe_allow_html=True)
+    if sheet.get("import_warnings"):
+        import_review_editor(sheet, compact=True)
+
+
+def room_preview(sheet: dict, store: GitHubVault | None = None) -> None:
+    """Build the inexpensive screen preview, not a PDF, when this tab is open."""
+    import streamlit.components.v1 as components
+    statuses = {sheet["room"]: display_room_save_status(
+        sheet["room"], session_only=not st.session_state.get("workspace_shared_storage", False))}
+    left, right = st.columns([3, 1])
+    with right:
+        with st.popover("Print options"):
+            target = print_target_control("room_print_target")
+            # Page fitting still runs on every actual PDF download. This
+            # optional check avoids doing the same PDF work on each edit.
+            if st.button("Check page count", key="check_room_page_fit"):
+                render_print_fit([sheet], target)
+    with left:
+        try:
+            st.download_button("Download this handoff (PDF)",
+                               handoff_download([sheet], store, target_pages=target, save_statuses=statuses),
+                               "handoff.pdf", "application/pdf", key="download_single_pdf", on_click="ignore")
+        except (ValueError, ImportError):
+            st.error("PDF export is unavailable. Refresh and retry.")
+    components.html(handoff_html(sheet, save_statuses=statuses), height=650, scrolling=True)
+
+
+def handoff_notes(sheet: dict) -> None:
+    ss = st.session_state
+    room = sheet["room"]
+    observed_vitals = automatic_vitals(sheet)
+    with st.expander("Respiratory support", expanded=False):
+        ventilation_editor(sheet)
+    devices_editor(sheet)
+    st.caption("These are your separate notes. Re-pasting medications or ventilation does not erase them.")
+    for section in SYSTEMS:
+        key = edit_key(sheet, section)
+        if key not in ss:
+            ss[key] = sheet["fields"][section]
+        with st.expander(section_label(section), expanded=section == "Diagnoses"):
+            if section == "Cardiovascular":
+                pacemaker_editor(sheet)
+            if section == "FEN / GI":
+                intake_output_editor(sheet)
+                diet_editor(sheet)
+                feeds_editor(sheet)
+            if section == "Labs" and orders_text(sheet["recurring_orders"]):
+                st.text(orders_text(sheet["recurring_orders"]) + "\n-----")
+                st.caption("Edit the imported recurring orders in Labs/Imaging. Notes below stay separate.")
+            if section in observed_vitals:
+                st.text(observed_vitals[section] + "\n-----")
+            if section == "Demographics / Weight" and sheet["admission_date"]:
+                st.text("Admission: " + sheet["admission_date"])
+            if section == "Demographics / Weight" and mrsa_screen_text(sheet):
+                st.markdown('<div style="white-space:pre-wrap">' + clinical_markup(mrsa_screen_text(sheet)) + '</div>', unsafe_allow_html=True)
+            if section == "Infectious Disease" and id_summary(sheet):
+                st.text(id_summary(sheet) + "\n------")
+            if section == "Cardiovascular" and cardiac_labs_summary(sheet):
+                st.text(cardiac_labs_summary(sheet) + "\n-----")
+            if section == "Respiratory" and respiratory_text(sheet):
+                st.text(respiratory_text(sheet) + "\n-----")
+                st.caption("Vital signs print first, then support settings. Edit support in Respiratory support above.")
+            if section == "Respiratory" and theophylline_summary(sheet) and not theophylline_anchor(sheet):
+                st.text(theophylline_summary(sheet) + "\n-----")
+                st.caption("Latest included THEOPH result. Edit or exclude its original row in Labs / Vitals.")
+            if section == "Diagnoses" and viral_text(sheet["viral_panel"]):
+                st.markdown('<div style="white-space:pre-wrap">----\n' + viral_markup(sheet["viral_panel"]) + '</div>', unsafe_allow_html=True)
+                st.caption("Positive O-block results print below the demographics / weight information. Edit under Labs / Vitals.")
+            st.text_area("Notes: " + section_label(section), key=key, height=100, max_chars=MAX_FIELD,
+                         on_change=update_field, args=(room, section, key))
+            if section == "Infectious Disease" and "f" not in sheet["import_warnings"] and cultures_text(sheet["cultures"], empty_none=True):
+                st.markdown('<div style="white-space:pre-wrap">------\n' + culture_markup(sheet["cultures"], empty_none=True) + '</div>', unsafe_allow_html=True)
+                st.caption("Edit imported specimens and results in Cultures. Temperature stays first in the printed ID column.")
+            if section == "FEN / GI":
+                st.markdown('<div style="white-space:pre-wrap">' + fen_gi_body("", sheet["medications"], None, True, sheet=sheet) + "</div>", unsafe_allow_html=True)
+                st.caption("Printed order: Intake/Output/Net, Diet, Feeds, TPN, GI prophylaxis, Bowel Regimen, Diuretics, Antiemetics, Endocrine Medications, then separate notes and remaining FEN/GI medications.")
+            elif section in INFUSION_SECTIONS:
+                render_body = {"Neurologic": neuro_body, "Cardiovascular": cardiovascular_body, "Hematology": hematology_body, "Respiratory": respiratory_body}[section]
+                st.markdown('<div style="white-space:pre-wrap">' + render_body("", sheet["medications"], True, sheet=sheet) + '</div>', unsafe_allow_html=True)
+            else:
+                for row in sheet["medications"]:
+                    if visible(row) and effective_section(row) == section:
+                        st.text(format_medication(row))
+            if section == "Diagnoses" and demographic_weight_text(sheet["nutrition"], sheet["dosing_weight"]):
+                st.text("----\n" + demographic_weight_text(sheet["nutrition"], sheet["dosing_weight"]))
+                st.caption("Edit measured weight, Z-score, dosing weight and admission date in Labs / Vitals.")
+
+
 def handoff_page(store: GitHubVault | None) -> None:
-    st.title("Room handoff")
-    due = bool(store) and time.monotonic() - st.session_state.get("handoff_guide_checked", 0) >= 30
+    ss = st.session_state
+    ss["workspace_shared_storage"] = store is not None
+    st.markdown(COMPACT_STYLES, unsafe_allow_html=True)
+    st.subheader("Handoff")
+    # Refresh nonclinical instructions at most every five minutes rather than
+    # doing a network read every 30 seconds while the user works.
+    due = bool(store) and time.monotonic() - ss.get("handoff_guide_checked", 0) >= 300
     guide = load_user_guide(store, refresh=due)
     if due:
-        st.session_state["handoff_guide_checked"] = time.monotonic()
-    st.markdown(handoff_instructions(guide), unsafe_allow_html=False)
-    st.caption(smartphrase_publish_caption(guide, session_only=store is None,
-                                          stale=bool(st.session_state.get("guide_load_error"))))
-    st.button("Refresh SmartPhrase publication", key="refresh_handoff_guide",
-              on_click=refresh_user_guide, args=(store,))
-    if st.session_state.get("guide_load_error"):
-        st.warning(st.session_state["guide_load_error"])
-    # Keep the opening workflow short. Source text remains editable in Admin,
-    # but the source/sample panel is not shown on the Handoff page.
-    ss = st.session_state
+        ss["handoff_guide_checked"] = time.monotonic()
+    st.caption(compact_help(guide))
     settings = ss["vault"]["settings"]
     choices = list(dict.fromkeys(settings["rooms"] + list(ss["vault"]["rooms"]) + list(ss.get("drafts", {}))))
     if "room_choice" not in ss:
         ss["room_choice"] = ss.get("current_room", "Choose a room")
-    st.selectbox("Room", ["Choose a room"] + choices + ["Other room"], key="room_choice", on_change=room_changed, args=(store,))
-    with st.expander("Save status for all rooms", expanded=False):
-        render_room_save_table(choices, store)
-        st.caption("Times are Eastern (EST/EDT). Reload saved archive to see saves made in another session." if store else
-                   "Session-only testing: these times do not indicate a save to shared storage.")
-    delete_handoffs_control(store)
-    if ss.get("removed_room"):
-        st.button("Undo last room removal", key="undo_room_handoff", on_click=undo_room_removal, args=(store,))
+    select, save, tools = st.columns([3, 1.3, 1.3], vertical_alignment="bottom")
+    with select:
+        st.selectbox("Room", ["Choose a room"] + choices + ["Other room"], key="room_choice",
+                     on_change=room_changed, args=(store,), label_visibility="collapsed")
+    room = ss.get("current_room")
+    selected = ss.get("room_choice") not in ("Choose a room", "Other room")
+    with save:
+        st.button("Save handoff", on_click=save_room, args=(store,), disabled=not (room and selected))
+    with tools:
+        handoff_tools(store, choices)
     if ss.get("room_choice") == "Other room":
         st.text_input("Other room number", key="other_room", max_chars=16)
         st.button("Open room", on_click=open_room, args=(store,))
-        st.info("Enter the other room number and click Open room.")
+        attention = workspace_attention(None, ss)
+        if attention:
+            st.markdown(alert_lines_html([("error", attention)]), unsafe_allow_html=True)
         return
-    if ss.get("room_choice") == "Choose a room":
-        st.info("Select a room to begin.")
-        return
-    room = ss.get("current_room")
-    if not room:
-        st.info("Select a room to begin.")
+    if not selected or not room:
+        st.caption("Select a room to begin.")
+        attention = workspace_attention(None, ss)
+        if attention:
+            st.markdown(alert_lines_html([("error", attention)]), unsafe_allow_html=True)
         return
     sheet = ss["drafts"][room]
-    st.subheader("Room " + room)
-    st.caption("Age: " + (sheet.get("anthropometrics", {}).get("age") or "--") +
-               " | Sex: " + (sheet.get("anthropometrics", {}).get("sex") or "--"))
     status = display_room_save_status(room, store)
-    st.caption(status.caption)
-    st.caption(status.status + (". Changes save automatically when you change rooms." if status.unsaved else ""))
-    import_review_editor(sheet)
-    if room not in DEFAULT_ROOMS:
-        with st.expander("Custom room options"):
-            st.caption("Remove this custom room and its current saved handoff. Undo is available during this session. Medication rules are unchanged.")
-            st.button("Remove custom room", key="remove_current_room", on_click=remove_custom_room, args=(room, store))
-    saved = ss["vault"]["rooms"].get(room)
-    if ss.get("base_sheets", {}).get(room) != saved:
-        st.warning("A newer saved handoff exists for this room. Reload it before saving your edits.")
-    top1, top2 = st.columns(2)
-    top1.button("Save handoff", on_click=save_room, args=(store,), type="primary")
-    top2.caption("Use Print all in the sidebar for the complete packet.")
-    with st.expander("Start over / reload"):
-        st.button("Start blank for new patient", on_click=start_new_patient)
-        st.button("Load saved handoff", on_click=load_saved_into_editor)
-        st.caption("These actions replace the open draft immediately. Saving replaces the room's current saved sheet.")
-    paste_tab, meds_tab, labs_tab, cultures_tab, orders_tab, problems_tab, airway_tab, edit_tab, preview_tab = st.tabs(["Paste / create", "Medications", "Labs / Vitals", "Cultures", "Labs/Imaging", "Problems", "Difficult airway", "Edit handoff", "Preview / print"])
-    with paste_tab:
-        st.caption("Paste your SmartPhrase and click Create / update handoff. Imported results and edits save automatically before you change rooms.")
-        st.button("Clear pasted text", on_click=clear_paste)
-        with st.form("parse_smartphrase"):
-            st.text_area("SmartPhrase text", key="paste", height=240, max_chars=MAX_PASTE)
+    anthropometrics = sheet.get("anthropometrics", {})
+    status_text = ("Age: " + (anthropometrics.get("age") or "--") +
+                   " | Sex: " + (anthropometrics.get("sex") or "--") +
+                   " | " + status.caption + " | " + status.status)
+    alerts = alert_rows(sheet, ss)
+    attention_count = sum(kind in ("warning", "error") for kind, _ in alerts)
+    if attention_count:
+        status_text += " | Alerts: " + str(attention_count)
+    st.caption(status_text)
+    attention = workspace_attention(sheet, ss)
+    if attention:
+        st.markdown(alert_lines_html([("error", attention)]), unsafe_allow_html=True)
+    # A two-line, fixed-height input remains visible above every tab. Long
+    # SmartPhrases scroll within the field instead of expanding the page.
+    with st.form("parse_smartphrase", border=False):
+        text, submit = st.columns([5, 1.3], vertical_alignment="bottom")
+        with text:
+            st.text_area("SmartPhrase text", key="paste", height=68, max_chars=MAX_PASTE,
+                         label_visibility="collapsed", placeholder="Paste Epic SmartPhrase here")
+        with submit:
             st.form_submit_button("Create / update handoff", on_click=create_handoff, args=(store,), type="primary")
-        result = ss.get("import_result", {})
-        if result.get("room") == room:
-            for error in result["errors"]:
-                st.warning(error)
-            if result["errors"] and result["imported"]:
-                st.caption("Other sections were imported. Skipped sections are listed in the review warning above.")
-            if ss.get("last_error_reference"):
-                st.caption("Technical error reference: " + ss["last_error_reference"][:12] + ". See Import errors.")
-            if ss.get("error_log_notice"):
-                st.warning(ss["error_log_notice"])
-            if result["imported"]:
-                st.caption("Updated: " + ", ".join(result["imported"]) + ". Edit below or save the handoff.")
-            for message in result["notices"]:
-                st.info(message)
-        st.subheader("Respiratory support to RESP")
-        ventilation_editor(sheet)
-    with meds_tab:
-        st.caption("Choose a system beside an order. It is remembered immediately in Admin and reused on future imports. The named GI/bowel medications group automatically in FEN/GI. Other unmapped orders remain in Other Medications.")
-        if sheet["medications"]:
-            active = [row for row in sheet["medications"] if not row["hidden"]]
-            hidden = [row for row in sheet["medications"] if row["hidden"]]
-            medication_editor(active, room, store)
-            with st.expander("Hidden medications (" + str(len(hidden)) + ")", expanded=False):
-                st.caption("These entries are retained but omitted from every printed/exported handoff. Restore here or change the rule in Admin. Exact-formulation hiding does not suppress other orders for the same drug.")
-                medication_editor(hidden, room, store)
-        else:
-            st.info("Paste a B block and create the handoff to add medications.")
-    with labs_tab:
-        st.caption(window_help(sheet))
-        labs_vitals_editor(sheet)
-    with cultures_tab:
-        cultures_editor(sheet)
-    with orders_tab:
-        st.caption("Recurring orders and Labs notes remain available here but are not printed as a handoff column.")
-        recurring_orders_editor(sheet)
-    with problems_tab:
-        problem_review_editor(sheet)
-    with airway_tab:
-        difficult_airway_editor(sheet)
-    with edit_tab:
-        devices_editor(sheet)
-        st.caption("These are your separate notes. Re-pasting medications or ventilation does not erase them.")
-        for section in SYSTEMS:
-            key = edit_key(sheet, section)
-            if key not in ss:
-                ss[key] = sheet["fields"][section]
-            with st.expander(section_label(section), expanded=section == "Diagnoses"):
-                if section == "Cardiovascular":
-                    pacemaker_editor(sheet)
-                if section == "FEN / GI":
-                    intake_output_editor(sheet)
-                    diet_editor(sheet)
-                    feeds_editor(sheet)
-                if section == "Labs" and orders_text(sheet["recurring_orders"]):
-                    st.text(orders_text(sheet["recurring_orders"]) + "\n-----")
-                    st.caption("Edit the imported recurring orders in Labs/Imaging. Notes below stay separate.")
-                if section in automatic_vitals(sheet):
-                    st.text(automatic_vitals(sheet)[section] + "\n-----")
-                if section == "Demographics / Weight" and sheet["admission_date"]:
-                    st.text("Admission: " + sheet["admission_date"])
-                if section == "Infectious Disease" and id_summary(sheet):
-                    st.text(id_summary(sheet) + "\n------")
-                if section == "Cardiovascular" and cardiac_labs_summary(sheet):
-                    st.text(cardiac_labs_summary(sheet) + "\n-----")
-                if section == "Respiratory" and respiratory_text(sheet):
-                    st.text(respiratory_text(sheet) + "\n-----")
-                    st.caption("Vital signs print first, then support settings. Edit support under Paste / create.")
-                if section == "Respiratory" and theophylline_summary(sheet) and not theophylline_anchor(sheet):
-                    st.text(theophylline_summary(sheet) + "\n-----")
-                    st.caption("Latest included THEOPH result. Edit or exclude its original row in Labs / Vitals.")
-                if section == "Diagnoses" and viral_text(sheet["viral_panel"]):
-                    st.markdown('<div style="white-space:pre-wrap">----\n' + viral_markup(sheet["viral_panel"]) + '</div>', unsafe_allow_html=True)
-                    st.caption("Positive O-block results print below the demographics / weight information. Edit under Labs / Vitals.")
-                st.text_area("Notes: " + section_label(section), key=key, height=100, max_chars=MAX_FIELD,
-                             on_change=update_field, args=(room, section, key))
-                if section == "Infectious Disease" and "f" not in sheet["import_warnings"] and cultures_text(sheet["cultures"], empty_none=True):
-                    st.markdown('<div style="white-space:pre-wrap">------\n' + culture_markup(sheet["cultures"], empty_none=True) + '</div>', unsafe_allow_html=True)
-                    st.caption("Edit imported specimens and results in Cultures. Temperature stays first in the printed ID column.")
-                if section == "FEN / GI":
-                    st.markdown('<div style="white-space:pre-wrap">' + fen_gi_body("", sheet["medications"], None, True, sheet=sheet) + "</div>", unsafe_allow_html=True)
-                    st.caption("Printed order: Intake/Output/Net, Diet, Feeds, TPN, GI prophylaxis, Bowel Regimen, Diuretics, Antiemetics, Endocrine Medications, then separate notes and remaining FEN/GI medications.")
-                elif section in INFUSION_SECTIONS:
-                    render_body = {"Neurologic": neuro_body, "Cardiovascular": cardiovascular_body, "Hematology": hematology_body, "Respiratory": respiratory_body}[section]
-                    st.markdown('<div style="white-space:pre-wrap">' + render_body("", sheet["medications"], True, sheet=sheet) + '</div>', unsafe_allow_html=True)
-                else:
-                    for row in sheet["medications"]:
-                        if visible(row) and effective_section(row) == section:
-                            st.text(format_medication(row))
-                if section == "Diagnoses" and demographic_weight_text(sheet["nutrition"], sheet["dosing_weight"]):
-                    st.text("----\n" + demographic_weight_text(sheet["nutrition"], sheet["dosing_weight"]))
-                    st.caption("Edit measured weight, Z-score, dosing weight and admission date in Labs / Vitals.")
-    with preview_tab:
-        import streamlit.components.v1 as components
-        st.caption("Compact landscape. The upper-left stamp uses Eastern time. PDFs are stamped when downloaded.")
-        components.html(handoff_html(sheet), height=650, scrolling=True)
-        try:
-            target = print_target_control("room_print_target")
-            render_print_fit([sheet], target)
-            st.download_button("Download this handoff (PDF)", download_payload([sheet], "pdf", download_deadline(), target_pages=target, cancelled=download_revocation()), "handoff.pdf", "application/pdf", key="download_single_pdf", on_click="ignore")
-        except (ValueError, ImportError):
-            st.error("PDF export could not be created. Confirm requirements.txt is installed and retry.")
-
+    if ss.get("handoff_tab") not in WORKSPACE_TABS:
+        ss["handoff_tab"] = "Preview / print"
+    tabs = st.tabs(list(WORKSPACE_TABS), key="handoff_tab", on_change=handoff_tab_changed)
+    for label, panel in zip(WORKSPACE_TABS, tabs):
+        if not panel.open:
+            continue
+        with panel:
+            if label == "Preview / print":
+                room_preview(sheet, store)
+            elif label == "Medications":
+                st.caption("Choose one destination per order. Mapping changes are remembered.")
+                active = [row for row in sheet["medications"] if not row["hidden"]]
+                hidden = [row for row in sheet["medications"] if row["hidden"]]
+                medication_editor(active, room, store)
+                if hidden:
+                    with st.expander("Hidden medications (" + str(len(hidden)) + ")", expanded=False):
+                        medication_editor(hidden, room, store)
+                if not sheet["medications"]:
+                    st.caption("No medications imported.")
+            elif label == "Labs / Vitals":
+                labs_vitals_editor(sheet)
+            elif label == "Cultures":
+                cultures_editor(sheet)
+            elif label == "Labs/Imaging":
+                recurring_orders_editor(sheet)
+            elif label == "Problems":
+                problem_review_editor(sheet)
+            elif label == "Difficult airway":
+                difficult_airway_editor(sheet)
+            elif label == "Alerts":
+                handoff_alerts(sheet)
+            elif label == "Edit handoff":
+                handoff_notes(sheet)
 
 
 def download_deadline() -> float:
@@ -1881,10 +2153,28 @@ def download_deadline() -> float:
                ss.get("login_at", time.monotonic()) + 8 * 3600)
 
 
+def handoff_download(sheets: list[dict], store: GitHubVault | None, *,
+                     target_pages: int = 1, save_statuses: dict | None = None):
+    """Check the shared list at download time without accessing UI in its worker."""
+    deadline, cancelled = download_deadline(), download_revocation()
+    generate = download_payload(sheets, "pdf", deadline, target_pages=target_pages,
+                                cancelled=cancelled, save_statuses=save_statuses)
+    return guard_download(generate, store, st.session_state["vault"]["reset_generation"],
+                          cancelled=cancelled, expires_at=deadline)
+
+
 def print_target_control(key: str) -> int:
+    # Keep a non-widget preference so lazy-tab cleanup does not reset a user's
+    # selected page target. This remains private to the current app session.
+    preference = "workspace_" + key
+    ss = st.session_state
+    if key not in ss and ss.get(preference) in (1, 2):
+        ss[key] = ss[preference]
     choice = st.selectbox("PDF page target per patient", [1, 2], key=key,
                           format_func=lambda n: "Auto-fit to 1 page" if n == 1 else "Auto-fit to at most 2 pages")
-    return choice if choice in (1, 2) else 1
+    selected = choice if choice in (1, 2) else 1
+    ss[preference] = selected
+    return selected
 
 
 def render_print_fit(sheets: list[dict], target: int) -> None:
@@ -1894,17 +2184,23 @@ def render_print_fit(sheets: list[dict], target: int) -> None:
         if not report["target_met"]:
             st.warning("Room " + sheet["room"] + " needs " + str(report["page_count"]) +
                        " pages. All content is retained rather than cropped.")
+        else:
+            st.caption(sheet["room"] + ": " + str(report["page_count"]) +
+                       (" page." if report["page_count"] == 1 else " pages."))
 
 
 def print_all_page(store: GitHubVault | None) -> None:
     st.title("Print all handoffs")
+    if not autosave_before_print_all(store):
+        st.error("Print all paused because saving was not confirmed. Your edits are kept. Return to Handoff and resolve the save alert.")
+        return
     st.caption("To reset the list, open Delete all handoff data on Handoff or in Admin.")
     ss = st.session_state
     ready = available_handoffs(ss["vault"], ss.get("drafts", {}))
     if not ready:
         st.info("Create a handoff first. Saved handoffs will also appear here after sign-in.")
         return
-    st.caption("Includes saved rooms and the latest open drafts. Printing does not save changes. Blank sheets are omitted.")
+    st.caption("Open handoffs are saved before printing. Blank sheets are omitted.")
     st.button("Save all open handoffs", on_click=save_all_rooms, args=(store,))
     st.caption(most_recent_save_caption(ss["vault"]["rooms"], session_only=store is None))
     options = list(ready)
@@ -1917,17 +2213,21 @@ def print_all_page(store: GitHubVault | None) -> None:
     if not selected_sheets:
         st.info("Select at least one room.")
         return
-    unsaved = sum(sheet != ss["vault"]["rooms"].get(sheet["room"]) for sheet in selected_sheets)
-    st.caption(str(len(selected_sheets)) + " handoffs selected. " + str(unsaved) + " include unsaved draft changes. Each room starts on a new page.")
+    statuses = {sheet["room"]: display_room_save_status(sheet["room"], store) for sheet in selected_sheets}
+    unsaved = sum(status.unsaved for status in statuses.values())
+    st.caption(str(len(selected_sheets)) + " handoffs selected. Each room starts on a new page.")
     render_room_save_table([sheet["room"] for sheet in selected_sheets], store)
     st.caption("Save times are Eastern (EST/EDT) and come from the loaded archive. Reload saved archive to see saves from another session." if store else
                "Session-only testing: these save times are not durable shared saves.")
     if unsaved:
-        st.warning("Some selected handoffs have unsaved changes. Save all open handoffs before printing to store them. Downloading alone does not save.")
+        st.error("Some selected handoffs are not saved. Resolve the save alert before printing.")
+        return
     try:
         target = print_target_control("all_print_target")
-        render_print_fit(selected_sheets, target)
-        st.download_button("Download all selected handoffs (PDF)", download_payload(selected_sheets, "pdf", download_deadline(), target_pages=target, cancelled=download_revocation()), "all_handoffs.pdf", "application/pdf", type="primary", key="download_all_pdf", on_click="ignore")
+        with st.expander("Page-fit details", expanded=False):
+            if st.button("Check page count", key="check_all_page_fit"):
+                render_print_fit(selected_sheets, target)
+        st.download_button("Download all selected handoffs (PDF)", handoff_download(selected_sheets, store, target_pages=target, save_statuses=statuses), "all_handoffs.pdf", "application/pdf", type="primary", key="download_all_pdf", on_click="ignore")
     except (ValueError, ImportError):
         st.error("The combined PDF could not be created. Check the export requirements and retry.")
     st.caption("Compact PDF is preferred for printing. Each room starts on its own page. Exceptionally long handoffs continue rather than losing content. Downloads are not encrypted.")
@@ -2018,7 +2318,9 @@ def discard_all_handoff_state() -> None:
     discard_editor_widget_values()
     for key in ("current_room", "other_room", "import_result", "pending", "diagnosis_preview",
                 "medication_pending", "removed_room", "print_rooms", "print_room_options",
-                "custom_room_remove_choice", "room_print_target", "all_print_target"):
+                "custom_room_remove_choice", "room_print_target", "all_print_target",
+                "workspace_notices", "workspace_imports", "handoff_tab", "handoff_active_tab",
+                "workspace_room_print_target", "workspace_all_print_target", "airway_update_pending"):
         ss.pop(key, None)
     ss["drafts"] = {}
     ss["base_sheets"] = {}
@@ -2028,14 +2330,14 @@ def discard_all_handoff_state() -> None:
 
 
 def clear_all_handoffs(store: GitHubVault | None) -> None:
-    """Single protected click. Clear local drafts only after a confirmed write."""
-    if not require_admin():
+    """Allow a signed-in user to reset. Discard drafts only after a confirmed write."""
+    if not require_session():
         return
     ss = st.session_state
     try:
         candidate = cleared_vault(ss["vault"])
         commit(candidate, store)
-    except (StorageError, ValidationError) as exc:
+    except (StorageError, ValidationError, ValueError) as exc:
         note("Clear all was not confirmed. Your open handoffs were kept. " + str(exc), "error")
         return
     except Exception:
@@ -2049,43 +2351,26 @@ def clear_all_handoffs(store: GitHubVault | None) -> None:
 
 
 def delete_all_from_handoff(store: GitHubVault | None) -> None:
-    """Authenticate this destructive action without granting ongoing Admin access."""
-    ss = st.session_state
-    password = ss.pop("delete_all_password", "")
-    if not require_session():
-        return
-    config = admin_config()
-    already_unlocked = admin_valid(ss, config)
-    try:
-        if not already_unlocked and not unlock_admin(ss, config, password):
-            note(ss.get("admin_login_error", "Admin password not accepted. No handoffs were deleted."), "error")
-            return
-        clear_all_handoffs(store)
-    finally:
-        # Never retain the entered password or promote a Handoff session to Admin.
-        ss.pop("delete_all_password", None)
-        if not already_unlocked:
-            lock_admin(ss)
+    """Use the app session, not the separate Admin grant, for a census reset."""
+    # Remove a stale password widget value left by an older running version.
+    st.session_state.pop("delete_all_password", None)
+    clear_all_handoffs(store)
 
 
 def delete_handoffs_control(store: GitHubVault | None) -> None:
-    """Available even before choosing a room or when the census is empty."""
+    """Delete complete handoffs, available before selecting a room, without Admin."""
     with st.expander("Delete all handoff data", expanded=False):
-        st.warning("Deletes every patient's saved handoff and this session's drafts, including notes and airway details. Custom rooms are removed. Preset rooms remain blank.")
+        st.warning("Deletes every patient's saved handoff and this session's drafts, including difficult-airway details. Custom rooms are removed.")
         st.caption("Categories, medication mappings, SmartPhrase settings and passwords stay unchanged. Earlier archive versions and downloaded copies are not erased. Other team members must reload the saved archive.")
-        problem = admin_config_error(admin_config())
-        if problem:
-            st.info(problem)
-            return
+        st.caption("No Admin password is required. The button applies immediately.")
         with st.form("delete_all_handoffs_form"):
-            st.text_input("Admin password", type="password", key="delete_all_password", max_chars=1024)
             st.form_submit_button("Delete all handoff data", on_click=delete_all_from_handoff, args=(store,))
 
 
 def reset_handoffs_admin(store: GitHubVault | None) -> None:
     with st.expander("Delete all handoff data", expanded=False):
-        st.warning("One click clears every saved handoff and all open drafts in this session, and deletes custom rooms. This affects the shared handoff archive. Preset rooms remain blank. There is no second confirmation.")
-        st.caption("Medication mappings, hidden-medication rules, infusion groups, the user guide, SmartPhrase, passwords and technical error logs are kept. This does not erase earlier archive versions or downloaded copies.")
+        st.warning("Deletes every patient's saved handoff, including difficult-airway details, and this session's drafts immediately.")
+        st.caption("Custom rooms are removed. Settings, mappings, passwords and technical logs stay unchanged. This does not erase earlier archive versions or downloaded copies.")
         st.button("Delete all handoff data", key="clear_all_handoffs_button",
                   on_click=clear_all_handoffs, args=(store,))
 
@@ -2550,6 +2835,7 @@ def pacemaker_editor(sheet: dict) -> None:
 def devices_editor(sheet: dict) -> None:
     with st.expander("Devices / airway and EVD", expanded=False):
         st.caption("U adds the bottom device inventory. V adds EVD status to Neurologic. Removed ETTs are airway history, not a current airway. Other removed devices are excluded.")
+        st.caption("Vascular line days use today's Eastern date, with the insertion date counted as Day 1.")
         if devices_markup(sheet):
             st.markdown('<div style="white-space:pre-wrap">' + devices_markup(sheet) + '</div>', unsafe_allow_html=True)
         if evd_text(sheet):
@@ -2756,16 +3042,18 @@ def acknowledge_import_warning(room: str, section: str) -> None:
     note("Review acknowledged. No clinical value was changed. The reviewed handoff will save when you change rooms.")
 
 
-def import_review_editor(sheet: dict) -> None:
+def import_review_editor(sheet: dict, compact: bool = False) -> None:
     summary = review_summary(sheet)
     if not summary:
         return
-    st.warning(summary)
+    if not compact:
+        st.warning(summary)
     with st.expander("Review skipped or incomplete imports", expanded=False):
         st.caption("Valid sections were updated. An unreadable section keeps its previous values with this warning. Failed orders, diet, feeds, device and pacemaker imports are retained for review but hidden from print. Import warnings appear only here, not on downloaded handoffs. Do not treat skipped values as refreshed.")
         for section, items in sheet["import_warnings"].items():
-            for item in items:
-                st.text(diagnostic_text(item))
+            if not compact:
+                for item in items:
+                    st.text(diagnostic_text(item))
             label = ("Use retained orders after checking Epic" if section == 'r' else
                      "Use retained diet after checking Epic" if section == "x" and any(i["action"] == "diet_hidden" for i in items) else
                      "Use retained feeds after checking Epic" if section == 't' and any(i['action'] == 'feeds_hidden' for i in items) else
@@ -2907,9 +3195,49 @@ def lock_admin_page() -> None:
     st.session_state.pop("admin_login_error", None)
 
 
-def workspace_changed() -> None:
-    if st.session_state.get("page") != "Admin":
-        lock_admin(st.session_state)
+def autosave_before_print_all(store: GitHubVault | None) -> bool:
+    """Save current editor values before Streamlit removes the editor widgets.
+
+    The existing guarded room-save path preserves inline mapping behavior.
+    Other changed open drafts are then saved in one batch. Any failure blocks
+    Print all and leaves edits available. Unchanged sheets are not re-stamped.
+    """
+    if not require_session():
+        return False
+    ss = st.session_state
+    if not autosave_before_room_change(store, for_print=True):
+        return False
+    changed = [room for room, draft in ss.get("drafts", {}).items()
+               if draft != ss["vault"]["rooms"].get(room)]
+    if changed and not save_rooms(store, changed):
+        return False
+    return True
+
+
+def workspace_changed(store: GitHubVault | None = None) -> None:
+    ss = st.session_state
+    if ss.get("page") != "Admin":
+        lock_admin(ss)
+    if ss.get("page") == "Print all":
+        if not autosave_before_print_all(store):
+            # Callback executes before the navigation widget is rendered.
+            # Return to the editor instead of offering an unsaved print packet.
+            if ss.get("authenticated"):
+                ss["page"] = "Handoff"
+            return
+        discard_editor_widget_values()
+    elif ss.get("active_workspace", "Handoff") == "Handoff":
+        # Preserve a just-blurred field when moving to another workspace too,
+        # without introducing a new save action for Admin / Import errors.
+        room = ss.get("current_room")
+        if room and room in ss.get("drafts", {}):
+            try:
+                ss["drafts"][room] = editor_snapshot(room)
+            except (ValueError, TypeError, KeyError):
+                ss["page"] = "Handoff"
+                note("Correct the invalid editor value before leaving Handoff.", "error")
+                return
+    ss["active_workspace"] = ss.get("page", "Handoff")
 
 
 def admin_gate() -> bool:
@@ -2923,7 +3251,7 @@ def admin_gate() -> bool:
         st.info(problem)
         st.caption("The setup helper adds one Admin password hash only. Keep your app password and encryption key unchanged.")
         return False
-    st.caption("Enter the separate Admin password to change shared settings. You do not need it to create, edit, save, or print a handoff, or to read the user guide.")
+    st.caption("Enter the separate Admin password to change shared settings. You do not need it to create, edit, save, print, or clear handoffs, or to read the user guide.")
     with st.form("admin_unlock"):
         st.text_input("Admin password", type="password", key="admin_login_password", max_chars=1024)
         st.form_submit_button("Unlock Admin", on_click=authenticate_admin)
@@ -2951,7 +3279,7 @@ def load_user_guide(store: GitHubVault | None, refresh: bool = False) -> dict:
     try:
         guide, sha = GuideStore(store).load() if store else (ss.get("user_guide", default_guide()), None)
     except (StorageError, ValueError):
-        ss["guide_load_error"] = "The published guide could not be loaded. Any previously loaded copy is shown below. Use Refresh published guide to retry. No guide or handoff was overwritten."
+        ss["guide_load_error"] = "The published guide could not be loaded. Any previously loaded copy is shown below. Return to Handoff to retry, or reload the published guide in Admin. No guide or handoff was overwritten."
         return ss.get("user_guide", default_guide())
     ss.update(user_guide=guide, guide_sha=sha, guide_loaded=True)
     ss.pop("guide_load_error", None)
@@ -3018,7 +3346,7 @@ def save_user_guide(store: GitHubVault | None) -> None:
         return
     ss.update(user_guide=guide, guide_sha=sha, guide_editor_sha=sha, guide_loaded=True)
     ss.pop("guide_load_error", None)
-    note("Guide and SmartPhrase published to shared storage. Other users can choose Refresh SmartPhrase publication." if store else
+    note("Guide and SmartPhrase published to shared storage. The short instructions update when users return to Handoff." if store else
          "Guide saved in this session only. Enable the existing encrypted storage for shared persistence.", "success")
 
 

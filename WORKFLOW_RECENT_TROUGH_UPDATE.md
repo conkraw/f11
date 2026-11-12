@@ -33,8 +33,8 @@ Saving instructions here does not install a SmartPhrase in Epic.
 
 ## Delete all handoff data
 
-Open the Delete all handoff data expander on Handoff, enter the separate Admin
-password, then press Delete all handoff data. The existing protected Admin reset
+As of 6.51, open the Delete all handoff data expander on Handoff and press
+Delete all handoff data. Any signed-in user can do this without an Admin password. The Admin reset
 is also labelled Delete all handoff data. This operation clears every saved
 patient record in the current shared archive and the initiating session's
 patient drafts, including notes, labs, medications, airway records and generated
@@ -47,7 +47,7 @@ is committed atomically. Failed or conflicting writes retain the open work and
 report failure. Other teammates must reload the saved archive. The reset
 identifier and version check stop older sessions from silently saving the
 deleted census back. Pending download generators from the cleared session are
-revoked. A password entered through Handoff does not leave Admin unlocked.
+revoked. Clearing through Handoff does not grant or extend Admin access.
 
 This clears the current working archive, not earlier storage revisions, external
 backups, downloaded files, printed copies or other users' already-displayed

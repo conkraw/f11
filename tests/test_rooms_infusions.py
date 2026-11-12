@@ -54,7 +54,7 @@ def legacy_ten():
 
 def test_preset_key_upgrade_preserves_entire_sheet_except_room_and_original_input():
     old=legacy_ten();before=deepcopy(old);new=upgrade_vault(old)
-    assert old==before and new['schema']==SCHEMA_VERSION==32
+    assert old==before and new['schema']==SCHEMA_VERSION==34
     assert new['settings']['rooms']==['P4102','P4201','P4213','4307']
     assert new['rooms']['P4201']==dict(old['rooms']['4201'],room='P4201',blood_gas=None,cbc=None,recurring_orders=None,intake_output=None,import_warnings={},feeds=None,devices=None,neuro_devices=None,pacemaker=None,diet=None)
     assert new['settings']['medication_mappings']==old['settings']['medication_mappings']
@@ -237,7 +237,8 @@ def test_other_systems_not_grouped_and_hidden_infusions_not_printed():
 
 def test_preserve_held_future_custom_and_empty_dose():
     r=med(name='[Held by provider] [START ON 1/2/2026] Example')
-    assert '[Held by provider]' in infusion_entry(r,True) and '[START ON 1/2/2026]' in infusion_entry(r)
+    assert '[Held by provider]' in infusion_entry(r,True) and '[START ON' not in infusion_entry(r)
+    assert '[START ON 1/2/2026]' in r['name']
     r['dose']='';out=infusion_entry(r,True)
     assert 'Dose:' not in out and '<b><u>Recorded rate: 3.48 mL/hr</u></b>' in out
     r['custom_text']='CUSTOM <script>unsafe</script>'

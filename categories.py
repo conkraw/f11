@@ -9,10 +9,12 @@ from __future__ import annotations
 from copy import deepcopy
 import re
 import uuid
-from medications import DESTINATIONS, match_name, normalized, visible
+from medications import DESTINATIONS, OR_PREFIX, is_bupivacaine, match_name, normalized, visible
 
 SETTINGS_KEYS = {"medication_categories", "medication_category_rules"}
 CATEGORY_SYSTEMS = tuple(x for x in DESTINATIONS if x != "Labs")
+# These built-ins were introduced without changing the saved archive schema.
+BACKFILLED_BUILTIN_IDS = ("group:epidural", "group:chemotherapy")
 
 
 def default_categories() -> list[dict]:
@@ -30,8 +32,10 @@ def default_categories() -> list[dict]:
             order = 5
         elif key == "antiplatelet":
             order = 10
-        elif key == "antibiotic":
-            order = 10
+        elif key == "chemotherapy":
+            order = 20
+        elif key in ("antibiotic", "antifungal", "antiviral"):
+            order = 10 + 10 * ("antibiotic", "antifungal", "antiviral").index(key)
         result.append(dict(id="group:" + key, name=name, section=GROUP_SECTIONS[key], parent="", order=order))
     for n, (key, name) in enumerate(GI_NAMES.items()):
         result.append(dict(id="gi:" + key, name=name, section="FEN / GI", parent="", order=10 if key == "tpn" else 20 + 10*n))
@@ -68,7 +72,27 @@ def add_missing_builtin_categories(settings: dict) -> dict:
 
 
 def catalog(settings: dict) -> list[dict]:
-    return deepcopy(settings.get("medication_categories", default_categories()))
+    items = deepcopy(settings.get("medication_categories", default_categories()))
+    # Expose new built-ins to older schema-34 catalogs without rewriting their
+    # saved definitions. An intentional category edit can persist the addition.
+    if not isinstance(items, list):
+        return items
+    ids = {c["id"] for c in items if isinstance(c, dict) and isinstance(c.get("id"), str)}
+    occupied = {(c.get("section"), c.get("parent"), normalized(c.get("name", "")))
+                for c in items if isinstance(c, dict)
+                and all(isinstance(c.get(key), str) for key in ("section", "parent", "name"))}
+    for item in default_categories():
+        if item["id"] not in BACKFILLED_BUILTIN_IDS or item["id"] in ids:
+            continue
+        original_name = item["name"]
+        n = 0
+        while (item["section"], item["parent"], normalized(item["name"])) in occupied:
+            n += 1
+            item["name"] = original_name + " (default" + (" " + str(n) if n > 1 else "") + ")"
+        items.append(item)
+        ids.add(item["id"])
+        occupied.add((item["section"], item["parent"], normalized(item["name"])))
+    return items
 
 
 def _text(value: object, maximum: int = 80, empty: bool = False) -> bool:
@@ -76,8 +100,14 @@ def _text(value: object, maximum: int = 80, empty: bool = False) -> bool:
 
 
 def validate_catalog(items: list[dict]) -> None:
-    if not isinstance(items, list) or len(items) > 250:
-        raise ValueError("Use at most 250 medication categories and subcategories.")
+    # Preserve all 250 original slots as required built-ins are added. Count
+    # each reserved ID once. Duplicate IDs still fail the normal validation.
+    extra_builtin = sum(
+        any(isinstance(item, dict) and item.get("id") == ident for item in items)
+        for ident in BACKFILLED_BUILTIN_IDS
+    ) if isinstance(items, list) else 0
+    if not isinstance(items, list) or len(items) > 250 + extra_builtin:
+        raise ValueError("Use at most 250 medication categories and subcategories, plus the Epidural and Chemotherapy built-ins.")
     ids, labels = {}, set()
     for item in items:
         if not isinstance(item, dict) or set(item) != {"id", "name", "section", "parent", "order"}:
@@ -219,6 +249,12 @@ def apply_category_rules(rows: list[dict], settings: dict) -> list[dict]:
     result = deepcopy(rows)
     for row in result:
         row.pop("category_path", None)
+        if is_bupivacaine(row.get("name", "")):
+            row["section"] = "Neurologic"
+            # The explicit bupivacaine placement takes precedence over older
+            # name, group, and category assignments. No source amount changes.
+            row["category_path"] = target_snapshot("group:epidural", default_categories())
+            continue
         target = matching_target(row, settings)
         if target:
             row["category_path"] = target_snapshot(target, items)
@@ -230,6 +266,9 @@ def apply_category_rules(rows: list[dict], settings: dict) -> list[dict]:
 
 
 def placement(row: dict) -> dict:
+    # Render saved handoffs correctly before any reimport or settings save.
+    if is_bupivacaine(row.get("name", "")):
+        return target_snapshot("group:epidural", default_categories())
     if row.get("category_path") is not None:
         return row["category_path"]
     target = legacy_target(row)
@@ -265,21 +304,55 @@ def delete_category(settings: dict, ident: str) -> dict:
     return result
 
 
+def _display_root_key(path: dict):
+    """Keep the fixed Epidural heading separate from a renamed saved category.
+
+    A bupivacaine order always uses the canonical snapshot. Other drugs may
+    intentionally use a renamed group:epidural category or its children. Their
+    saved IDs stay intact, but different displayed roots must not merge just
+    because their IDs match. Matching default Epidural snapshots still merge.
+    """
+    ident = path["parent_id"] or path["id"]
+    if ident == "group:epidural":
+        return ident, path["parent_name"] or path["name"]
+    return ident
+
+
 def medication_blocks(section: str, notes: str, rows: list[dict], sheet: dict | None = None) -> list[tuple]:
     """One emitted entry per visible source order, never one per matching rule."""
     from fen_gi import effective_section
     from infusions import is_infusion, supports_infusion_display
     from medication_groups import group_for
     meds = [r for r in rows if visible(r) and effective_section(r) == section]
+    paths = {r["id"]: placement(r) for r in meds}
+    # An Or refers to its preceding source order, not whichever drug happens
+    # to sort before it. Keep visible alternatives together only within the
+    # exact emitted bucket, without changing a user's category or hide choice.
+    buckets = {ident: (("category", _display_root_key(path), path["id"] if path["parent_id"] else "")
+                       if path["name"] else ("plain",))
+               for ident, path in paths.items()}
+    order_anchor = {r["id"]: index for index, r in enumerate(rows)}
+    display_names = {}
+    previous = None
+    for row in rows:
+        ident = row["id"]
+        name = row.get("name", "").strip()
+        if ident in paths and OR_PREFIX.match(name):
+            if previous in paths and buckets[previous] == buckets[ident]:
+                order_anchor[ident] = order_anchor[previous]
+            else:
+                display_names[ident] = OR_PREFIX.sub("Alternative order: ", name, count=1)
+        previous = ident
     if section == "Neurologic":
-        meds.sort(key=lambda r: match_name(r.get("name", "")).split(" ", 1)[0])
+        meds.sort(key=lambda r: (match_name(rows[order_anchor[r["id"]]].get("name", "")).split(" ", 1)[0],
+                                 order_anchor[r["id"]]))
     roots, plain = {}, []
     for row in meds:
-        path = placement(row)
+        path = paths[row["id"]]
         if not path["name"]:
             plain.append(row)
             continue
-        root_id = path["parent_id"] or path["id"]
+        root_id = _display_root_key(path)
         root_name = path["parent_name"] or path["name"]
         root_order = path["parent_order"]
         root = roots.setdefault(root_id, dict(name=root_name, order=root_order, direct=[], children={}))
@@ -293,7 +366,7 @@ def medication_blocks(section: str, notes: str, rows: list[dict], sheet: dict | 
         for path in empty_group_paths(sheet, rows):
             if path["section"] != section:
                 continue
-            root_id = path["parent_id"] or path["id"]
+            root_id = _display_root_key(path)
             root = roots.setdefault(root_id, dict(name=path["parent_name"] or path["name"],
                 order=path["parent_order"], direct=[], children={}))
             if path["parent_id"]:
@@ -301,12 +374,39 @@ def medication_blocks(section: str, notes: str, rows: list[dict], sheet: dict | 
                     order=path["order"], rows=[], empty=True))
             else:
                 root["empty"] = True
+    if sheet is not None and section == "Hematology":
+        from lab_windows import anti_xa_today_summary
+        level = anti_xa_today_summary(sheet)
+        if level:
+            # Prefer an already rendered DVT root/subcategory, including a
+            # renamed category. A lab never counts as a medication order.
+            bucket = roots.get("group:dvt")
+            if bucket is None:
+                bucket = next((root["children"]["group:dvt"] for root in roots.values()
+                               if "group:dvt" in root["children"]), None)
+            if bucket is None:
+                path = target_snapshot("group:dvt", default_categories())
+                candidates = list(sheet.get("empty_group_layout", []))
+                candidates += [placement(row) for row in rows]
+                for candidate in candidates:
+                    if candidate["id"] == "group:dvt" and candidate["section"] == section:
+                        path = candidate
+                root_id = _display_root_key(path)
+                root = roots.setdefault(root_id, dict(name=path["parent_name"] or path["name"],
+                    order=path["parent_order"], direct=[], children={}))
+                bucket = (root["children"].setdefault(path["id"], dict(name=path["name"],
+                    order=path["order"], rows=[])) if path["parent_id"] else root)
+            bucket.setdefault("labs", []).append(("lab", level))
     anchor = theophylline_anchor(sheet) if sheet else ""
     def entries(items):
         blocks = []
         for row in items:
             emphasize = is_infusion(row) and (supports_infusion_display(row) or group_for(row) == "antiepileptic")
-            blocks.append(("infusion" if emphasize else "medication", row))
+            # Presentation metadata lives only on the emitted copy. Calculation
+            # helpers still receive the original name, and nothing is stored.
+            rendered = (dict(row, _display_name=display_names[row["id"]])
+                        if row["id"] in display_names else row)
+            blocks.append(("infusion" if emphasize else "medication", rendered))
             if row["id"] == anchor:
                 from lab_windows import theophylline_summary
                 level = theophylline_summary(sheet)
@@ -326,6 +426,8 @@ def medication_blocks(section: str, notes: str, rows: list[dict], sheet: dict | 
                 block += [("empty_group", child["name"])]
             else:
                 block += [("subheading", child["name"])] + entries(child["rows"])
+            block += child.get("labs", [])
+        block += root.get("labs", [])
         groups.append(block)
     if notes.strip():
         groups.append([("notes", notes.rstrip())])

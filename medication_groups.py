@@ -6,34 +6,38 @@ pump rate. A grouping changes presentation, not the source order or clinical use
 from __future__ import annotations
 from copy import deepcopy
 import re
-from medications import match_name, normalized
+from medications import is_bupivacaine, match_name, normalized
+from chemotherapy import is_chemotherapy
 
-ID_GROUPS = ("antibiotic",)
-HEME_GROUPS = ("dvt", "antiplatelet", "gcsf")
+ID_GROUPS = ("antibiotic", "antifungal", "antiviral")
+HEME_GROUPS = ("dvt", "antiplatelet", "gcsf", "chemotherapy")
 CV_GROUPS = ("antiarrhythmic", "antihypertensive", "inotrope", "vasopressor", "adrenocortical", "vasodilator")
 RESP_GROUPS = ("airway_cerebral_steroid", "airway_tone", "antisialorrhea", "beta_agonist",
                "anticholinergic", "methylxanthine", "corticosteroid", "inhaled_corticosteroid",
-               "pulmonary_hypertension", "allergy_immunology")
+               "pulmonary_hypertension", "allergy_immunology", "airway_vasoconstrictor")
 # These groups follow the bedside sedation/PRN/paralytic blocks alphabetically.
 NEURO_OTHER_GROUPS = ("antiepileptic", "antispasmodic",
-                      "fever", "insomnia", "neuromodulation")
+                      "epidural", "fever", "insomnia", "neuromodulation")
 NEURO_PRIORITY_GROUPS = ("sedative_prn", "paralytic_infusion", "paralytic_prn")
 MODES = (("auto", "dvt", "fever", "sedative_prn", "paralytic_prn", "antiepileptic",
-          "insomnia", "antispasmodic", "neuromodulation",
-          "paralytic_infusion") + RESP_GROUPS + CV_GROUPS + ID_GROUPS + ("antiplatelet", "gcsf", "other",))
+          "insomnia", "antispasmodic", "neuromodulation", "epidural",
+          "paralytic_infusion") + RESP_GROUPS + CV_GROUPS + ID_GROUPS + ("antiplatelet", "gcsf", "chemotherapy", "other",))
 MODE_LABELS = {
     "auto": "Automatic", "dvt": "DVT Prophylaxis",
-    "antiplatelet": "Antiplatelet Therapy", "gcsf": "G-CSF Stimulator", "antibiotic": "Antibiotics", "fever": "Fever Control",
+    "chemotherapy": "Chemotherapy",
+    "antiplatelet": "Antiplatelet Therapy", "gcsf": "G-CSF Stimulator", "antibiotic": "Antibiotics", "antifungal": "Antifungals", "antiviral": "Antivirals", "fever": "Fever Control",
     "sedative_prn": "PRN", "paralytic_prn": "Paralytic PRN", "antiepileptic": "Antiepileptic",
     "paralytic_infusion": "Paralytic Infusions",
     "airway_cerebral_steroid": "Airway/Cerebral Steroids",
     "insomnia": "Insomnia", "antispasmodic": "Antispasmodic",
     "neuromodulation": "Neuromodulation",
+    "epidural": "Epidural",
     "beta_agonist": "Beta-Agonist", "anticholinergic": "Anticholinergic",
     "methylxanthine": "Methylxanthine", "corticosteroid": "Corticosteroid",
     "inhaled_corticosteroid": "Inhaled Corticosteroids", "airway_tone": "Airway Tone Modulator",
     "pulmonary_hypertension": "Pulmonary Hypertension",
     "allergy_immunology": "Allergy/Immunology",
+    "airway_vasoconstrictor": "Airway Vasoconstrictor",
     "antisialorrhea": "Antisialorrhea Agents", "antiarrhythmic": "Antiarrhythmics",
     "antihypertensive": "Antihypertensives", "inotrope": "Inotrope Infusions",
     "vasopressor": "Vasopressors", "adrenocortical": "Adrenocortical Support",
@@ -41,7 +45,8 @@ MODE_LABELS = {
 }
 GROUP_NAMES = {key: value for key, value in MODE_LABELS.items() if key not in ("auto", "other")}
 GROUP_SECTIONS = {
-    "dvt": "Hematology", "antiplatelet": "Hematology", "gcsf": "Hematology", "antibiotic": "Infectious Disease", "fever": "Neurologic", "sedative_prn": "Neurologic",
+    **{key: "Hematology" for key in HEME_GROUPS},
+    "antibiotic": "Infectious Disease", "antifungal": "Infectious Disease", "antiviral": "Infectious Disease", "fever": "Neurologic", "sedative_prn": "Neurologic",
     **{key: "Neurologic" for key in NEURO_PRIORITY_GROUPS + NEURO_OTHER_GROUPS},
     **{key: "Respiratory" for key in RESP_GROUPS},
     **{key: "Cardiovascular" for key in CV_GROUPS},
@@ -92,8 +97,12 @@ def _local_form(row: dict, name: str) -> bool:
 
 
 def automatic_system_group(row: dict) -> str:
-    """Requested defaults. Explicit per-order choices remain authoritative."""
+    """Requested defaults, including the fixed bupivacaine placement."""
     name = match_name(row.get("name", ""))
+    if is_bupivacaine(name):
+        return "epidural"
+    if is_chemotherapy(name):
+        return "chemotherapy"
     # Filgrastim is G-CSF, not GM-CSF. Match the generic and its biosimilar
     # suffixes without accidentally matching pegfilgrastim or a mixture.
     if re.match(r"^(?:filgrastim(?:-[a-z]{4})?|tbo-filgrastim|nivestym|neupogen|zarxio|releuko|nypozi|filkri)(?=$|[\s(,])", name):
@@ -102,6 +111,10 @@ def automatic_system_group(row: dict) -> str:
         return "antiplatelet"
     # Organizational defaults only. Existing explicit category assignments win.
     # Erythromycin retains the user's Prokinetic Agents default.
+    if _starts(name, ("micafungin", "fluconazole", "voriconazole", "amphotericin")):
+        return "antifungal"
+    if _starts(name, ("acyclovir", "valacyclovir", "aciclovir", "valaciclovir")):
+        return "antiviral"
     antibiotics = ("cefepime", "ceftriaxone", "cefazolin", "cefotaxime", "ceftazidime",
         "cefuroxime", "cefdinir", "cephalexin", "ceftaroline", "ampicillin",
         "ampicillin-sulbactam", "amoxicillin", "amoxicillin-clavulanate", "penicillin",
@@ -121,6 +134,17 @@ def automatic_system_group(row: dict) -> str:
         return "" if _local_form(row, name) else "airway_cerebral_steroid"
     if _starts(name, ("diphenhydramine", "benadryl")):
         return "allergy_immunology"
+    # Match racemic products only, not epinephrine/norepinephrine infusions
+    # or emergency injections. Existing category overrides take priority.
+    racemic = (_starts(name, ("racepinephrine", "racemic epinephrine",
+                "epinephrine racemic", "epinephrine, racemic",
+                "epinephrine (racemic)", "asthmanefrin")))
+    if racemic:
+        route = _route(row)
+        inhaled_routes = {"nebulization", "nebulisation", "nebulized", "nebulised",
+                          "inhalation", "inhaled", "respiratory (inhalation)"}
+        nonairway_form = bool(re.search(r"\b(?:injection|injectable|infusion|autoinjector|auto-injector)\b", name))
+        return "airway_vasoconstrictor" if (not route or route in inhaled_routes) and not nonairway_form else ""
     if _starts(name, ("albuterol",)):
         return "beta_agonist"
     if _starts(name, ("ipratropium", "ipratroppium")):
@@ -200,10 +224,14 @@ def automatic_group(row: dict) -> str:
 
 
 def group_for(row: dict) -> str:
+    # The user's bupivacaine rule also applies to existing saved orders with
+    # older group choices. Leave those source choices untouched in storage.
+    if is_bupivacaine(row.get("name", "")):
+        return "epidural"
     mode = row.get("group_mode", "auto")
     # An explicit GI override wins over automatic defaults, not over an explicit
     # special-group choice. UI callbacks clear the competing explicit choice.
-    if mode == "auto" and row.get("gi_mode", "auto") in ("prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "prokinetic", "tpn"):
+    if mode == "auto" and row.get("gi_mode", "auto") in ("prophylaxis", "bowel", "diuretic", "antiemetic", "endocrine", "prokinetic", "tpn", "hypoglycemia"):
         return ""
     return automatic_group(row) if mode == "auto" else mode if mode in GROUP_NAMES else ""
 
